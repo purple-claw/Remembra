@@ -30,28 +30,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Fetch profile when user changes
   const fetchProfile = useCallback(async (userId: string) => {
     try {
+      console.log('Fetching profile for user:', userId)
       const profileData = await db.getProfile(userId)
+      console.log('Profile fetched:', profileData)
       setProfile(profileData)
       setStoreUser(profileData)
     } catch (error) {
       console.error('Error fetching profile:', error)
+      // Profile might not exist yet for new users, that's okay
+      setProfile(null)
     }
   }, [setStoreUser])
 
   useEffect(() => {
     // Check active session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    console.log('Checking active session...')
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if (error) {
+        console.error('Error getting session:', error)
+      }
+      console.log('Session check result:', session ? 'Found session' : 'No session')
       setSession(session)
       setUser(session?.user ?? null)
       if (session?.user) {
         fetchProfile(session.user.id)
       }
       setLoading(false)
+    }).catch(err => {
+      console.error('Fatal error checking session:', err)
+      setLoading(false)
     })
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+      async (event, session) => {
+        console.log('Auth state changed:', event, session ? 'Has session' : 'No session')
         setSession(session)
         setUser(session?.user ?? null)
         

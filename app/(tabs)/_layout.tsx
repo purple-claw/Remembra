@@ -1,10 +1,30 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Tabs } from 'expo-router';
+import { Tabs, Redirect } from 'expo-router';
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, View, ActivityIndicator } from 'react-native';
 import { BorderRadius, Colors } from '../../constants/Colors';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function TabLayout() {
+  const { session, loading } = useAuth();
+  
+  console.log('TabLayout - loading:', loading, 'session:', session ? 'exists' : 'none');
+  
+  // Show loading spinner while checking auth
+  if (loading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }}>
+        <ActivityIndicator size="large" color="#6366F1" />
+      </View>
+    );
+  }
+  
+  // Redirect to auth if not signed in
+  if (!session) {
+    console.log('No session, redirecting to auth');
+    return <Redirect href="/auth" />;
+  }
+
   return (
     <Tabs
       screenOptions={{

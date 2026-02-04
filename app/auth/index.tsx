@@ -42,23 +42,22 @@ export default function AuthScreen() {
         setError('');
 
         try {
+            console.log('Auth screen - attempting', isLogin ? 'sign in' : 'sign up');
             if (isLogin) {
-                const { error } = await signIn(email, password);
-                if (error) throw error;
+                await signIn(email, password);
+                console.log('Sign in successful, redirecting...');
+                router.replace('/(tabs)');
             } else {
-                const { error } = await signUp(email, password, username);
-                if (error) throw error;
+                await signUp(email, password, username);
+                console.log('Sign up successful, redirecting...');
+                router.replace('/(tabs)');
             }
-            router.replace('/(tabs)');
         } catch (err: any) {
+            console.error('Auth error:', err);
             setError(err.message || 'An error occurred');
         } finally {
             setLoading(false);
         }
-    };
-
-    const handleSkip = () => {
-        router.replace('/(tabs)');
     };
 
     return (
@@ -171,12 +170,6 @@ export default function AuthScreen() {
                     </Text>
                 </TouchableOpacity>
             </View>
-
-            {/* Skip for now */}
-            <TouchableOpacity style={styles.skipButton} onPress={handleSkip}>
-                <Text style={styles.skipText}>Continue without account</Text>
-                <Ionicons name="arrow-forward" size={16} color={Colors.dark.textMuted} />
-            </TouchableOpacity>
         </KeyboardAvoidingView>
     );
 }
