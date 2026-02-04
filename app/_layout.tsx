@@ -8,6 +8,7 @@ import { useEffect } from 'react'
 import 'react-native-reanimated'
 
 import { AuthProvider } from '@/contexts/AuthContext'
+import { Colors } from '@/constants/Colors'
 
 export {
   ErrorBoundary
