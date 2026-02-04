@@ -1,52 +1,46 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { createClient } from '@supabase/supabase-js';
-import { Platform } from 'react-native';
+import 'react-native-url-polyfill/auto'
+import AsyncStorage from '@react-native-async-storage/async-storage'
+import { createClient } from '@supabase/supabase-js'
+import { Platform } from 'react-native'
+import type { Database } from '@/types'
 
-const supabaseUrl = 'https://vcgmyivrlppfiizaeydg.supabase.co';
-const supabaseAnonKey = 'sb_publishable_imgvkwiev0Lr8q--BHQdvQ_nSxj14gT';
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://vcgmyivrlppfiizaeydg.supabase.co'
+const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_imgvkwiev0Lr8q--BHQdvQ_nSxj14gT'
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.warn('Supabase credentials not found in environment. Using defaults.')
+}
 
 // SSR-safe storage wrapper for Expo web
 export const ExpoSecureStorage = {
-    getItem: async (key: string) => {
-        // Check if we're in a browser environment
-        if (Platform.OS === 'web' && typeof window === 'undefined') {
-            return null; // SSR - return null safely
-        }
-        return AsyncStorage.getItem(key);
-    },
-    setItem: async (key: string, value: string) => {
-        if (Platform.OS === 'web' && typeof window === 'undefined') {
-            return; // SSR - no-op
-        }
-        return AsyncStorage.setItem(key, value);
-    },
-    removeItem: async (key: string) => {
-        if (Platform.OS === 'web' && typeof window === 'undefined') {
-            return; // SSR - no-op
-        }
-        return AsyncStorage.removeItem(key);
-    },
-};
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-    auth: {
-        storage: ExpoSecureStorage,
-        autoRefreshToken: true,
-        persistSession: true,
-        detectSessionInUrl: false,
-    },
-});
-
-// Database types
-export interface DbProfile {
-    id: string;
-    username: string;
-    streak_count: number;
-    total_reviews: number;
-    timezone: string;
-    created_at: string;
-    updated_at: string;
+  getItem: async (key: string) => {
+    if (Platform.OS === 'web' && typeof window === 'undefined') {
+      return null
+    }
+    return AsyncStorage.getItem(key)
+  },
+  setItem: async (key: string, value: string) => {
+    if (Platform.OS === 'web' && typeof window === 'undefined') {
+      return
+    }
+    return AsyncStorage.setItem(key, value)
+  },
+  removeItem: async (key: string) => {
+    if (Platform.OS === 'web' && typeof window === 'undefined') {
+      return
+    }
+    return AsyncStorage.removeItem(key)
+  },
 }
+
+export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    storage: ExpoSecureStorage,
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: false,
+  },
+})
 
 export interface DbCategory {
     id: string;
