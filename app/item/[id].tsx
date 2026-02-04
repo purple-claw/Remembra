@@ -1,522 +1,611 @@
-import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import { Ionicons } from '@expo/vector-icons'
+import { LinearGradient } from 'expo-linear-gradient'
+import { useRouter, useLocalSearchParams } from 'expo-router'
+import React, { useState, useEffect } from 'react'
 import {
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
-} from 'react-native';
-import { CodeBlock } from '../../components/content/CodeBlock';
-import { Flowchart } from '../../components/content/Flowchart';
-import { BorderRadius, Colors, Spacing, Typography } from '../../constants/Colors';
-import { useStore } from '../../store/store';
-import { ContentBlock, DEMO_MEMORY_ITEM, REVIEW_INTERVALS } from '../../types/types';
-
-// Mini Calendar for this item's review schedule
-function ItemCalendar({ reviewStage, nextReviewDate }: { reviewStage: number; nextReviewDate: Date }) {
-    const stages = REVIEW_INTERVALS.map((days, index) => ({
-        day: days,
-        label: `Day ${days}`,
-        completed: index < reviewStage,
-        current: index === reviewStage,
-        upcoming: index > reviewStage,
-    }));
-
-    return (
-        <View style={styles.calendarContainer}>
-            <Text style={styles.calendarTitle}>Review Schedule (1-4-7-30-90)</Text>
-            <View style={styles.calendarTrack}>
-                {stages.map((stage, index) => (
-                    <View key={index} style={styles.stageItem}>
-                        <View
-                            style={[
-                                styles.stageDot,
-                                stage.completed && styles.stageDotCompleted,
-                                stage.current && styles.stageDotCurrent,
-                            ]}
-                        >
-                            {stage.completed && (
-                                <Ionicons name="checkmark" size={12} color="#FFFFFF" />
-                            )}
-                            {stage.current && (
-                                <Ionicons name="time" size={12} color="#FFFFFF" />
-                            )}
-                        </View>
-                        <Text style={[styles.stageLabel, stage.current && styles.stageLabelCurrent]}>
-                            {stage.label}
-                        </Text>
-                        {index < stages.length - 1 && (
-                            <View
-                                style={[
-                                    styles.stageLine,
-                                    stage.completed && styles.stageLineCompleted,
-                                ]}
-                            />
-                        )}
-                    </View>
-                ))}
-            </View>
-            <View style={styles.nextReviewBox}>
-                <Ionicons name="calendar-outline" size={18} color={Colors.dark.accent} />
-                <Text style={styles.nextReviewText}>
-                    Next review: {nextReviewDate.toLocaleDateString('en-US', {
-                        weekday: 'short',
-                        month: 'short',
-                        day: 'numeric'
-                    })}
-                </Text>
-            </View>
-        </View>
-    );
-}
-
-// Render individual content block
-function RenderContentBlock({ block }: { block: ContentBlock }) {
-    switch (block.type) {
-        case 'heading':
-            const HeadingStyle = block.level === 1 ? styles.heading1 :
-                block.level === 2 ? styles.heading2 : styles.heading3;
-            return <Text style={HeadingStyle}>{block.content}</Text>;
-
-        case 'text':
-            return <Text style={styles.textBlock}>{block.content}</Text>;
-
-        case 'bullet':
-            return (
-                <View style={styles.bulletItem}>
-                    <View style={styles.bulletDot} />
-                    <Text style={styles.bulletText}>{block.content}</Text>
-                </View>
-            );
-
-        case 'code':
-            return <CodeBlock code={block.content} language={block.language} />;
-
-        case 'flowchart':
-            return <Flowchart mermaidCode={block.content} />;
-
-        case 'note':
-            return (
-                <View style={[styles.noteBlock, { borderLeftColor: block.color || Colors.dark.warning }]}>
-                    <Ionicons name="bulb-outline" size={16} color={block.color || Colors.dark.warning} />
-                    <Text style={styles.noteText}>{block.content}</Text>
-                </View>
-            );
-
-        case 'divider':
-            return <View style={styles.divider} />;
-
-        default:
-            return null;
-    }
-}
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  ActivityIndicator,
+  Alert,
+  Modal,
+} from 'react-native'
+import { useAuth } from '@/contexts/AuthContext'
+import { db } from '@/lib/database'
+import { ai } from '@/lib/ai'
+import type { MemoryItem, Category, AIContent } from '@/types'
 
 export default function ItemDetailScreen() {
-    const { id } = useLocalSearchParams();
-    const router = useRouter();
-    const { memoryItems, categories, updateMemoryItem } = useStore();
+  const router = useRouter()
+  const { id, mode } = useLocalSearchParams()
+  const { user } = useAuth()
+  const [item, setItem] = useState<MemoryItem | null>(null)
+  const [category, setCategory] = useState<Category | null>(null)
+  const [aiContent, setAIContent] = useState<AIContent[]>([])
+  const [loading, setLoading] = useState(true)
+  const [reviewMode, setReviewMode] = useState(mode === 'review')
+  const [showAnswer, setShowAnswer] = useState(false)
+  const [reviewStartTime, setReviewStartTime] = useState(Date.now())
+  const [generatingAI, setGeneratingAI] = useState(false)
 
-    // For demo, use the demo item if no real item found
-    const item = memoryItems.find(m => m.id === id) || DEMO_MEMORY_ITEM;
-    const category = categories.find(c => c.id === item.categoryId);
+  useEffect(() => {
+    if (user && id) {
+      loadItem()
+    }
+  }, [user, id])
 
-    const [personalNotes, setPersonalNotes] = useState(item.personalNotes || '');
-    const [isEditing, setIsEditing] = useState(false);
+  const loadItem = async () => {
+    if (!user || !id) return
 
-    const handleSaveNotes = () => {
-        if (item.id !== 'demo-1') {
-            updateMemoryItem(item.id, { personalNotes });
+    try {
+      setLoading(true)
+      const itemData = await db.getMemoryItem(id as string)
+      if (itemData) {
+        setItem(itemData)
+        if (itemData.category_id) {
+          const categoryData = await db.getCategory(itemData.category_id)
+          setCategory(categoryData)
         }
-        setIsEditing(false);
-    };
+        const aiData = await db.getAIContent(id as string)
+        setAIContent(aiData)
+      }
+    } catch (error) {
+      console.error('Error loading item:', error)
+      Alert.alert('Error', 'Failed to load item')
+    } finally {
+      setLoading(false)
+    }
+  }
 
+  const handleReviewComplete = async (wasCorrect: boolean) => {
+    if (!user || !item) return
+
+    const timeTaken = Math.floor((Date.now() - reviewStartTime) / 1000)
+
+    try {
+      await db.submitReview(user.id, item.id, {
+        was_correct: wasCorrect,
+        difficulty_rating: wasCorrect ? 3 : 2,
+        time_taken: timeTaken,
+      })
+
+      Alert.alert(
+        'Review Complete',
+        wasCorrect ? 'Great job! 🎉' : 'Keep practicing! 💪',
+        [{ text: 'OK', onPress: () => router.back() }]
+      )
+    } catch (error) {
+      console.error('Error submitting review:', error)
+      Alert.alert('Error', 'Failed to submit review')
+    }
+  }
+
+  const generateAISummary = async () => {
+    if (!user || !item || generatingAI) return
+
+    try {
+      setGeneratingAI(true)
+      const content = Array.isArray(item.content) 
+        ? item.content.map(block => block.content).join('\n\n')
+        : String(item.content)
+      const summary = await ai.generateSummary(content)
+
+      await db.createAIContent(user.id, item.id, {
+        content_type: 'summary',
+        content: summary,
+      })
+
+      loadItem()
+      Alert.alert('Success', 'AI summary generated!')
+    } catch (error) {
+      console.error('Error generating summary:', error)
+      Alert.alert('Error', 'Failed to generate summary')
+    } finally {
+      setGeneratingAI(false)
+    }
+  }
+
+  const generateQuiz = async () => {
+    if (!user || !item || generatingAI) return
+
+    try {
+      setGeneratingAI(true)
+      const content = Array.isArray(item.content)
+        ? item.content.map(block => block.content).join('\n\n')
+        : String(item.content)
+      const quiz = await ai.generateQuiz(content)
+
+      await db.createAIContent(user.id, item.id, {
+        content_type: 'quiz',
+        content: quiz,
+      })
+
+      loadItem()
+      Alert.alert('Success', 'Quiz generated!')
+    } catch (error) {
+      console.error('Error generating quiz:', error)
+      Alert.alert('Error', 'Failed to generate quiz')
+    } finally {
+      setGeneratingAI(false)
+    }
+  }
+
+  const getStageLabel = (stage: number) => {
+    if (stage === 0) return 'New'
+    if (stage === 1) return 'Day 1'
+    if (stage === 4) return 'Day 4'
+    if (stage === 7) return 'Day 7'
+    if (stage === 30) return 'Day 30'
+    if (stage >= 90) return 'Mastered'
+    return `Day ${stage}`
+  }
+
+  if (loading) {
     return (
-        <View style={styles.container}>
-            {/* Header */}
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-                    <Ionicons name="arrow-back" size={22} color={Colors.dark.text} />
-                </TouchableOpacity>
-                <View style={styles.headerActions}>
-                    <TouchableOpacity style={styles.actionBtn}>
-                        <Ionicons name="create-outline" size={20} color={Colors.dark.textSecondary} />
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.actionBtn}>
-                        <Ionicons name="share-outline" size={20} color={Colors.dark.textSecondary} />
-                    </TouchableOpacity>
-                </View>
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#6366F1" />
+      </View>
+    )
+  }
+
+  if (!item) {
+    return (
+      <View style={styles.loadingContainer}>
+        <Text style={styles.errorText}>Item not found</Text>
+        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+          <Text style={styles.backButtonText}>Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    )
+  }
+
+  const content = Array.isArray(item.content)
+    ? item.content.map(block => block.content).join('\n\n')
+    : String(item.content)
+
+  if (reviewMode) {
+    return (
+      <View style={styles.container}>
+        <LinearGradient colors={['#6366F1', '#8b5cf6']} style={styles.reviewHeader}>
+          <TouchableOpacity style={styles.closeButton} onPress={() => router.back()}>
+            <Ionicons name="close" size={28} color="#fff" />
+          </TouchableOpacity>
+
+          <View style={styles.reviewInfo}>
+            <Text style={styles.reviewStage}>{getStageLabel(item.stage)}</Text>
+            <Text style={styles.reviewTitle}>{item.title}</Text>
+          </View>
+        </LinearGradient>
+
+        <ScrollView style={styles.reviewContent} contentContainerStyle={styles.reviewContentContainer}>
+          {!showAnswer ? (
+            <View style={styles.questionContainer}>
+              <Text style={styles.questionPrompt}>Can you recall this?</Text>
+              <TouchableOpacity
+                style={styles.showAnswerButton}
+                onPress={() => setShowAnswer(true)}
+              >
+                <Text style={styles.showAnswerButtonText}>Show Answer</Text>
+              </TouchableOpacity>
             </View>
+          ) : (
+            <>
+              <View style={styles.answerContainer}>
+                <Text style={styles.answerLabel}>Answer:</Text>
+                <Text style={styles.answerText}>{content}</Text>
+              </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} style={styles.scrollView}>
-                {/* Title Section */}
-                <View style={styles.titleSection}>
-                    <View style={styles.categoryBadge}>
-                        <View style={[styles.categoryDot, { backgroundColor: category?.color || '#6366F1' }]} />
-                        <Text style={styles.categoryName}>{category?.name || 'General'}</Text>
-                    </View>
-                    <Text style={styles.title}>{item.title}</Text>
+              <View style={styles.reviewActions}>
+                <Text style={styles.reviewPrompt}>Did you remember it correctly?</Text>
+                <View style={styles.reviewButtons}>
+                  <TouchableOpacity
+                    style={[styles.reviewButton, styles.incorrectButton]}
+                    onPress={() => handleReviewComplete(false)}
+                  >
+                    <Ionicons name="close-circle" size={32} color="#fff" />
+                    <Text style={styles.reviewButtonText}>Forgot</Text>
+                  </TouchableOpacity>
 
-                    {/* Tags */}
-                    <View style={styles.tagsRow}>
-                        {item.tags?.map((tag, i) => (
-                            <View key={i} style={styles.tag}>
-                                <Text style={styles.tagText}>#{tag}</Text>
-                            </View>
-                        ))}
-                    </View>
+                  <TouchableOpacity
+                    style={[styles.reviewButton, styles.correctButton]}
+                    onPress={() => handleReviewComplete(true)}
+                  >
+                    <Ionicons name="checkmark-circle" size={32} color="#fff" />
+                    <Text style={styles.reviewButtonText}>Remembered</Text>
+                  </TouchableOpacity>
                 </View>
+              </View>
+            </>
+          )}
+        </ScrollView>
+      </View>
+    )
+  }
 
-                {/* Mini Calendar */}
-                <ItemCalendar
-                    reviewStage={item.reviewStage}
-                    nextReviewDate={new Date(item.nextReviewDate)}
-                />
+  return (
+    <View style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.backButtonHeader} onPress={() => router.back()}>
+          <Ionicons name="arrow-back" size={24} color="#fff" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Item Details</Text>
+        <TouchableOpacity style={styles.menuButton}>
+          <Ionicons name="ellipsis-vertical" size={24} color="#fff" />
+        </TouchableOpacity>
+      </View>
 
-                {/* Content Blocks */}
-                <View style={styles.contentSection}>
-                    {item.contentBlocks?.map((block) => (
-                        <View key={block.id} style={styles.blockWrapper}>
-                            <RenderContentBlock block={block} />
-                        </View>
-                    ))}
-                </View>
+      <ScrollView style={styles.content}>
+        {/* Item Info Card */}
+        <View style={styles.itemCard}>
+          {category && (
+            <View style={styles.categoryBadge}>
+              <Text style={styles.categoryEmoji}>{category.icon}</Text>
+              <Text style={styles.categoryName}>{category.name}</Text>
+            </View>
+          )}
 
-                {/* Personal Notes */}
-                <View style={styles.notesSection}>
-                    <View style={styles.notesSectionHeader}>
-                        <Text style={styles.notesSectionTitle}>My Notes</Text>
-                        {!isEditing ? (
-                            <TouchableOpacity onPress={() => setIsEditing(true)}>
-                                <Ionicons name="create-outline" size={18} color={Colors.dark.accent} />
-                            </TouchableOpacity>
-                        ) : (
-                            <TouchableOpacity onPress={handleSaveNotes}>
-                                <Ionicons name="checkmark" size={18} color={Colors.dark.success} />
-                            </TouchableOpacity>
-                        )}
-                    </View>
-                    {isEditing ? (
-                        <TextInput
-                            style={styles.notesInput}
-                            value={personalNotes}
-                            onChangeText={setPersonalNotes}
-                            placeholder="Add your personal notes here..."
-                            placeholderTextColor={Colors.dark.textMuted}
-                            multiline
-                            textAlignVertical="top"
-                        />
-                    ) : (
-                        <TouchableOpacity onPress={() => setIsEditing(true)}>
-                            <Text style={[styles.notesText, !personalNotes && styles.notesPlaceholder]}>
-                                {personalNotes || 'Tap to add notes...'}
-                            </Text>
-                        </TouchableOpacity>
-                    )}
-                </View>
+          <Text style={styles.itemTitle}>{item.title}</Text>
 
-                {/* Review Actions */}
-                <View style={styles.reviewActions}>
-                    <TouchableOpacity style={styles.reviewBtn}>
-                        <Ionicons name="flash" size={20} color="#FFFFFF" />
-                        <Text style={styles.reviewBtnText}>Start Review</Text>
-                    </TouchableOpacity>
-                </View>
-
-                <View style={{ height: 100 }} />
-            </ScrollView>
+          <View style={styles.itemMeta}>
+            <View style={styles.metaChip}>
+              <Ionicons name="layers" size={16} color="#6366F1" />
+              <Text style={styles.metaText}>{getStageLabel(item.stage)}</Text>
+            </View>
+            <View style={styles.metaChip}>
+              <Ionicons name="time" size={16} color="#94a3b8" />
+              <Text style={styles.metaText}>
+                Next: {new Date(item.next_review_date).toLocaleDateString()}
+              </Text>
+            </View>
+            <View style={styles.metaChip}>
+              <Ionicons name="checkmark-circle" size={16} color="#10b981" />
+              <Text style={styles.metaText}>
+                {item.success_count}/{item.review_count}
+              </Text>
+            </View>
+          </View>
         </View>
-    );
+
+        {/* Content */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Content</Text>
+          <View style={styles.contentCard}>
+            <Text style={styles.contentText}>{content}</Text>
+          </View>
+        </View>
+
+        {/* AI Features */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>AI Tools</Text>
+          <View style={styles.aiTools}>
+            <TouchableOpacity
+              style={styles.aiButton}
+              onPress={generateAISummary}
+              disabled={generatingAI}
+            >
+              <Ionicons name="document-text" size={24} color="#6366F1" />
+              <Text style={styles.aiButtonText}>Summary</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.aiButton}
+              onPress={generateQuiz}
+              disabled={generatingAI}
+            >
+              <Ionicons name="help-circle" size={24} color="#8b5cf6" />
+              <Text style={styles.aiButtonText}>Quiz</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* AI Content */}
+        {aiContent.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Generated Content</Text>
+            {aiContent.map((content) => (
+              <View key={content.id} style={styles.aiContentCard}>
+                <View style={styles.aiContentHeader}>
+                  <Text style={styles.aiContentType}>{content.content_type}</Text>
+                  <Text style={styles.aiProvider}>{content.provider}</Text>
+                </View>
+                <Text style={styles.aiContentText}>{JSON.stringify(content.content, null, 2)}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Actions */}
+        <TouchableOpacity
+          style={styles.reviewButton2}
+          onPress={() => setReviewMode(true)}
+        >
+          <Text style={styles.reviewButton2Text}>Start Review</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </View>
+  )
 }
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: Colors.dark.background,
-    },
-    header: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingHorizontal: Spacing.lg,
-        paddingTop: Spacing.xl,
-        paddingBottom: Spacing.md,
-    },
-    backBtn: {
-        width: 40,
-        height: 40,
-        backgroundColor: Colors.dark.card,
-        borderRadius: BorderRadius.md,
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderWidth: 1,
-        borderColor: Colors.dark.glassBorder,
-    },
-    headerActions: {
-        flexDirection: 'row',
-        gap: Spacing.sm,
-    },
-    actionBtn: {
-        width: 40,
-        height: 40,
-        backgroundColor: Colors.dark.card,
-        borderRadius: BorderRadius.md,
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderWidth: 1,
-        borderColor: Colors.dark.glassBorder,
-    },
-    scrollView: {
-        flex: 1,
-        paddingHorizontal: Spacing.lg,
-    },
-    titleSection: {
-        marginBottom: Spacing.lg,
-    },
-    categoryBadge: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 6,
-        marginBottom: Spacing.sm,
-    },
-    categoryDot: {
-        width: 10,
-        height: 10,
-        borderRadius: 5,
-    },
-    categoryName: {
-        fontSize: Typography.sizes.sm,
-        color: Colors.dark.textSecondary,
-    },
-    title: {
-        fontSize: Typography.sizes['2xl'],
-        fontWeight: Typography.weights.bold,
-        color: Colors.dark.text,
-        marginBottom: Spacing.sm,
-    },
-    tagsRow: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        gap: Spacing.xs,
-    },
-    tag: {
-        backgroundColor: Colors.dark.card,
-        paddingHorizontal: 10,
-        paddingVertical: 4,
-        borderRadius: BorderRadius.sm,
-        borderWidth: 1,
-        borderColor: Colors.dark.glassBorder,
-    },
-    tagText: {
-        fontSize: Typography.sizes.xs,
-        color: Colors.dark.accent,
-    },
-    // Calendar styles
-    calendarContainer: {
-        backgroundColor: Colors.dark.card,
-        borderRadius: BorderRadius.xl,
-        padding: Spacing.lg,
-        marginBottom: Spacing.lg,
-        borderWidth: 1,
-        borderColor: Colors.dark.glassBorder,
-    },
-    calendarTitle: {
-        fontSize: Typography.sizes.sm,
-        fontWeight: Typography.weights.semibold,
-        color: Colors.dark.text,
-        marginBottom: Spacing.md,
-    },
-    calendarTrack: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'flex-start',
-        marginBottom: Spacing.md,
-    },
-    stageItem: {
-        alignItems: 'center',
-        flex: 1,
-        position: 'relative',
-    },
-    stageDot: {
-        width: 28,
-        height: 28,
-        borderRadius: 14,
-        backgroundColor: Colors.dark.cardElevated,
-        borderWidth: 2,
-        borderColor: Colors.dark.textMuted,
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginBottom: 4,
-    },
-    stageDotCompleted: {
-        backgroundColor: Colors.dark.success,
-        borderColor: Colors.dark.success,
-    },
-    stageDotCurrent: {
-        backgroundColor: Colors.dark.accent,
-        borderColor: Colors.dark.accent,
-    },
-    stageLabel: {
-        fontSize: 10,
-        color: Colors.dark.textMuted,
-    },
-    stageLabelCurrent: {
-        color: Colors.dark.accent,
-        fontWeight: Typography.weights.semibold,
-    },
-    stageLine: {
-        position: 'absolute',
-        top: 14,
-        left: '60%',
-        right: '-40%',
-        height: 2,
-        backgroundColor: Colors.dark.textMuted,
-        opacity: 0.3,
-        zIndex: -1,
-    },
-    stageLineCompleted: {
-        backgroundColor: Colors.dark.success,
-        opacity: 1,
-    },
-    nextReviewBox: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: Spacing.sm,
-        backgroundColor: Colors.dark.cardElevated,
-        paddingHorizontal: Spacing.md,
-        paddingVertical: Spacing.sm,
-        borderRadius: BorderRadius.md,
-    },
-    nextReviewText: {
-        fontSize: Typography.sizes.sm,
-        color: Colors.dark.text,
-    },
-    // Content styles
-    contentSection: {
-        marginBottom: Spacing.lg,
-    },
-    blockWrapper: {
-        marginBottom: Spacing.md,
-    },
-    heading1: {
-        fontSize: Typography.sizes['2xl'],
-        fontWeight: Typography.weights.bold,
-        color: Colors.dark.text,
-        marginTop: Spacing.md,
-        marginBottom: Spacing.sm,
-    },
-    heading2: {
-        fontSize: Typography.sizes.xl,
-        fontWeight: Typography.weights.semibold,
-        color: Colors.dark.text,
-        marginTop: Spacing.sm,
-        marginBottom: Spacing.xs,
-    },
-    heading3: {
-        fontSize: Typography.sizes.lg,
-        fontWeight: Typography.weights.medium,
-        color: Colors.dark.text,
-        marginTop: Spacing.xs,
-    },
-    textBlock: {
-        fontSize: Typography.sizes.base,
-        color: Colors.dark.textSecondary,
-        lineHeight: 24,
-    },
-    bulletItem: {
-        flexDirection: 'row',
-        alignItems: 'flex-start',
-        marginVertical: 4,
-    },
-    bulletDot: {
-        width: 6,
-        height: 6,
-        borderRadius: 3,
-        backgroundColor: Colors.dark.accent,
-        marginTop: 8,
-        marginRight: Spacing.sm,
-    },
-    bulletText: {
-        flex: 1,
-        fontSize: Typography.sizes.base,
-        color: Colors.dark.textSecondary,
-        lineHeight: 22,
-    },
-    noteBlock: {
-        flexDirection: 'row',
-        alignItems: 'flex-start',
-        gap: Spacing.sm,
-        backgroundColor: Colors.dark.cardElevated,
-        padding: Spacing.md,
-        borderRadius: BorderRadius.md,
-        borderLeftWidth: 3,
-    },
-    noteText: {
-        flex: 1,
-        fontSize: Typography.sizes.sm,
-        color: Colors.dark.text,
-        lineHeight: 20,
-    },
-    divider: {
-        height: 1,
-        backgroundColor: Colors.dark.glassBorder,
-        marginVertical: Spacing.md,
-    },
-    // Notes section
-    notesSection: {
-        backgroundColor: Colors.dark.card,
-        borderRadius: BorderRadius.xl,
-        padding: Spacing.lg,
-        marginBottom: Spacing.lg,
-        borderWidth: 1,
-        borderColor: Colors.dark.glassBorder,
-    },
-    notesSectionHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: Spacing.md,
-    },
-    notesSectionTitle: {
-        fontSize: Typography.sizes.base,
-        fontWeight: Typography.weights.semibold,
-        color: Colors.dark.text,
-    },
-    notesInput: {
-        backgroundColor: Colors.dark.cardElevated,
-        borderRadius: BorderRadius.md,
-        padding: Spacing.md,
-        color: Colors.dark.text,
-        fontSize: Typography.sizes.base,
-        minHeight: 100,
-    },
-    notesText: {
-        fontSize: Typography.sizes.base,
-        color: Colors.dark.textSecondary,
-        lineHeight: 22,
-    },
-    notesPlaceholder: {
-        color: Colors.dark.textMuted,
-        fontStyle: 'italic',
-    },
-    // Review actions
-    reviewActions: {
-        marginBottom: Spacing.lg,
-    },
-    reviewBtn: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: Spacing.sm,
-        backgroundColor: Colors.dark.accent,
-        paddingVertical: Spacing.md,
-        borderRadius: BorderRadius.lg,
-    },
-    reviewBtnText: {
-        fontSize: Typography.sizes.base,
-        fontWeight: Typography.weights.semibold,
-        color: '#FFFFFF',
-    },
-});
+  container: {
+    flex: 1,
+    backgroundColor: '#0f172a',
+  },
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: '#0f172a',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorText: {
+    fontSize: 18,
+    color: '#cbd5e1',
+    marginBottom: 24,
+  },
+  backButton: {
+    backgroundColor: '#6366F1',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  backButtonText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 60,
+    paddingBottom: 20,
+    paddingHorizontal: 24,
+    backgroundColor: '#1e293b',
+  },
+  backButtonHeader: {
+    padding: 8,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  menuButton: {
+    padding: 8,
+  },
+  content: {
+    flex: 1,
+    padding: 24,
+  },
+  itemCard: {
+    backgroundColor: '#1e293b',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  categoryBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: '#0f172a',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    marginBottom: 12,
+    gap: 6,
+  },
+  categoryEmoji: {
+    fontSize: 16,
+  },
+  categoryName: {
+    fontSize: 14,
+    color: '#cbd5e1',
+  },
+  itemTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 16,
+  },
+  itemMeta: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  metaChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0f172a',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    gap: 4,
+  },
+  metaText: {
+    fontSize: 13,
+    color: '#94a3b8',
+  },
+  section: {
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 12,
+  },
+  contentCard: {
+    backgroundColor: '#1e293b',
+    borderRadius: 12,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  contentText: {
+    fontSize: 16,
+    color: '#cbd5e1',
+    lineHeight: 24,
+  },
+  aiTools: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  aiButton: {
+    flex: 1,
+    backgroundColor: '#1e293b',
+    borderRadius: 12,
+    padding: 20,
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  aiButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#cbd5e1',
+  },
+  aiContentCard: {
+    backgroundColor: '#1e293b',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  aiContentHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  aiContentType: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+    textTransform: 'capitalize',
+  },
+  aiProvider: {
+    fontSize: 12,
+    color: '#64748b',
+  },
+  aiContentText: {
+    fontSize: 14,
+    color: '#94a3b8',
+    fontFamily: 'monospace',
+  },
+  reviewButton2: {
+    backgroundColor: '#6366F1',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    marginBottom: 32,
+  },
+  reviewButton2Text: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  reviewHeader: {
+    paddingTop: 60,
+    paddingBottom: 32,
+    paddingHorizontal: 24,
+  },
+  closeButton: {
+    alignSelf: 'flex-end',
+    marginBottom: 24,
+  },
+  reviewInfo: {
+    alignItems: 'center',
+  },
+  reviewStage: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.8)',
+    marginBottom: 8,
+  },
+  reviewTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#fff',
+    textAlign: 'center',
+  },
+  reviewContent: {
+    flex: 1,
+  },
+  reviewContentContainer: {
+    padding: 24,
+  },
+  questionContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 80,
+  },
+  questionPrompt: {
+    fontSize: 20,
+    color: '#cbd5e1',
+    textAlign: 'center',
+    marginBottom: 40,
+  },
+  showAnswerButton: {
+    backgroundColor: '#6366F1',
+    paddingHorizontal: 40,
+    paddingVertical: 16,
+    borderRadius: 12,
+  },
+  showAnswerButtonText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  answerContainer: {
+    backgroundColor: '#1e293b',
+    borderRadius: 16,
+    padding: 24,
+    marginBottom: 32,
+  },
+  answerLabel: {
+    fontSize: 14,
+    color: '#94a3b8',
+    marginBottom: 12,
+  },
+  answerText: {
+    fontSize: 18,
+    color: '#fff',
+    lineHeight: 28,
+  },
+  reviewActions: {
+    marginTop: 32,
+  },
+  reviewPrompt: {
+    fontSize: 18,
+    color: '#cbd5e1',
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  reviewButtons: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  reviewButton: {
+    flex: 1,
+    padding: 24,
+    borderRadius: 16,
+    alignItems: 'center',
+    gap: 12,
+  },
+  incorrectButton: {
+    backgroundColor: '#ef4444',
+  },
+  correctButton: {
+    backgroundColor: '#10b981',
+  },
+  reviewButtonText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+})

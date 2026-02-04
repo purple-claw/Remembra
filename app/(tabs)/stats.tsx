@@ -1,297 +1,528 @@
-import { Ionicons } from '@expo/vector-icons';
-import React from 'react';
+import { Ionicons } from '@expo/vector-icons'
+import { LinearGradient } from 'expo-linear-gradient'
+import React, { useState, useEffect } from 'react'
 import {
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
-} from 'react-native';
-import { BorderRadius, Colors, Spacing, Typography } from '../../constants/Colors';
-import { useSupabaseStore as useStore } from '../../lib/supabaseStore';
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  ActivityIndicator,
+  Dimensions,
+} from 'react-native'
+import { useAuth } from '@/contexts/AuthContext'
+import { db } from '@/lib/database'
+import type { UserStats, StudyInsights } from '@/types'
 
-function StatCard({
-    title,
-    value,
-    subtitle,
-    icon,
-    color,
-}: {
-    title: string;
-    value: string | number;
-    subtitle?: string;
-    icon: keyof typeof Ionicons.glyphMap;
-    color: string;
-}) {
-    return (
-        <View style={styles.statCard}>
-            <View style={[styles.statIcon, { backgroundColor: color + '15' }]}>
-                <Ionicons name={icon} size={22} color={color} />
-            </View>
-            <Text style={styles.statValue}>{value}</Text>
-            <Text style={styles.statTitle}>{title}</Text>
-            {subtitle && <Text style={styles.statSubtitle}>{subtitle}</Text>}
-        </View>
-    );
-}
-
-function AchievementBadge({
-    name,
-    icon,
-    unlocked,
-    color,
-}: {
-    name: string;
-    icon: keyof typeof Ionicons.glyphMap;
-    unlocked: boolean;
-    color: string;
-}) {
-    return (
-        <View style={[styles.badge, !unlocked && styles.badgeLocked]}>
-            <View style={[styles.badgeIcon, { backgroundColor: unlocked ? color : Colors.dark.borderSubtle }]}>
-                <Ionicons name={icon} size={18} color={unlocked ? '#FFFFFF' : Colors.dark.textMuted} />
-            </View>
-            <Text style={[styles.badgeName, !unlocked && styles.badgeNameLocked]} numberOfLines={1}>
-                {name}
-            </Text>
-        </View>
-    );
-}
+const SCREEN_WIDTH = Dimensions.get('window').width
 
 export default function StatsScreen() {
-    const { user, memoryItems, getCurrentStreak } = useStore();
-    const currentStreak = getCurrentStreak();
+  const { user } = useAuth()
+  const [stats, setStats] = useState<UserStats | null>(null)
+  const [insights, setInsights] = useState<StudyInsights | null>(null)
+  const [loading, setLoading] = useState(true)
 
-    const totalItems = memoryItems.length;
-    const masteredItems = memoryItems.filter((m) => m.status === 'mastered').length;
-    const learningItems = memoryItems.filter((m) => m.status === 'learning').length;
-    const reviewingItems = memoryItems.filter((m) => m.status === 'reviewing').length;
+  useEffect(() => {
+    if (user) {
+      loadData()
+    }
+  }, [user])
 
-    const achievements = [
-        { name: '7 Day Streak', icon: 'flame' as const, unlocked: currentStreak >= 7, color: Colors.dark.accent },
-        { name: '100 Reviews', icon: 'checkmark-circle' as const, unlocked: (user?.totalReviews || 0) >= 100, color: Colors.dark.success },
-        { name: 'Code Master', icon: 'code-slash' as const, unlocked: false, color: '#22C55E' },
-        { name: 'Speed Reader', icon: 'flash' as const, unlocked: false, color: '#F59E0B' },
-        { name: 'AI Explorer', icon: 'sparkles' as const, unlocked: false, color: '#8B5CF6' },
-        { name: 'Night Owl', icon: 'moon' as const, unlocked: false, color: '#6366F1' },
-    ];
+  const loadData = async () => {
+    if (!user) return
 
-    const getProgressWidth = (count: number) => {
-        if (totalItems === 0) return 0;
-        return (count / totalItems) * 100;
-    };
+    try {
+      setLoading(true)
+      const [statsData, insightsData] = await Promise.all([
+        db.getUserStats(user.id),
+        db.getStudyInsights(user.id),
+      ])
+      setStats(statsData)
+      setInsights(insightsData)
+    } catch (error) {
+      console.error('Error loading stats:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
 
+  if (loading) {
     return (
-        <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-            {/* Stats Grid */}
-            <Text style={styles.sectionTitle}>Overview</Text>
-            <View style={styles.statsGrid}>
-                <StatCard
-                    title="Streak"
-                    value={currentStreak}
-                    subtitle="days"
-                    icon="flame"
-                    color={Colors.dark.accent}
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#6366F1" />
+      </View>
+    )
+  }
+
+  const successRate = stats?.success_rate || 0
+  const totalItems = stats?.total_items || 0
+  const masteredItems = stats?.items_mastered || 0
+  const dueToday = stats?.due_today || 0
+  const reviewedThisWeek = stats?.reviewed_this_week || 0
+  const reviewedThisMonth = stats?.items_learning || 0
+
+  return (
+    <View style={styles.container}>
+      {/* Header */}
+      <LinearGradient colors={['#6366F1', '#8b5cf6']} style={styles.header}>
+        <Text style={styles.headerTitle}>Stats</Text>
+        <Text style={styles.headerSubtitle}>Your learning progress</Text>
+      </LinearGradient>
+
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Overview Stats */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Overview</Text>
+          <View style={styles.statsGrid}>
+            <LargeStatCard
+              icon="library"
+              iconColor="#6366F1"
+              label="Total Items"
+              value={totalItems}
+            />
+            <LargeStatCard
+              icon="trophy"
+              iconColor="#10b981"
+              label="Mastered"
+              value={masteredItems}
+            />
+            <LargeStatCard
+              icon="calendar-clear"
+              iconColor="#f59e0b"
+              label="Due Today"
+              value={dueToday}
+            />
+            <LargeStatCard
+              icon="trending-up"
+              iconColor="#06b6d4"
+              label="Success Rate"
+              value={`${successRate}%`}
+            />
+          </View>
+        </View>
+
+        {/* Review Activity */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Review Activity</Text>
+          <View style={styles.activityCards}>
+            <ActivityCard
+              label="This Week"
+              value={reviewedThisWeek}
+              icon="calendar-outline"
+              color="#8b5cf6"
+            />
+            <ActivityCard
+              label="This Month"
+              value={reviewedThisMonth}
+              icon="calendar"
+              color="#ec4899"
+            />
+          </View>
+        </View>
+
+        {/* Mastery Breakdown */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Mastery Breakdown</Text>
+          <View style={styles.masteryCard}>
+            <MasteryBar
+              label="New Items"
+              count={totalItems - (stats?.items_learning || 0) - (stats?.items_mastered || 0)}
+              total={totalItems}
+              color="#64748b"
+            />
+            <MasteryBar
+              label="Learning"
+              count={stats?.items_learning || 0}
+              total={totalItems}
+              color="#f59e0b"
+            />
+            <MasteryBar
+              label="Mastered"
+              count={stats?.items_mastered || 0}
+              total={totalItems}
+              color="#10b981"
+            />
+          </View>
+        </View>
+
+        {/* Insights */}
+        {insights && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Study Insights</Text>
+            <View style={styles.metricsCard}>
+              {insights.best_time_of_day !== null && (
+                <MetricRow
+                  icon="time"
+                  iconColor="#6366F1"
+                  label="Best Time of Day"
+                  value={`${insights.best_time_of_day}:00`}
                 />
-                <StatCard
-                    title="Reviews"
-                    value={user?.totalReviews || 0}
-                    icon="checkmark-circle"
-                    color={Colors.dark.success}
+              )}
+              {insights.average_session_duration !== null && (
+                <MetricRow
+                  icon="timer"
+                  iconColor="#8b5cf6"
+                  label="Avg Session Duration"
+                  value={`${Math.round(insights.average_session_duration)} min`}
                 />
-                <StatCard
-                    title="Mastered"
-                    value={masteredItems}
-                    subtitle={`of ${totalItems}`}
-                    icon="trophy"
-                    color={Colors.dark.warning}
+              )}
+              {insights.most_difficult_category && (
+                <MetricRow
+                  icon="warning"
+                  iconColor="#f59e0b"
+                  label="Most Difficult Category"
+                  value={insights.most_difficult_category}
                 />
-                <StatCard
-                    title="Active"
-                    value={learningItems + reviewingItems}
-                    icon="hourglass"
-                    color="#8B5CF6"
+              )}
+              {insights.total_study_time_hours !== null && (
+                <MetricRow
+                  icon="trending-up"
+                  iconColor="#10b981"
+                  label="Total Study Time"
+                  value={`${insights.total_study_time_hours.toFixed(1)} hrs`}
                 />
+              )}
             </View>
+          </View>
+        )}
 
-            {/* Progress */}
-            <Text style={styles.sectionTitle}>Progress</Text>
-            <View style={styles.progressCard}>
-                <View style={styles.progressItem}>
-                    <View style={styles.progressHeader}>
-                        <View style={[styles.progressDot, { backgroundColor: Colors.dark.success }]} />
-                        <Text style={styles.progressLabel}>Mastered</Text>
-                        <Text style={styles.progressValue}>{masteredItems}</Text>
-                    </View>
-                    <View style={styles.progressBar}>
-                        <View style={[styles.progressFill, { width: `${getProgressWidth(masteredItems)}%`, backgroundColor: Colors.dark.success }]} />
-                    </View>
-                </View>
+        {/* Performance Metrics */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Performance</Text>
+          <View style={styles.metricsCard}>
+            <MetricRow
+              icon="checkmark-circle"
+              iconColor="#10b981"
+              label="Average Success Rate"
+              value={`${successRate}%`}
+            />
+            <MetricRow
+              icon="timer"
+              iconColor="#6366F1"
+              label="Items Due Today"
+              value={dueToday}
+            />
+            <MetricRow
+              icon="bar-chart"
+              iconColor="#8b5cf6"
+              label="Reviews This Week"
+              value={reviewedThisWeek}
+            />
+            <MetricRow
+              icon="stats-chart"
+              iconColor="#ec4899"
+              label="Reviews This Month"
+              value={reviewedThisMonth}
+            />
+          </View>
+        </View>
+      </ScrollView>
+    </View>
+  )
+}
 
-                <View style={styles.progressItem}>
-                    <View style={styles.progressHeader}>
-                        <View style={[styles.progressDot, { backgroundColor: Colors.dark.accentSecondary }]} />
-                        <Text style={styles.progressLabel}>Reviewing</Text>
-                        <Text style={styles.progressValue}>{reviewingItems}</Text>
-                    </View>
-                    <View style={styles.progressBar}>
-                        <View style={[styles.progressFill, { width: `${getProgressWidth(reviewingItems)}%`, backgroundColor: Colors.dark.accentSecondary }]} />
-                    </View>
-                </View>
+function LargeStatCard({
+  icon,
+  iconColor,
+  label,
+  value,
+}: {
+  icon: any
+  iconColor: string
+  label: string
+  value: number | string
+}) {
+  return (
+    <View style={styles.largeStatCard}>
+      <View style={[styles.largeStatIcon, { backgroundColor: iconColor + '20' }]}>
+        <Ionicons name={icon} size={28} color={iconColor} />
+      </View>
+      <Text style={styles.largeStatValue}>{value}</Text>
+      <Text style={styles.largeStatLabel}>{label}</Text>
+    </View>
+  )
+}
 
-                <View style={styles.progressItem}>
-                    <View style={styles.progressHeader}>
-                        <View style={[styles.progressDot, { backgroundColor: '#8B5CF6' }]} />
-                        <Text style={styles.progressLabel}>Learning</Text>
-                        <Text style={styles.progressValue}>{learningItems}</Text>
-                    </View>
-                    <View style={styles.progressBar}>
-                        <View style={[styles.progressFill, { width: `${getProgressWidth(learningItems)}%`, backgroundColor: '#8B5CF6' }]} />
-                    </View>
-                </View>
-            </View>
+function ActivityCard({
+  label,
+  value,
+  icon,
+  color,
+}: {
+  label: string
+  value: number
+  icon: any
+  color: string
+}) {
+  return (
+    <View style={styles.activityCard}>
+      <View style={styles.activityCardHeader}>
+        <Ionicons name={icon} size={20} color={color} />
+        <Text style={styles.activityLabel}>{label}</Text>
+      </View>
+      <Text style={styles.activityValue}>{value}</Text>
+      <Text style={styles.activitySubtext}>reviews completed</Text>
+    </View>
+  )
+}
 
-            {/* Achievements */}
-            <Text style={styles.sectionTitle}>Achievements</Text>
-            <View style={styles.achievementsGrid}>
-                {achievements.map((achievement) => (
-                    <AchievementBadge
-                        key={achievement.name}
-                        name={achievement.name}
-                        icon={achievement.icon}
-                        unlocked={achievement.unlocked}
-                        color={achievement.color}
-                    />
-                ))}
-            </View>
+function MasteryBar({
+  label,
+  count,
+  total,
+  color,
+}: {
+  label: string
+  count: number
+  total: number
+  color: string
+}) {
+  const percentage = total > 0 ? (count / total) * 100 : 0
 
-            <View style={{ height: 100 }} />
-        </ScrollView>
-    );
+  return (
+    <View style={styles.masteryBarContainer}>
+      <View style={styles.masteryBarHeader}>
+        <Text style={styles.masteryBarLabel}>{label}</Text>
+        <Text style={styles.masteryBarCount}>
+          {count} ({percentage.toFixed(0)}%)
+        </Text>
+      </View>
+      <View style={styles.masteryBarTrack}>
+        <View style={[styles.masteryBarFill, { width: `${percentage}%`, backgroundColor: color }]} />
+      </View>
+    </View>
+  )
+}
+
+function MetricRow({
+  icon,
+  iconColor,
+  label,
+  value,
+}: {
+  icon: any
+  iconColor: string
+  label: string
+  value: number | string
+}) {
+  return (
+    <View style={styles.metricRow}>
+      <View style={styles.metricLeft}>
+        <View style={[styles.metricIcon, { backgroundColor: iconColor + '20' }]}>
+          <Ionicons name={icon} size={18} color={iconColor} />
+        </View>
+        <Text style={styles.metricLabel}>{label}</Text>
+      </View>
+      <Text style={styles.metricValue}>{value}</Text>
+    </View>
+  )
 }
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: Colors.dark.background,
-        padding: Spacing.lg,
-    },
-    sectionTitle: {
-        fontSize: Typography.sizes.lg,
-        fontWeight: Typography.weights.semibold,
-        color: Colors.dark.text,
-        marginBottom: Spacing.md,
-        marginTop: Spacing.md,
-    },
-    statsGrid: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        gap: Spacing.sm,
-    },
-    statCard: {
-        width: '48%',
-        alignItems: 'center',
-        padding: Spacing.lg,
-        backgroundColor: Colors.dark.card,
-        borderRadius: BorderRadius.xl,
-        borderWidth: 1,
-        borderColor: Colors.dark.glassBorder,
-    },
-    statIcon: {
-        width: 44,
-        height: 44,
-        borderRadius: BorderRadius.md,
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginBottom: Spacing.sm,
-    },
-    statValue: {
-        fontSize: Typography.sizes['3xl'],
-        fontWeight: Typography.weights.bold,
-        color: Colors.dark.text,
-    },
-    statTitle: {
-        fontSize: Typography.sizes.sm,
-        color: Colors.dark.textSecondary,
-        marginTop: 2,
-    },
-    statSubtitle: {
-        fontSize: Typography.sizes.xs,
-        color: Colors.dark.textMuted,
-    },
-    progressCard: {
-        backgroundColor: Colors.dark.card,
-        borderRadius: BorderRadius.xl,
-        padding: Spacing.lg,
-        gap: Spacing.md,
-        borderWidth: 1,
-        borderColor: Colors.dark.glassBorder,
-    },
-    progressItem: {
-        gap: 8,
-    },
-    progressHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    progressDot: {
-        width: 8,
-        height: 8,
-        borderRadius: 4,
-        marginRight: Spacing.sm,
-    },
-    progressLabel: {
-        fontSize: Typography.sizes.sm,
-        color: Colors.dark.textSecondary,
-        flex: 1,
-    },
-    progressValue: {
-        fontSize: Typography.sizes.base,
-        fontWeight: Typography.weights.semibold,
-        color: Colors.dark.text,
-    },
-    progressBar: {
-        height: 6,
-        backgroundColor: Colors.dark.borderSubtle,
-        borderRadius: 3,
-        overflow: 'hidden',
-    },
-    progressFill: {
-        height: '100%',
-        borderRadius: 3,
-        minWidth: 4,
-    },
-    achievementsGrid: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        gap: Spacing.sm,
-    },
-    badge: {
-        width: '31%',
-        alignItems: 'center',
-        padding: Spacing.md,
-        backgroundColor: Colors.dark.card,
-        borderRadius: BorderRadius.lg,
-        borderWidth: 1,
-        borderColor: Colors.dark.glassBorder,
-    },
-    badgeLocked: {
-        opacity: 0.5,
-    },
-    badgeIcon: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginBottom: Spacing.xs,
-    },
-    badgeName: {
-        fontSize: 10,
-        color: Colors.dark.text,
-        textAlign: 'center',
-        fontWeight: Typography.weights.medium,
-    },
-    badgeNameLocked: {
-        color: Colors.dark.textMuted,
-    },
-});
+  container: {
+    flex: 1,
+    backgroundColor: '#0f172a',
+  },
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: '#0f172a',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  header: {
+    paddingTop: 60,
+    paddingBottom: 32,
+    paddingHorizontal: 24,
+  },
+  headerTitle: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 4,
+  },
+  headerSubtitle: {
+    fontSize: 16,
+    color: 'rgba(255,255,255,0.7)',
+  },
+  content: {
+    flex: 1,
+    padding: 24,
+  },
+  section: {
+    marginBottom: 32,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 16,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  largeStatCard: {
+    width: (SCREEN_WIDTH - 60) / 2,
+    backgroundColor: '#1e293b',
+    borderRadius: 16,
+    padding: 20,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  largeStatIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  largeStatValue: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 4,
+  },
+  largeStatLabel: {
+    fontSize: 14,
+    color: '#94a3b8',
+    textAlign: 'center',
+  },
+  activityCards: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  activityCard: {
+    flex: 1,
+    backgroundColor: '#1e293b',
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  activityCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  activityLabel: {
+    fontSize: 14,
+    color: '#94a3b8',
+  },
+  activityValue: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 4,
+  },
+  activitySubtext: {
+    fontSize: 12,
+    color: '#64748b',
+  },
+  masteryCard: {
+    backgroundColor: '#1e293b',
+    borderRadius: 16,
+    padding: 20,
+    gap: 16,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  masteryBarContainer: {
+    gap: 8,
+  },
+  masteryBarHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  masteryBarLabel: {
+    fontSize: 14,
+    color: '#cbd5e1',
+  },
+  masteryBarCount: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#94a3b8',
+  },
+  masteryBarTrack: {
+    height: 8,
+    backgroundColor: '#0f172a',
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  masteryBarFill: {
+    height: '100%',
+    borderRadius: 4,
+  },
+  insightsList: {
+    gap: 12,
+  },
+  insightCard: {
+    flexDirection: 'row',
+    backgroundColor: '#1e293b',
+    borderRadius: 12,
+    padding: 16,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  insightIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  insightContent: {
+    flex: 1,
+  },
+  insightTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+    marginBottom: 4,
+  },
+  insightMessage: {
+    fontSize: 13,
+    color: '#94a3b8',
+    lineHeight: 18,
+  },
+  metricsCard: {
+    backgroundColor: '#1e293b',
+    borderRadius: 16,
+    padding: 20,
+    gap: 16,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  metricRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  metricLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  metricIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  metricLabel: {
+    fontSize: 14,
+    color: '#cbd5e1',
+    flex: 1,
+  },
+  metricValue: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+})

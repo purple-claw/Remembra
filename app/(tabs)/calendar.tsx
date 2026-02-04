@@ -1,400 +1,499 @@
-import { Ionicons } from '@expo/vector-icons';
-import React, { useMemo, useState } from 'react';
+import { Ionicons } from '@expo/vector-icons'
+import { LinearGradient } from 'expo-linear-gradient'
+import React, { useState, useEffect } from 'react'
 import {
-    Dimensions,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
-} from 'react-native';
-import { BorderRadius, Colors, Spacing, Typography } from '../../constants/Colors';
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  ActivityIndicator,
+  Dimensions,
+} from 'react-native'
+import { useAuth } from '@/contexts/AuthContext'
+import { db } from '@/lib/database'
 
-const SCREEN_WIDTH = Dimensions.get('window').width;
-const DAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+const SCREEN_WIDTH = Dimensions.get('window').width
+const DAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const MONTHS = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December',
-];
-
-interface CalendarDay {
-    date: number;
-    fullDate: Date;
-    isCurrentMonth: boolean;
-    isToday: boolean;
-    hasReviews: boolean;
-    reviewCount: number;
-}
-
-function getMonthDays(year: number, month: number): CalendarDay[] {
-    const firstDay = new Date(year, month, 1);
-    const lastDay = new Date(year, month + 1, 0);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const days: CalendarDay[] = [];
-
-    // Previous month days
-    const prevMonthDays = firstDay.getDay();
-    const prevMonth = new Date(year, month, 0);
-    for (let i = prevMonthDays - 1; i >= 0; i--) {
-        const d = prevMonth.getDate() - i;
-        days.push({
-            date: d,
-            fullDate: new Date(year, month - 1, d),
-            isCurrentMonth: false,
-            isToday: false,
-            hasReviews: false,
-            reviewCount: 0,
-        });
-    }
-
-    // Current month days
-    for (let i = 1; i <= lastDay.getDate(); i++) {
-        const date = new Date(year, month, i);
-        const isToday = date.getTime() === today.getTime();
-        // Demo: random reviews for visual testing
-        const hasReviews = Math.random() > 0.6;
-        days.push({
-            date: i,
-            fullDate: date,
-            isCurrentMonth: true,
-            isToday,
-            hasReviews,
-            reviewCount: hasReviews ? Math.floor(Math.random() * 5) + 1 : 0,
-        });
-    }
-
-    // Next month days
-    const remaining = 42 - days.length;
-    for (let i = 1; i <= remaining; i++) {
-        days.push({
-            date: i,
-            fullDate: new Date(year, month + 1, i),
-            isCurrentMonth: false,
-            isToday: false,
-            hasReviews: false,
-            reviewCount: 0,
-        });
-    }
-
-    return days;
-}
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+]
 
 export default function CalendarScreen() {
-    const today = new Date();
-    const [currentMonth, setCurrentMonth] = useState(today.getMonth());
-    const [currentYear, setCurrentYear] = useState(today.getFullYear());
-    const [selectedDate, setSelectedDate] = useState<Date | null>(today);
+  const { user } = useAuth()
+  const [heatmapData, setHeatmapData] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth())
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null)
 
-    const days = useMemo(() => getMonthDays(currentYear, currentMonth), [currentYear, currentMonth]);
-    const cellSize = (SCREEN_WIDTH - Spacing.lg * 2 - Spacing.xs * 6) / 7;
+  useEffect(() => {
+    if (user) {
+      loadHeatmapData()
+    }
+  }, [user, selectedMonth, selectedYear])
 
-    const goToPrevMonth = () => {
-        if (currentMonth === 0) {
-            setCurrentMonth(11);
-            setCurrentYear(currentYear - 1);
-        } else {
-            setCurrentMonth(currentMonth - 1);
-        }
-    };
+  const loadHeatmapData = async () => {
+    if (!user) return
 
-    const goToNextMonth = () => {
-        if (currentMonth === 11) {
-            setCurrentMonth(0);
-            setCurrentYear(currentYear + 1);
-        } else {
-            setCurrentMonth(currentMonth + 1);
-        }
-    };
+    try {
+      setLoading(true)
+      const data = await db.getCalendarHeatmap(user.id)
+      setHeatmapData(data || [])
+    } catch (error) {
+      console.error('Error loading calendar data:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
 
-    const goToToday = () => {
-        setCurrentMonth(today.getMonth());
-        setCurrentYear(today.getFullYear());
-        setSelectedDate(today);
-    };
+  const getIntensityColor = (count: number) => {
+    if (count === 0) return '#1e293b'
+    if (count <= 2) return '#6366F166'
+    if (count <= 5) return '#6366F199'
+    if (count <= 10) return '#6366F1CC'
+    return '#6366F1'
+  }
 
-    const isSelected = (day: CalendarDay) => {
-        if (!selectedDate) return false;
-        return day.fullDate.toDateString() === selectedDate.toDateString();
-    };
+  const getDaysInMonth = () => {
+    const firstDay = new Date(selectedYear, selectedMonth, 1)
+    const lastDay = new Date(selectedYear, selectedMonth + 1, 0)
+    const daysInMonth = lastDay.getDate()
+    const startingDayOfWeek = firstDay.getDay()
 
+    const days: (number | null)[] = Array(startingDayOfWeek).fill(null)
+    for (let i = 1; i <= daysInMonth; i++) {
+      days.push(i)
+    }
+
+    return days
+  }
+
+  const getDayData = (day: number) => {
+    const dateStr = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+    return heatmapData.find((d) => d.date === dateStr)
+  }
+
+  const getMonthStats = () => {
+    const monthDays = heatmapData.filter((d) => {
+      const date = new Date(d.date)
+      return date.getMonth() === selectedMonth && date.getFullYear() === selectedYear
+    })
+
+    const totalReviews = monthDays.reduce((sum, day) => sum + day.review_count, 0)
+    const activeDays = monthDays.filter((day) => day.review_count > 0).length
+    const avgPerDay = activeDays > 0 ? Math.round(totalReviews / activeDays) : 0
+
+    return { totalReviews, activeDays, avgPerDay }
+  }
+
+  const changeMonth = (delta: number) => {
+    let newMonth = selectedMonth + delta
+    let newYear = selectedYear
+
+    if (newMonth < 0) {
+      newMonth = 11
+      newYear--
+    } else if (newMonth > 11) {
+      newMonth = 0
+      newYear++
+    }
+
+    setSelectedMonth(newMonth)
+    setSelectedYear(newYear)
+  }
+
+  const isToday = (day: number) => {
+    const today = new Date()
     return (
-        <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-            {/* Header */}
-            <View style={styles.header}>
-                <View>
-                    <Text style={styles.yearText}>{currentYear}</Text>
-                    <Text style={styles.monthText}>{MONTHS[currentMonth]}</Text>
-                </View>
-                <TouchableOpacity style={styles.todayBtn} onPress={goToToday}>
-                    <Text style={styles.todayBtnText}>Today</Text>
-                </TouchableOpacity>
-            </View>
+      day === today.getDate() &&
+      selectedMonth === today.getMonth() &&
+      selectedYear === today.getFullYear()
+    )
+  }
 
-            {/* Month Navigation */}
-            <View style={styles.navRow}>
-                <TouchableOpacity onPress={goToPrevMonth} style={styles.navBtn}>
-                    <Ionicons name="chevron-back" size={20} color={Colors.dark.text} />
-                </TouchableOpacity>
-                <TouchableOpacity onPress={goToNextMonth} style={styles.navBtn}>
-                    <Ionicons name="chevron-forward" size={20} color={Colors.dark.text} />
-                </TouchableOpacity>
-            </View>
+  const days = getDaysInMonth()
+  const stats = getMonthStats()
 
-            {/* Days Header */}
-            <View style={styles.daysHeader}>
-                {DAYS.map((day, index) => (
-                    <View key={index} style={[styles.dayHeaderCell, { width: cellSize }]}>
-                        <Text style={[
-                            styles.dayHeaderText,
-                            (index === 0 || index === 6) && styles.weekendText
-                        ]}>
-                            {day}
-                        </Text>
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#6366F1" />
+      </View>
+    )
+  }
+
+  return (
+    <View style={styles.container}>
+      {/* Header */}
+      <LinearGradient colors={['#6366F1', '#8b5cf6']} style={styles.header}>
+        <Text style={styles.headerTitle}>Calendar</Text>
+
+        {/* Month Stats */}
+        <View style={styles.statsRow}>
+          <StatCard icon="calendar" label="Active Days" value={stats.activeDays} />
+          <StatCard icon="checkmark-done" label="Total Reviews" value={stats.totalReviews} />
+          <StatCard icon="trending-up" label="Avg/Day" value={stats.avgPerDay} />
+        </View>
+      </LinearGradient>
+
+      <ScrollView style={styles.content}>
+        {/* Month Selector */}
+        <View style={styles.monthSelector}>
+          <TouchableOpacity style={styles.monthButton} onPress={() => changeMonth(-1)}>
+            <Ionicons name="chevron-back" size={24} color="#fff" />
+          </TouchableOpacity>
+
+          <Text style={styles.monthText}>
+            {MONTHS[selectedMonth]} {selectedYear}
+          </Text>
+
+          <TouchableOpacity style={styles.monthButton} onPress={() => changeMonth(1)}>
+            <Ionicons name="chevron-forward" size={24} color="#fff" />
+          </TouchableOpacity>
+        </View>
+
+        {/* Calendar Grid */}
+        <View style={styles.calendarContainer}>
+          {/* Day Headers */}
+          <View style={styles.dayHeaders}>
+            {DAYS_SHORT.map((day) => (
+              <View key={day} style={styles.dayHeader}>
+                <Text style={styles.dayHeaderText}>{day[0]}</Text>
+              </View>
+            ))}
+          </View>
+
+          {/* Calendar Days */}
+          <View style={styles.calendar}>
+            {days.map((day, index) => {
+              if (day === null) {
+                return <View key={`empty-${index}`} style={styles.dayCell} />
+              }
+
+              const dayData = getDayData(day)
+              const reviewCount = dayData?.review_count || 0
+              const backgroundColor = getIntensityColor(reviewCount)
+              const today = isToday(day)
+
+              return (
+                <TouchableOpacity
+                  key={`day-${day}`}
+                  style={[
+                    styles.dayCell,
+                    { backgroundColor },
+                    today && styles.todayCell,
+                  ]}
+                  onPress={() => setSelectedDate(new Date(selectedYear, selectedMonth, day))}
+                >
+                  <Text style={[styles.dayText, reviewCount > 0 && styles.dayTextActive]}>
+                    {day}
+                  </Text>
+                  {reviewCount > 0 && (
+                    <View style={styles.reviewDot}>
+                      <Text style={styles.reviewCount}>{reviewCount}</Text>
                     </View>
-                ))}
+                  )}
+                </TouchableOpacity>
+              )
+            })}
+          </View>
+        </View>
+
+        {/* Heatmap Legend */}
+        <View style={styles.legend}>
+          <Text style={styles.legendLabel}>Less</Text>
+          <View style={styles.legendColors}>
+            {[0, 2, 5, 10, 15].map((count) => (
+              <View
+                key={count}
+                style={[styles.legendBox, { backgroundColor: getIntensityColor(count) }]}
+              />
+            ))}
+          </View>
+          <Text style={styles.legendLabel}>More</Text>
+        </View>
+
+        {/* Year Heatmap */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Year Overview</Text>
+          <Text style={styles.sectionSubtitle}>Last 365 days</Text>
+
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.yearHeatmap}>
+            <View style={styles.heatmapGrid}>
+              {heatmapData.slice(-365).map((day, index) => {
+                const backgroundColor = getIntensityColor(day.review_count)
+                return (
+                  <View
+                    key={day.date}
+                    style={[styles.heatmapCell, { backgroundColor }]}
+                  />
+                )
+              })}
             </View>
+          </ScrollView>
+        </View>
 
-            {/* Calendar Grid */}
-            <View style={styles.calendarGrid}>
-                {days.map((day, index) => (
-                    <TouchableOpacity
-                        key={index}
-                        style={[
-                            styles.dayCell,
-                            { width: cellSize, height: cellSize },
-                            day.isToday && styles.todayCell,
-                            isSelected(day) && !day.isToday && styles.selectedCell,
-                        ]}
-                        onPress={() => day.isCurrentMonth && setSelectedDate(day.fullDate)}
-                        activeOpacity={0.7}
-                    >
-                        <Text
-                            style={[
-                                styles.dayNumber,
-                                !day.isCurrentMonth && styles.otherMonthText,
-                                day.isToday && styles.todayText,
-                                isSelected(day) && !day.isToday && styles.selectedText,
-                            ]}
-                        >
-                            {day.date}
-                        </Text>
-                        {day.hasReviews && day.isCurrentMonth && (
-                            <View style={[
-                                styles.reviewIndicator,
-                                day.reviewCount > 3 && styles.reviewIndicatorHigh,
-                            ]}>
-                                <Text style={styles.reviewIndicatorText}>{day.reviewCount}</Text>
-                            </View>
-                        )}
-                    </TouchableOpacity>
-                ))}
-            </View>
+        {/* Streak Info */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Streaks</Text>
+          <View style={styles.streakCards}>
+            <StreakCard
+              icon="flame"
+              iconColor="#f59e0b"
+              label="Current Streak"
+              value={`${user ? heatmapData.filter(d => d.review_count > 0).length : 0} days`}
+            />
+            <StreakCard
+              icon="trophy"
+              iconColor="#10b981"
+              label="Longest Streak"
+              value="0 days"
+            />
+          </View>
+        </View>
+      </ScrollView>
+    </View>
+  )
+}
 
-            {/* Selected Date Info */}
-            {selectedDate && (
-                <View style={styles.selectedInfo}>
-                    <View style={styles.selectedInfoHeader}>
-                        <Text style={styles.selectedDateText}>
-                            {selectedDate.toLocaleDateString('en-US', {
-                                weekday: 'long',
-                                month: 'long',
-                                day: 'numeric'
-                            })}
-                        </Text>
-                    </View>
-                    <View style={styles.reviewList}>
-                        <View style={styles.reviewItem}>
-                            <View style={styles.reviewItemDot} />
-                            <Text style={styles.reviewItemText}>No reviews scheduled</Text>
-                        </View>
-                    </View>
-                    <TouchableOpacity style={styles.addReviewBtn}>
-                        <Ionicons name="add" size={18} color={Colors.dark.accent} />
-                        <Text style={styles.addReviewText}>Schedule Review</Text>
-                    </TouchableOpacity>
-                </View>
-            )}
+function StatCard({ icon, label, value }: { icon: any; label: string; value: number | string }) {
+  return (
+    <View style={styles.statCard}>
+      <Ionicons name={icon} size={20} color="rgba(255,255,255,0.8)" />
+      <Text style={styles.statValue}>{value}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
+    </View>
+  )
+}
 
-            <View style={{ height: 100 }} />
-        </ScrollView>
-    );
+function StreakCard({
+  icon,
+  iconColor,
+  label,
+  value,
+}: {
+  icon: any
+  iconColor: string
+  label: string
+  value: string
+}) {
+  return (
+    <View style={styles.streakCard}>
+      <View style={[styles.streakIcon, { backgroundColor: iconColor + '20' }]}>
+        <Ionicons name={icon} size={24} color={iconColor} />
+      </View>
+      <Text style={styles.streakLabel}>{label}</Text>
+      <Text style={styles.streakValue}>{value}</Text>
+    </View>
+  )
 }
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: Colors.dark.background,
-    },
-    header: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'flex-start',
-        paddingHorizontal: Spacing.lg,
-        paddingTop: Spacing.lg,
-    },
-    yearText: {
-        fontSize: Typography.sizes.sm,
-        color: Colors.dark.textMuted,
-        marginBottom: 2,
-    },
-    monthText: {
-        fontSize: Typography.sizes['3xl'],
-        fontWeight: Typography.weights.bold,
-        color: Colors.dark.text,
-    },
-    todayBtn: {
-        paddingHorizontal: Spacing.md,
-        paddingVertical: Spacing.sm,
-        backgroundColor: Colors.dark.card,
-        borderRadius: BorderRadius.lg,
-        borderWidth: 1,
-        borderColor: Colors.dark.glassBorder,
-    },
-    todayBtnText: {
-        fontSize: Typography.sizes.sm,
-        color: Colors.dark.accent,
-        fontWeight: Typography.weights.medium,
-    },
-    navRow: {
-        flexDirection: 'row',
-        gap: Spacing.sm,
-        paddingHorizontal: Spacing.lg,
-        marginTop: Spacing.md,
-    },
-    navBtn: {
-        width: 40,
-        height: 40,
-        backgroundColor: Colors.dark.card,
-        borderRadius: BorderRadius.md,
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderWidth: 1,
-        borderColor: Colors.dark.glassBorder,
-    },
-    daysHeader: {
-        flexDirection: 'row',
-        paddingHorizontal: Spacing.lg,
-        marginTop: Spacing.lg,
-        marginBottom: Spacing.sm,
-    },
-    dayHeaderCell: {
-        alignItems: 'center',
-    },
-    dayHeaderText: {
-        fontSize: Typography.sizes.sm,
-        color: Colors.dark.textSecondary,
-        fontWeight: Typography.weights.medium,
-    },
-    weekendText: {
-        color: Colors.dark.textMuted,
-    },
-    calendarGrid: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        paddingHorizontal: Spacing.lg,
-        gap: Spacing.xs,
-    },
-    dayCell: {
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderRadius: BorderRadius.md,
-        position: 'relative',
-    },
-    todayCell: {
-        backgroundColor: Colors.dark.accent,
-    },
-    selectedCell: {
-        backgroundColor: Colors.dark.cardElevated,
-        borderWidth: 1,
-        borderColor: Colors.dark.glassBorder,
-    },
-    dayNumber: {
-        fontSize: Typography.sizes.base,
-        color: Colors.dark.text,
-        fontWeight: Typography.weights.medium,
-    },
-    todayText: {
-        color: '#FFFFFF',
-        fontWeight: Typography.weights.bold,
-    },
-    selectedText: {
-        color: Colors.dark.text,
-    },
-    otherMonthText: {
-        color: Colors.dark.textMuted,
-        opacity: 0.4,
-    },
-    reviewIndicator: {
-        position: 'absolute',
-        bottom: 4,
-        backgroundColor: Colors.dark.accentSecondary,
-        paddingHorizontal: 5,
-        paddingVertical: 1,
-        borderRadius: BorderRadius.xs,
-        minWidth: 16,
-        alignItems: 'center',
-    },
-    reviewIndicatorHigh: {
-        backgroundColor: Colors.dark.accent,
-    },
-    reviewIndicatorText: {
-        fontSize: 9,
-        color: '#FFFFFF',
-        fontWeight: Typography.weights.bold,
-    },
-    selectedInfo: {
-        marginHorizontal: Spacing.lg,
-        marginTop: Spacing.xl,
-        backgroundColor: Colors.dark.card,
-        borderRadius: BorderRadius.xl,
-        padding: Spacing.lg,
-        borderWidth: 1,
-        borderColor: Colors.dark.glassBorder,
-    },
-    selectedInfoHeader: {
-        marginBottom: Spacing.md,
-    },
-    selectedDateText: {
-        fontSize: Typography.sizes.lg,
-        fontWeight: Typography.weights.semibold,
-        color: Colors.dark.text,
-    },
-    reviewList: {
-        gap: Spacing.sm,
-    },
-    reviewItem: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: Spacing.sm,
-        paddingVertical: Spacing.sm,
-    },
-    reviewItemDot: {
-        width: 8,
-        height: 8,
-        borderRadius: 4,
-        backgroundColor: Colors.dark.textMuted,
-    },
-    reviewItemText: {
-        fontSize: Typography.sizes.base,
-        color: Colors.dark.textSecondary,
-    },
-    addReviewBtn: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: Spacing.xs,
-        marginTop: Spacing.md,
-        paddingVertical: Spacing.sm,
-        backgroundColor: Colors.dark.cardElevated,
-        borderRadius: BorderRadius.md,
-        borderWidth: 1,
-        borderColor: Colors.dark.glassBorder,
-    },
-    addReviewText: {
-        fontSize: Typography.sizes.sm,
-        color: Colors.dark.accent,
-        fontWeight: Typography.weights.medium,
-    },
-});
+  container: {
+    flex: 1,
+    backgroundColor: '#0f172a',
+  },
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: '#0f172a',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  header: {
+    padding: 24,
+    paddingTop: 60,
+  },
+  headerTitle: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 24,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 12,
+    padding: 12,
+    alignItems: 'center',
+  },
+  statValue: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginTop: 4,
+  },
+  statLabel: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.7)',
+    marginTop: 2,
+  },
+  content: {
+    flex: 1,
+    padding: 24,
+  },
+  monthSelector: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  monthButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#1e293b',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  monthText: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  calendarContainer: {
+    backgroundColor: '#1e293b',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 24,
+  },
+  dayHeaders: {
+    flexDirection: 'row',
+    marginBottom: 12,
+  },
+  dayHeader: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  dayHeaderText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#94a3b8',
+  },
+  calendar: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  dayCell: {
+    width: `${100 / 7}%`,
+    aspectRatio: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+    marginBottom: 8,
+    position: 'relative',
+  },
+  todayCell: {
+    borderWidth: 2,
+    borderColor: '#f59e0b',
+  },
+  dayText: {
+    fontSize: 14,
+    color: '#64748b',
+    fontWeight: '500',
+  },
+  dayTextActive: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  reviewDot: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 8,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    minWidth: 16,
+    alignItems: 'center',
+  },
+  reviewCount: {
+    fontSize: 9,
+    color: '#fff',
+    fontWeight: 'bold',
+  },
+  legend: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginBottom: 32,
+  },
+  legendLabel: {
+    fontSize: 12,
+    color: '#94a3b8',
+  },
+  legendColors: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  legendBox: {
+    width: 16,
+    height: 16,
+    borderRadius: 4,
+  },
+  section: {
+    marginBottom: 32,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 4,
+  },
+  sectionSubtitle: {
+    fontSize: 14,
+    color: '#94a3b8',
+    marginBottom: 16,
+  },
+  yearHeatmap: {
+    marginTop: 8,
+  },
+  heatmapGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 3,
+    maxWidth: SCREEN_WIDTH * 3,
+  },
+  heatmapCell: {
+    width: 12,
+    height: 12,
+    borderRadius: 2,
+  },
+  streakCards: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  streakCard: {
+    flex: 1,
+    backgroundColor: '#1e293b',
+    borderRadius: 16,
+    padding: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  streakIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  streakLabel: {
+    fontSize: 12,
+    color: '#94a3b8',
+    marginBottom: 4,
+  },
+  streakValue: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+})

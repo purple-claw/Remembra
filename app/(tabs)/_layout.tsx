@@ -37,12 +37,12 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
+          title: 'Today',
           headerShown: false,
           tabBarIcon: ({ color, focused }) => (
             <View style={focused ? styles.activeIconContainer : undefined}>
               <Ionicons
-                name={focused ? 'home' : 'home-outline'}
+                name={focused ? 'today' : 'today-outline'}
                 size={22}
                 color={color}
               />
@@ -51,26 +51,16 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="calendar"
+        name="today"
         options={{
-          title: 'Calendar',
-          headerTitle: 'Calendar',
-          tabBarIcon: ({ color, focused }) => (
-            <View style={focused ? styles.activeIconContainer : undefined}>
-              <Ionicons
-                name={focused ? 'calendar' : 'calendar-outline'}
-                size={22}
-                color={color}
-              />
-            </View>
-          ),
+          href: null,
         }}
       />
       <Tabs.Screen
         name="library"
         options={{
           title: 'Library',
-          headerTitle: 'My Library',
+          headerShown: false,
           tabBarIcon: ({ color, focused }) => (
             <View style={focused ? styles.activeIconContainer : undefined}>
               <Ionicons
@@ -83,10 +73,26 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="calendar"
+        options={{
+          title: 'Calendar',
+          headerShown: false,
+          tabBarIcon: ({ color, focused }) => (
+            <View style={focused ? styles.activeIconContainer : undefined}>
+              <Ionicons
+                name={focused ? 'calendar' : 'calendar-outline'}
+                size={22}
+                color={color}
+              />
+            </View>
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="stats"
         options={{
-          title: 'Insights',
-          headerTitle: 'Insights',
+          title: 'Stats',
+          headerShown: false,
           tabBarIcon: ({ color, focused }) => (
             <View style={focused ? styles.activeIconContainer : undefined}>
               <Ionicons

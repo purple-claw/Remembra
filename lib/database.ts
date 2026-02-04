@@ -26,9 +26,10 @@ export class DatabaseService {
     return data as Profile
   }
 
-  static async updateProfile(userId: string, updates: Partial<Profile>): Promise<Profile> {
+  static async updateProfile(userId: string, updates: Partial<Omit<Profile, 'id' | 'created_at'>>): Promise<Profile> {
     const { data, error } = await supabase
       .from('profiles')
+      // @ts-ignore - Supabase type mismatch
       .update(updates as any)
       .eq('id', userId)
       .select()
@@ -50,10 +51,10 @@ export class DatabaseService {
     return (data as Category[]) || []
   }
 
-  static async createCategory(category: Omit<Category, 'id' | 'created_at'>): Promise<Category> {
+  static async createCategory(userId: string, category: Omit<Category, 'id' | 'user_id' | 'created_at'>): Promise<Category> {
     const { data, error} = await supabase
       .from('categories')
-      .insert(category as any)
+      .insert({ ...category, user_id: userId } as any)
       .select()
       .single()
     
@@ -61,9 +62,21 @@ export class DatabaseService {
     return data as Category
   }
 
-  static async updateCategory(id: string, updates: Partial<Category>): Promise<Category> {
+  static async getCategory(id: string): Promise<Category | null> {
     const { data, error } = await supabase
       .from('categories')
+      .select('*')
+      .eq('id', id)
+      .single()
+    
+    if (error) throw error
+    return data as Category
+  }
+
+  static async updateCategory(id: string, updates: Partial<Omit<Category, 'id' | 'created_at'>>): Promise<Category> {
+    const { data, error } = await supabase
+      .from('categories')
+      // @ts-ignore - Supabase type mismatch
       .update(updates as any)
       .eq('id', id)
       .select()
@@ -127,10 +140,10 @@ export class DatabaseService {
     return data as MemoryItem
   }
 
-  static async createMemoryItem(item: Omit<MemoryItem, 'id' | 'created_at' | 'updated_at'>): Promise<MemoryItem> {
+  static async createMemoryItem(userId: string, item: Omit<MemoryItem, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'stage' | 'next_review_date' | 'last_reviewed_at' | 'review_count' | 'success_count' | 'difficulty'>): Promise<MemoryItem> {
     const { data, error } = await supabase
       .from('memory_items')
-      .insert(item as any)
+      .insert({ ...item, user_id: userId } as any)
       .select()
       .single()
     
@@ -138,9 +151,10 @@ export class DatabaseService {
     return data as MemoryItem
   }
 
-  static async updateMemoryItem(id: string, updates: Partial<MemoryItem>): Promise<MemoryItem> {
+  static async updateMemoryItem(id: string, updates: Partial<Omit<MemoryItem, 'id' | 'created_at'>>): Promise<MemoryItem> {
     const { data, error } = await supabase
       .from('memory_items')
+      // @ts-ignore - Supabase type mismatch
       .update(updates as any)
       .eq('id', id)
       .select()
@@ -161,20 +175,22 @@ export class DatabaseService {
 
   // ============ REVIEWS ============
   static async submitReview(
-    itemId: string,
     userId: string,
-    success: boolean,
-    durationSeconds?: number,
-    difficultyRating?: number,
-    notes?: string
+    itemId: string,
+    review: {
+      was_correct: boolean
+      difficulty_rating?: number
+      time_taken?: number
+      notes?: string
+    }
   ): Promise<{ next_stage: number; next_review_date: string; new_difficulty: number }> {
     const { data, error } = await supabase.rpc('submit_review' as any, {
       p_item_id: itemId,
       p_user_id: userId,
-      p_success: success,
-      p_duration_seconds: durationSeconds,
-      p_difficulty_rating: difficultyRating,
-      p_notes: notes,
+      p_success: review.was_correct,
+      p_duration_seconds: review.time_taken,
+      p_difficulty_rating: review.difficulty_rating,
+      p_notes: review.notes,
     } as any)
     
     if (error) throw error
@@ -232,18 +248,39 @@ export class DatabaseService {
   }
 
   // ============ AI CONTENT ============
-  static async getAIContent(itemId: string, contentType: string): Promise<AIContent | null> {
-    const { data, error } = await supabase
+  static async getAIContent(itemId: string, contentType?: string): Promise<AIContent[]> {
+    let query = supabase
       .from('ai_content')
       .select('*')
       .eq('item_id', itemId)
-      .eq('content_type', contentType)
       .order('created_at', { ascending: false })
-      .limit(1)
+    
+    if (contentType) {
+      query = query.eq('content_type', contentType)
+    }
+
+    const { data, error } = await query
+    
+    if (error) throw error
+    return (data as AIContent[]) || []
+  }
+
+  static async createAIContent(userId: string, itemId: string, content: { content_type: string; content: any }): Promise<AIContent> {
+    const { data, error } = await supabase
+      .from('ai_content')
+      .insert({
+        user_id: userId,
+        item_id: itemId,
+        content_type: content.content_type,
+        content: content.content,
+        provider: 'groq',
+        model: 'llama-3.3-70b-versatile'
+      } as any)
+      .select()
       .single()
     
-    if (error && error.code !== 'PGRST116') throw error // Ignore not found
-    return (data as AIContent | null)
+    if (error) throw error
+    return data as AIContent
   }
 
   static async saveAIContent(content: Omit<AIContent, 'id' | 'created_at'>): Promise<AIContent> {
