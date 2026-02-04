@@ -27,13 +27,12 @@ export class DatabaseService {
   }
 
   static async updateProfile(userId: string, updates: Partial<Profile>): Promise<Profile> {
-    // @ts-ignore - Supabase type inference issue with generic Database type
     const { data, error } = await supabase
       .from('profiles')
       .update(updates as any)
       .eq('id', userId)
       .select()
-      .single() as any
+      .single()
     
     if (error) throw error
     return data as Profile
@@ -63,13 +62,12 @@ export class DatabaseService {
   }
 
   static async updateCategory(id: string, updates: Partial<Category>): Promise<Category> {
-    // @ts-ignore - Supabase type inference issue with generic Database type
     const { data, error } = await supabase
       .from('categories')
       .update(updates as any)
       .eq('id', id)
       .select()
-      .single() as any
+      .single()
     
     if (error) throw error
     return data as Category
@@ -141,13 +139,12 @@ export class DatabaseService {
   }
 
   static async updateMemoryItem(id: string, updates: Partial<MemoryItem>): Promise<MemoryItem> {
-    // @ts-ignore - Supabase type inference issue with generic Database type
     const { data, error } = await supabase
       .from('memory_items')
       .update(updates as any)
       .eq('id', id)
       .select()
-      .single() as any
+      .single()
     
     if (error) throw error
     return data as MemoryItem
