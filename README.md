@@ -1,4 +1,4 @@
-# Remembra# Remembra
+# Remembra
 
 Another reminders app. Because the world definitely needed one more. Built with React Native and Expo because we love suffering through native build errors.
 
