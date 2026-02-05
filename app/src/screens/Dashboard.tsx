@@ -43,8 +43,8 @@ export function Dashboard() {
             <div className="relative">
               <div className="w-12 h-12 rounded-full bg-gradient-to-br from-remembra-accent-primary to-remembra-accent-secondary p-[2px]">
                 <img 
-                  src={profile.avatar_url} 
-                  alt={profile.username}
+                  src={profile?.avatar_url || ''} 
+                  alt={profile?.username || 'User'}
                   className="w-full h-full rounded-full object-cover bg-remembra-bg-secondary"
                 />
               </div>
@@ -55,14 +55,14 @@ export function Dashboard() {
             
             <div>
               <p className="text-remembra-text-muted text-sm">{greeting}</p>
-              <h1 className="text-lg font-semibold text-remembra-text-primary">{profile.username}</h1>
+              <h1 className="text-lg font-semibold text-remembra-text-primary">{profile?.username || 'User'}</h1>
             </div>
           </div>
           
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-1.5 bg-remembra-bg-secondary rounded-full px-3 py-1.5">
               <Flame size={18} className="text-orange-500 animate-flame" />
-              <span className="text-sm font-semibold text-orange-400">{profile.streak_count}</span>
+              <span className="text-sm font-semibold text-orange-400">{profile?.streak_count || 0}</span>
             </div>
             
             <ProgressRing 
@@ -158,7 +158,7 @@ export function Dashboard() {
                 <Target size={18} className="text-remembra-accent-primary" />
                 <span className="text-sm text-remembra-text-secondary">Total Reviews</span>
               </div>
-              <p className="text-2xl font-bold text-remembra-text-primary">{profile.total_reviews}</p>
+              <p className="text-2xl font-bold text-remembra-text-primary">{profile?.total_reviews || 0}</p>
             </div>
             
             <div className="bg-remembra-bg-secondary rounded-2xl p-4 border border-white/5">

@@ -1,4 +1,5 @@
 import { useStore } from '@/store/useStore';
+import { AuthProvider } from '@/components/AuthProvider';
 import { Dashboard } from '@/screens/Dashboard';
 import { Calendar } from '@/screens/Calendar';
 import { Review } from '@/screens/Review';
@@ -9,7 +10,7 @@ import { Stats } from '@/screens/Stats';
 import { BottomNav } from '@/components/BottomNav';
 import { Toaster } from '@/components/ui/sonner';
 
-function App() {
+function AppContent() {
   const currentScreen = useStore(state => state.currentScreen);
 
   const renderScreen = () => {
@@ -52,6 +53,14 @@ function App() {
         }}
       />
     </div>
+  );
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }
 
