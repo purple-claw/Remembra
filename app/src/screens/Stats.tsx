@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { mockStatsData, mockAchievements } from '@/data/mockData';
+import { useStore } from '@/store/useStore';
 import { 
   Target, 
   Flame, 
@@ -25,7 +25,37 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 export function Stats() {
+  const { profile, memoryItems, categories, achievements } = useStore();
   const [activeTab, setActiveTab] = useState('overview');
+
+  // Compute stats from store data
+  const statsData = {
+    current_streak: profile?.streak_count || 0,
+    longest_streak: profile?.streak_count || 0, // No separate longest_streak in profile
+    mastered_items: memoryItems.filter(i => i.status === 'mastered').length,
+    total_items: memoryItems.length,
+    average_accuracy: profile?.total_reviews ? Math.round(profile.total_reviews * 0.85) : 0, // Estimated
+    retention_curve: [
+      { day: 1, retention: 100 },
+      { day: 2, retention: 85 },
+      { day: 7, retention: 70 },
+      { day: 14, retention: 60 },
+      { day: 30, retention: 50 },
+    ],
+    category_breakdown: categories.map(c => ({
+      name: c.name,
+      value: memoryItems.filter(i => i.category_id === c.id).length,
+      color: c.color
+    })).filter(c => c.value > 0),
+    daily_activity: Array.from({ length: 7 }, (_, i) => {
+      const date = new Date();
+      date.setDate(date.getDate() - (6 - i));
+      return {
+        day: date.toLocaleDateString('en-US', { weekday: 'short' }),
+        reviews: Math.floor(Math.random() * 20) // Will be replaced with real data
+      };
+    })
+  };
 
   const generateHeatmapData = () => {
     const data = [];
@@ -56,7 +86,7 @@ export function Stats() {
   };
 
   return (
-    <div className="min-h-screen bg-remembra-bg-primary px-5 pt-6 pb-24">
+    <div className="min-h-screen bg-black lined-bg-subtle px-5 pt-6 pb-32">
       <header className="mb-6">
         <h1 className="text-2xl font-bold text-remembra-text-primary mb-1">Insights</h1>
         <p className="text-remembra-text-muted">Track your learning progress</p>
@@ -94,10 +124,10 @@ export function Stats() {
                 <span className="text-xs text-remembra-text-muted">Current Streak</span>
               </div>
               <p className="text-2xl font-bold text-remembra-text-primary">
-                {mockStatsData.current_streak} days
+                {statsData.current_streak} days
               </p>
               <p className="text-xs text-remembra-text-muted mt-1">
-                Best: {mockStatsData.longest_streak} days
+                Best: {statsData.longest_streak} days
               </p>
             </div>
 
@@ -109,10 +139,10 @@ export function Stats() {
                 <span className="text-xs text-remembra-text-muted">Items Mastered</span>
               </div>
               <p className="text-2xl font-bold text-remembra-text-primary">
-                {mockStatsData.mastered_items}
+                {statsData.mastered_items}
               </p>
               <p className="text-xs text-remembra-text-muted mt-1">
-                of {mockStatsData.total_items} total
+                of {statsData.total_items} total
               </p>
             </div>
 
@@ -124,7 +154,7 @@ export function Stats() {
                 <span className="text-xs text-remembra-text-muted">Accuracy</span>
               </div>
               <p className="text-2xl font-bold text-remembra-text-primary">
-                {mockStatsData.average_accuracy}%
+                {statsData.average_accuracy}%
               </p>
               <p className="text-xs text-remembra-text-muted mt-1">
                 Last 30 days
@@ -188,7 +218,7 @@ export function Stats() {
             </div>
             
             <div className="flex gap-3 overflow-x-auto scrollbar-hide pb-2">
-              {mockAchievements.filter(a => a.unlocked_at).slice(0, 3).map(achievement => (
+              {achievements.filter(a => a.unlocked_at).slice(0, 3).map(achievement => (
                 <div 
                   key={achievement.id}
                   className="flex-shrink-0 w-24 bg-remembra-bg-secondary rounded-2xl p-4 border border-white/5 text-center"
@@ -210,7 +240,7 @@ export function Stats() {
             <h3 className="font-semibold text-remembra-text-primary mb-4">Memory Retention</h3>
             <div className="h-48">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={mockStatsData.retention_curve}>
+                <LineChart data={statsData.retention_curve}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#22222E" />
                   <XAxis 
                     dataKey="date" 
@@ -235,10 +265,10 @@ export function Stats() {
                   <Line 
                     type="monotone" 
                     dataKey="retention" 
-                    stroke="#6366F1" 
+                    stroke="#FF8000" 
                     strokeWidth={3}
-                    dot={{ fill: '#6366F1', strokeWidth: 0, r: 4 }}
-                    activeDot={{ r: 6, fill: '#8B5CF6' }}
+                    dot={{ fill: '#FF8000', strokeWidth: 0, r: 4 }}
+                    activeDot={{ r: 6, fill: '#E81224' }}
                   />
                 </LineChart>
               </ResponsiveContainer>
@@ -251,7 +281,7 @@ export function Stats() {
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
-                    data={mockStatsData.category_breakdown}
+                    data={statsData.category_breakdown}
                     cx="50%"
                     cy="50%"
                     innerRadius={50}
@@ -259,7 +289,7 @@ export function Stats() {
                     paddingAngle={5}
                     dataKey="time_spent"
                   >
-                    {mockStatsData.category_breakdown.map((entry, index) => (
+                    {statsData.category_breakdown.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
                   </Pie>
@@ -275,13 +305,13 @@ export function Stats() {
             </div>
             
             <div className="flex flex-wrap gap-3 mt-4">
-              {mockStatsData.category_breakdown.map((cat) => (
-                <div key={cat.category} className="flex items-center gap-2">
+              {statsData.category_breakdown.map((cat) => (
+                <div key={cat.name} className="flex items-center gap-2">
                   <div 
                     className="w-3 h-3 rounded-full" 
                     style={{ backgroundColor: cat.color }}
                   />
-                  <span className="text-xs text-remembra-text-secondary">{cat.category}</span>
+                  <span className="text-xs text-remembra-text-secondary">{cat.name}</span>
                 </div>
               ))}
             </div>
@@ -291,7 +321,7 @@ export function Stats() {
             <h3 className="font-semibold text-remembra-text-primary mb-4">Weekly Activity</h3>
             <div className="h-48">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={mockStatsData.daily_activity}>
+                <BarChart data={statsData.daily_activity}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#22222E" vertical={false} />
                   <XAxis 
                     dataKey="date" 
@@ -313,7 +343,7 @@ export function Stats() {
                   />
                   <Bar 
                     dataKey="count" 
-                    fill="#6366F1" 
+                    fill="#FF8000" 
                     radius={[4, 4, 0, 0]}
                   />
                 </BarChart>
@@ -323,7 +353,7 @@ export function Stats() {
         </TabsContent>
 
         <TabsContent value="achievements" className="mt-0 space-y-4">
-          {mockAchievements.map((achievement) => {
+          {achievements.map((achievement) => {
             const isUnlocked = !!achievement.unlocked_at;
             const progressPercent = (achievement.progress / achievement.max_progress) * 100;
             

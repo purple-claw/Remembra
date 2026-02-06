@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { mockCalendarData, mockMemoryItems, mockCategories } from '@/data/mockData';
+import { useStore } from '@/store/useStore';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, List, Grid3X3 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 export function Calendar() {
+  const { memoryItems, categories } = useStore();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date());
 
@@ -44,7 +45,13 @@ export function Calendar() {
 
   const getDayData = (day: number) => {
     const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    return mockCalendarData.find(d => d.date === dateStr);
+    const itemsForDay = memoryItems.filter(item => item.next_review_date === dateStr);
+    if (itemsForDay.length === 0) return null;
+    return {
+      date: dateStr,
+      reviewCount: itemsForDay.length,
+      items: itemsForDay.map(i => ({ id: i.id, title: i.title }))
+    };
   };
 
   const isToday = (day: number) => {
@@ -70,11 +77,11 @@ export function Calendar() {
 
   const getItemsForDate = (date: Date) => {
     const dateStr = date.toISOString().split('T')[0];
-    return mockMemoryItems.filter(item => item.next_review_date === dateStr);
+    return memoryItems.filter(item => item.next_review_date === dateStr);
   };
 
   return (
-    <div className="min-h-screen bg-remembra-bg-primary px-5 pt-6 pb-24">
+    <div className="min-h-screen bg-black lined-bg-subtle px-5 pt-6 pb-32">
       <header className="mb-6">
         <h1 className="text-2xl font-bold text-remembra-text-primary mb-1">Calendar</h1>
         <p className="text-remembra-text-muted">Plan your learning schedule</p>
@@ -130,8 +137,7 @@ export function Calendar() {
               }
 
               const dayData = getDayData(day);
-              const hasReviews = dayData && dayData.reviews_due > 0;
-              const isCompleted = dayData && dayData.reviews_completed >= dayData.reviews_due;
+              const hasReviews = dayData && dayData.reviewCount > 0;
               const today = isToday(day);
               const selected = isSelected(day);
 
@@ -156,13 +162,11 @@ export function Calendar() {
                   
                   {hasReviews && (
                     <div className="flex gap-0.5 mt-1">
-                      {Array.from({ length: Math.min(dayData.reviews_due, 3) }).map((_, i) => (
+                      {Array.from({ length: Math.min(dayData.reviewCount, 3) }).map((_, i) => (
                         <div
                           key={i}
                           className={`w-1.5 h-1.5 rounded-full ${
-                            isCompleted 
-                              ? selected ? 'bg-white' : 'bg-remembra-success'
-                              : selected ? 'bg-white/70' : 'bg-remembra-accent-primary'
+                            selected ? 'bg-white/70' : 'bg-remembra-accent-primary'
                           }`}
                         />
                       ))}
@@ -184,11 +188,11 @@ export function Calendar() {
                   getItemsForDate(selectedDate).map(item => (
                     <div 
                       key={item.id}
-                      className="p-4 bg-remembra-bg-secondary rounded-2xl border border-white/5 flex items-center gap-4"
+                      className="p-4 glass-card rounded-2xl flex items-center gap-4"
                     >
                       <div 
                         className="w-10 h-10 rounded-xl flex items-center justify-center"
-                        style={{ backgroundColor: `${mockCategories.find(c => c.id === item.category_id)?.color}20` }}
+                        style={{ backgroundColor: `${categories.find(c => c.id === item.category_id)?.color || '#FF8000'}20` }}
                       >
                         <span className="text-lg">
                           {item.content_type === 'code' ? '</>' : item.content_type === 'text' ? 'T' : '?'}
@@ -251,13 +255,13 @@ export function Calendar() {
 
         <TabsContent value="list" className="mt-0">
           <div className="space-y-3">
-            {mockMemoryItems
+            {memoryItems
               .filter(item => item.status !== 'archived')
               .sort((a, b) => new Date(a.next_review_date).getTime() - new Date(b.next_review_date).getTime())
               .map(item => (
                 <div 
                   key={item.id}
-                  className="p-4 bg-remembra-bg-secondary rounded-2xl border border-white/5 flex items-center gap-4"
+                  className="p-4 glass-card rounded-2xl flex items-center gap-4"
                 >
                   <div className="flex-1 min-w-0">
                     <h4 className="text-sm font-medium text-remembra-text-primary truncate">{item.title}</h4>

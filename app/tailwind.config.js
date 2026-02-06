@@ -51,26 +51,31 @@ module.exports = {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
-        // Remembra custom colors
+        // Remembra custom colors - McLaren Orange + Red Theme
         remembra: {
           bg: {
-            primary: '#0A0A0F',
-            secondary: '#12121A',
-            tertiary: '#1A1A24',
-            elevated: '#22222E',
+            primary: '#000000',
+            secondary: '#050505',
+            tertiary: '#0a0a0a',
+            elevated: '#111111',
           },
           accent: {
-            primary: '#6366F1',
-            secondary: '#8B5CF6',
-            pink: '#EC4899',
+            primary: '#FF8000',
+            secondary: '#FF6B00',
+            pink: '#FF4500',
           },
-          success: '#10B981',
-          warning: '#F59E0B',
-          danger: '#EF4444',
+          red: {
+            primary: '#E81224',
+            dark: '#CC0000',
+            light: '#FF2D3B',
+          },
+          success: '#00D26A',
+          warning: '#FFB800',
+          danger: '#FF3B30',
           text: {
-            primary: '#FAFAFA',
-            secondary: '#A1A1AA',
-            muted: '#71717A',
+            primary: '#FFFFFF',
+            secondary: '#B8B8B8',
+            muted: '#666666',
           }
         }
       },
@@ -85,7 +90,7 @@ module.exports = {
       },
       boxShadow: {
         xs: "0 1px 2px 0 rgb(0 0 0 / 0.05)",
-        'glow-primary': '0 0 20px rgba(99, 102, 241, 0.4), 0 0 40px rgba(99, 102, 241, 0.2)',
+        'glow-primary': '0 0 20px rgba(255, 128, 0, 0.4), 0 0 40px rgba(255, 128, 0, 0.2)',
         'glow-success': '0 0 20px rgba(16, 185, 129, 0.4)',
         'glow-warning': '0 0 20px rgba(245, 158, 11, 0.4)',
         'glow-danger': '0 0 20px rgba(239, 68, 68, 0.4)',
@@ -120,8 +125,8 @@ module.exports = {
           to: { opacity: "1", transform: "scale(1)" },
         },
         "pulse-glow": {
-          "0%, 100%": { boxShadow: "0 0 20px rgba(99, 102, 241, 0.4), 0 0 40px rgba(99, 102, 241, 0.2)" },
-          "50%": { boxShadow: "0 0 30px rgba(99, 102, 241, 0.6), 0 0 60px rgba(99, 102, 241, 0.3)" },
+          "0%, 100%": { boxShadow: "0 0 20px rgba(255, 128, 0, 0.4), 0 0 40px rgba(255, 128, 0, 0.2)" },
+          "50%": { boxShadow: "0 0 30px rgba(255, 128, 0, 0.6), 0 0 60px rgba(232, 18, 36, 0.3)" },
         },
         "breathe": {
           "0%, 100%": { transform: "scale(1)" },

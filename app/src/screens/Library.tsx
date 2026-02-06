@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useStore } from '@/store/useStore';
-import { mockCategories } from '@/data/mockData';
-import type { ReviewStatus } from '@/types';
+import type { ReviewStatus, MemoryItem } from '@/types';
 import { 
   Search, 
   Grid3X3, 
@@ -17,13 +16,15 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { ItemDetail } from '@/components/ItemDetail';
 
 export function Library() {
-  const { memoryItems, getCategoryById, startReviewSession } = useStore();
+  const { memoryItems, categories, getCategoryById, startReviewSession } = useStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list' | 'masonry'>('grid');
   const [statusFilter, setStatusFilter] = useState<ReviewStatus | 'all'>('all');
   const [selectedCategory, setSelectedCategory] = useState<string | 'all'>('all');
+  const [selectedItem, setSelectedItem] = useState<MemoryItem | null>(null);
 
   const filteredItems = memoryItems.filter(item => {
     const matchesSearch = item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -60,7 +61,12 @@ export function Library() {
   };
 
   return (
-    <div className="min-h-screen bg-remembra-bg-primary px-5 pt-6 pb-24">
+    <div className="min-h-screen bg-black lined-bg-subtle px-5 pt-6 pb-32">
+      {/* Item Detail Modal */}
+      {selectedItem && (
+        <ItemDetail item={selectedItem} onClose={() => setSelectedItem(null)} />
+      )}
+      
       <header className="mb-6">
         <h1 className="text-2xl font-bold text-remembra-text-primary mb-1">Library</h1>
         <p className="text-remembra-text-muted">Manage your learning materials</p>
@@ -116,7 +122,7 @@ export function Library() {
           >
             All
           </button>
-          {mockCategories.map(cat => (
+          {categories.map(cat => (
             <button
               key={cat.id}
               onClick={() => setSelectedCategory(cat.id)}
@@ -169,7 +175,8 @@ export function Library() {
             return (
               <div 
                 key={item.id}
-                className="bg-remembra-bg-secondary rounded-2xl p-4 border border-white/5 flex items-center gap-4 card-press"
+                onClick={() => setSelectedItem(item)}
+                className="bg-remembra-bg-secondary rounded-2xl p-4 border border-white/5 flex items-center gap-4 card-press glass-card hover-lift cursor-pointer transition-smooth"
                 style={{ animationDelay: `${index * 30}ms` }}
               >
                 <div 
@@ -205,8 +212,9 @@ export function Library() {
           return (
             <div 
               key={item.id}
+              onClick={() => setSelectedItem(item)}
               className={`
-                bg-remembra-bg-secondary rounded-2xl p-4 border border-white/5 card-press
+                bg-remembra-bg-secondary rounded-2xl p-4 border border-white/5 card-press glass-card hover-lift cursor-pointer transition-smooth
                 ${viewMode === 'masonry' ? 'break-inside-avoid' : ''}
               `}
               style={{ animationDelay: `${index * 30}ms` }}

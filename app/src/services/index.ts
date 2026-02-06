@@ -7,6 +7,7 @@ export { reviewService } from './reviewService';
 export { achievementService } from './achievementService';
 export { statsService } from './statsService';
 export { streakService } from './streakService';
+export { aiService } from './aiService';
 
 // Re-export Supabase client and utilities
 export { supabase, getSupabase, getCurrentUserId, requireAuth, isSupabaseConfigured } from '@/lib/supabase';

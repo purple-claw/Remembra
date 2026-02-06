@@ -7,6 +7,7 @@ import { Library } from '@/screens/Library';
 import { Create } from '@/screens/Create';
 import { AIStudio } from '@/screens/AIStudio';
 import { Stats } from '@/screens/Stats';
+import { DatabaseTest } from '@/screens/DatabaseTest';
 import { BottomNav } from '@/components/BottomNav';
 import { Toaster } from '@/components/ui/sonner';
 
@@ -29,26 +30,28 @@ function AppContent() {
         return <AIStudio />;
       case 'stats':
         return <Stats />;
+      case 'test':
+        return <DatabaseTest />;
       default:
         return <Dashboard />;
     }
   };
 
   return (
-    <div className="min-h-screen bg-remembra-bg-primary text-remembra-text-primary font-sans">
-      <main className="pb-20">
+    <div className="min-h-screen bg-black text-remembra-text-primary font-sans">
+      <main>
         {renderScreen()}
       </main>
       
-      {currentScreen !== 'review' && <BottomNav />}
+      {currentScreen !== 'review' && currentScreen !== 'create' && <BottomNav />}
       
       <Toaster 
         position="top-center"
         toastOptions={{
           style: {
-            background: '#1A1A24',
+            background: '#0a0a0a',
             color: '#FAFAFA',
-            border: '1px solid #22222E',
+            border: '1px solid rgba(255, 128, 0, 0.15)',
           },
         }}
       />

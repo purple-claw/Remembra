@@ -41,7 +41,7 @@ export function Review() {
 
   if (!currentItem) {
     return (
-      <div className="min-h-screen bg-remembra-bg-primary flex items-center justify-center px-5">
+      <div className="min-h-screen bg-black flex items-center justify-center px-5">
         <div className="text-center">
           <div className="w-20 h-20 rounded-full bg-remembra-success/20 flex items-center justify-center mx-auto mb-4">
             <Sparkles size={32} className="text-remembra-success" />
@@ -57,7 +57,7 @@ export function Review() {
   }
 
   return (
-    <div className="min-h-screen bg-remembra-bg-primary flex flex-col">
+    <div className="min-h-screen bg-black lined-bg-subtle flex flex-col">
       <header className="px-5 pt-6 pb-4">
         <div className="flex items-center justify-between mb-4">
           <button 

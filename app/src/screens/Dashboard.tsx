@@ -1,12 +1,12 @@
 import { useStore } from '@/store/useStore';
-import { mockCategories, getItemsDueToday } from '@/data/mockData';
 import { 
   Flame, 
   ChevronRight, 
   Brain,
   Target,
   Layers,
-  Code
+  Plus,
+  Sparkles
 } from 'lucide-react';
 import { ProgressRing } from '@/components/ProgressRing';
 import { CalendarStrip } from '@/components/CalendarStrip';
@@ -15,9 +15,12 @@ import { Button } from '@/components/ui/button';
 import { useEffect, useState } from 'react';
 
 export function Dashboard() {
-  const { profile, setScreen, startReviewSession } = useStore();
+  const { profile, categories, memoryItems, setScreen, startReviewSession } = useStore();
   const [greeting, setGreeting] = useState('Good morning');
-  const itemsDueToday = getItemsDueToday();
+  
+  // Get items due today from store
+  const today = new Date().toISOString().split('T')[0];
+  const itemsDueToday = memoryItems.filter(item => item.next_review_date === today);
   const completedToday = 0;
   const dailyGoal = Math.max(itemsDueToday.length, 5);
   const progressPercentage = Math.round((completedToday / dailyGoal) * 100);
@@ -36,7 +39,7 @@ export function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-remembra-bg-primary">
+    <div className="min-h-screen bg-black lined-bg-subtle">
       <header className="px-5 pt-6 pb-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -69,18 +72,18 @@ export function Dashboard() {
               percentage={progressPercentage} 
               size={48} 
               strokeWidth={4}
-              color="#6366F1"
+              color="#FF8000"
             />
           </div>
         </div>
       </header>
 
-      <div className="px-5 space-y-6 pb-8">
+      <div className="px-5 space-y-6 pb-32">
         <section className="animate-slide-up">
           <div 
             className="relative overflow-hidden rounded-3xl p-6"
             style={{
-              background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
+              background: 'linear-gradient(135deg, #FF8000 0%, #FF4500 50%, #E81224 100%)',
             }}
           >
             <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
@@ -137,23 +140,36 @@ export function Dashboard() {
           </div>
           
           <div className="flex gap-3 overflow-x-auto scrollbar-hide pb-2 -mx-5 px-5">
-            {mockCategories.map((category, index) => (
-              <CategoryCard 
-                key={category.id} 
-                category={category}
-                style={{ animationDelay: `${index * 50}ms` }}
-              />
-            ))}
+            {categories.length > 0 ? (
+              categories.map((category, index) => (
+                <CategoryCard 
+                  key={category.id} 
+                  category={category}
+                  style={{ animationDelay: `${index * 50}ms` }}
+                />
+              ))
+            ) : (
+              <div 
+                onClick={() => setScreen('create')}
+                className="glass-card flex-shrink-0 w-36 h-24 rounded-2xl p-4 flex flex-col items-center justify-center gap-2 cursor-pointer hover-lift"
+              >
+                <Plus size={24} className="text-remembra-accent-primary" />
+                <span className="text-xs text-remembra-text-muted">Add Category</span>
+              </div>
+            )}
             
-            <button className="flex-shrink-0 w-14 h-14 rounded-2xl bg-remembra-bg-secondary border border-dashed border-remembra-text-muted/30 flex items-center justify-center text-remembra-text-muted hover:border-remembra-accent-primary/50 hover:text-remembra-accent-primary transition-colors">
-              <span className="text-2xl">+</span>
+            <button 
+              onClick={() => setScreen('create')}
+              className="flex-shrink-0 w-14 h-14 rounded-2xl glass-button flex items-center justify-center text-remembra-accent-primary hover:scale-105 transition-all"
+            >
+              <Plus size={24} />
             </button>
           </div>
         </section>
 
         <section className="animate-slide-up stagger-3">
           <div className="grid grid-cols-2 gap-4">
-            <div className="bg-remembra-bg-secondary rounded-2xl p-4 border border-white/5">
+            <div className="glass-card rounded-2xl p-4">
               <div className="flex items-center gap-2 mb-2">
                 <Target size={18} className="text-remembra-accent-primary" />
                 <span className="text-sm text-remembra-text-secondary">Total Reviews</span>
@@ -161,49 +177,70 @@ export function Dashboard() {
               <p className="text-2xl font-bold text-remembra-text-primary">{profile?.total_reviews || 0}</p>
             </div>
             
-            <div className="bg-remembra-bg-secondary rounded-2xl p-4 border border-white/5">
+            <div className="glass-card rounded-2xl p-4">
               <div className="flex items-center gap-2 mb-2">
                 <Layers size={18} className="text-remembra-success" />
                 <span className="text-sm text-remembra-text-secondary">Items Learned</span>
               </div>
-              <p className="text-2xl font-bold text-remembra-text-primary">48</p>
+              <p className="text-2xl font-bold text-remembra-text-primary">{memoryItems.filter(i => i.status === 'mastered').length}</p>
             </div>
           </div>
         </section>
 
-        <section className="animate-slide-up stagger-4">
-          <h3 className="text-lg font-semibold text-remembra-text-primary mb-4">Recent Activity</h3>
-          <div className="space-y-3">
-            {[
-              { action: 'Reviewed', item: 'React Hooks Deep Dive', time: '2 hours ago', icon: Brain },
-              { action: 'Created', item: 'TypeScript Generics', time: '5 hours ago', icon: Code },
-              { action: 'Mastered', item: 'French Common Phrases', time: 'Yesterday', icon: Target },
-            ].map((activity, index) => (
-              <div 
-                key={index}
-                className="flex items-center gap-4 p-4 bg-remembra-bg-secondary rounded-2xl border border-white/5"
-              >
-                <div className="w-10 h-10 rounded-xl bg-remembra-accent-primary/10 flex items-center justify-center">
-                  <activity.icon size={18} className="text-remembra-accent-primary" />
+        {memoryItems.length > 0 && (
+          <section className="animate-slide-up stagger-4">
+            <h3 className="text-lg font-semibold text-remembra-text-primary mb-4">Recent Items</h3>
+            <div className="space-y-3">
+              {memoryItems.slice(0, 3).map((item) => (
+                <div 
+                  key={item.id}
+                  onClick={() => setScreen('library')}
+                  className="flex items-center gap-4 p-4 glass-card rounded-2xl cursor-pointer hover-lift"
+                >
+                  <div className="w-10 h-10 rounded-xl bg-remembra-accent-primary/10 flex items-center justify-center">
+                    <Brain size={18} className="text-remembra-accent-primary" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-remembra-text-primary font-medium truncate">
+                      {item.title}
+                    </p>
+                    <p className="text-xs text-remembra-text-muted mt-0.5">{item.status}</p>
+                  </div>
+                  <ChevronRight size={16} className="text-remembra-text-muted" />
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-remembra-text-secondary">
-                    {activity.action} <span className="text-remembra-text-primary font-medium">{activity.item}</span>
-                  </p>
-                  <p className="text-xs text-remembra-text-muted mt-0.5">{activity.time}</p>
-                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {memoryItems.length === 0 && (
+          <section className="animate-slide-up stagger-4">
+            <div className="glass-card rounded-2xl p-8 text-center">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-remembra-accent-primary/10 flex items-center justify-center">
+                <Sparkles size={28} className="text-remembra-accent-primary" />
               </div>
-            ))}
-          </div>
-        </section>
+              <h3 className="text-lg font-semibold text-remembra-text-primary mb-2">Get Started</h3>
+              <p className="text-sm text-remembra-text-muted mb-4">
+                Create your first memory item to begin learning
+              </p>
+              <Button
+                onClick={() => setScreen('create')}
+                className="gradient-primary text-white"
+              >
+                <Plus size={16} className="mr-2" />
+                Create Item
+              </Button>
+            </div>
+          </section>
+        )}
       </div>
 
-      <div className="fixed bottom-24 right-5 z-40">
+      <div className="fixed bottom-28 right-5 z-40">
         <button 
           onClick={() => setScreen('create')}
           className="w-14 h-14 rounded-full gradient-primary shadow-lg shadow-remembra-accent-primary/30 flex items-center justify-center text-white hover:scale-105 active:scale-95 transition-transform duration-200"
         >
-          <span className="text-2xl font-light">+</span>
+          <Plus size={24} />
         </button>
       </div>
     </div>

@@ -22,7 +22,7 @@ import {
   mockCalendarData
 } from '@/data/mockData';
 
-export type Screen = 'dashboard' | 'calendar' | 'review' | 'library' | 'create' | 'ai-tools' | 'stats';
+export type Screen = 'dashboard' | 'calendar' | 'review' | 'library' | 'create' | 'ai-tools' | 'stats' | 'test';
 
 interface AuthState {
   user: User | null;

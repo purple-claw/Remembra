@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { mockAITools, mockMemoryItems } from '@/data/mockData';
+import { mockAITools } from '@/data/mockData';
+import { useStore } from '@/store/useStore';
+import { aiService } from '@/services/aiService';
 import { 
   Sparkles, 
   FileText, 
@@ -25,6 +27,7 @@ interface ChatMessage {
 }
 
 export function AIStudio() {
+  const { memoryItems } = useStore();
   const [activeTool, setActiveTool] = useState<string | null>(null);
   const [inputText, setInputText] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -40,7 +43,7 @@ export function AIStudio() {
     setResult(null);
   };
 
-  const handleProcess = () => {
+  const handleProcess = async () => {
     if (!inputText.trim()) {
       toast.error('Please enter some text');
       return;
@@ -48,9 +51,32 @@ export function AIStudio() {
     
     setIsProcessing(true);
     
-    setTimeout(() => {
+    try {
       let output = '';
       
+      switch (activeTool) {
+        case 'summarizer':
+          output = await aiService.generateSummary(inputText, 'User Input');
+          break;
+        case 'flowchart':
+          output = await aiService.generateFlowchart(inputText, 'User Input');
+          break;
+        case 'quiz':
+          const questions = await aiService.generateQuizQuestions(inputText, 'User Input', 3);
+          output = questions.map((q, i) => `**Q${i+1}:** ${q.question}\n**A:** ${q.answer}`).join('\n\n');
+          break;
+        case 'memory-palace':
+          output = await aiService.generateMnemonics(inputText, 'User Input');
+          break;
+      }
+      
+      setResult(output);
+      toast.success('Processing complete!');
+    } catch (error) {
+      console.error('AI processing error:', error);
+      toast.error('Failed to process. Using demo mode.');
+      // Fallback to demo content
+      let output = '';
       switch (activeTool) {
         case 'summarizer':
           output = generateSummary();
@@ -65,11 +91,10 @@ export function AIStudio() {
           output = generateMemoryPalace(inputText);
           break;
       }
-      
       setResult(output);
-      setIsProcessing(false);
-      toast.success('Processing complete!');
-    }, 2000);
+    }
+    
+    setIsProcessing(false);
   };
 
   const generateSummary = () => {
@@ -146,14 +171,21 @@ export function AIStudio() {
 • Practice the journey daily`;
   };
 
-  const handleChatSend = () => {
+  const handleChatSend = async () => {
     if (!chatInput.trim()) return;
     
     const newMessage: ChatMessage = { role: 'user', content: chatInput };
-    setChatMessages([...chatMessages, newMessage]);
+    const userInput = chatInput;
+    setChatMessages(prev => [...prev, newMessage]);
     setChatInput('');
+    setIsProcessing(true);
     
-    setTimeout(() => {
+    try {
+      const response = await aiService.chat('', 'General Learning', userInput);
+      setChatMessages(prev => [...prev, { role: 'assistant', content: response }]);
+    } catch (error) {
+      console.error('Chat error:', error);
+      // Fallback response
       const responses = [
         "That's a great question! Let me break this down for you...",
         "Think of it like this: imagine you're organizing a library...",
@@ -161,12 +193,13 @@ export function AIStudio() {
         "Here's an analogy that might help: it's like building with LEGO blocks...",
       ];
       const randomResponse = responses[Math.floor(Math.random() * responses.length)];
-      
       setChatMessages(prev => [...prev, { 
         role: 'assistant', 
         content: randomResponse + " This concept builds on what you learned earlier. Would you like me to create some practice questions?"
       }]);
-    }, 1500);
+    }
+    
+    setIsProcessing(false);
   };
 
   const copyToClipboard = () => {
@@ -181,7 +214,7 @@ export function AIStudio() {
     if (!tool) return null;
 
     return (
-      <div className="min-h-screen bg-remembra-bg-primary flex flex-col">
+      <div className="min-h-screen bg-black lined-bg-subtle flex flex-col">
         <header className="px-5 pt-6 pb-4">
           <div className="flex items-center gap-3 mb-4">
             <button 
@@ -233,7 +266,7 @@ export function AIStudio() {
                   Or select from library
                 </label>
                 <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-2">
-                  {mockMemoryItems.slice(0, 4).map(item => (
+                  {memoryItems.slice(0, 4).map(item => (
                     <button
                       key={item.id}
                       onClick={() => setInputText(item.content)}
@@ -315,7 +348,7 @@ export function AIStudio() {
 
   if (activeTool === 'chat') {
     return (
-      <div className="min-h-screen bg-remembra-bg-primary flex flex-col">
+      <div className="min-h-screen bg-black lined-bg-subtle flex flex-col">
         <header className="px-5 pt-6 pb-4">
           <div className="flex items-center gap-3">
             <button 
@@ -381,7 +414,7 @@ export function AIStudio() {
   }
 
   return (
-    <div className="min-h-screen bg-remembra-bg-primary px-5 pt-6 pb-24">
+    <div className="min-h-screen bg-black lined-bg-subtle px-5 pt-6 pb-32">
       <header className="mb-6">
         <h1 className="text-2xl font-bold text-remembra-text-primary mb-1">AI Studio</h1>
         <p className="text-remembra-text-muted">Supercharge your learning with AI</p>

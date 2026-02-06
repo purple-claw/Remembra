@@ -63,6 +63,8 @@ export interface MemoryItem {
   review_history: ReviewHistory[];
   ai_summary?: string;
   ai_flowchart?: string;
+  ai_bullet_points?: string[];
+  notes?: string;
   created_at: string;
   updated_at: string;
 }
