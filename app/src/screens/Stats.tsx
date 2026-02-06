@@ -86,7 +86,7 @@ export function Stats() {
   };
 
   return (
-    <div className="min-h-screen bg-black lined-bg-subtle px-5 pt-6 pb-32">
+    <div className="bg-black lined-bg-subtle px-5 pt-6 pb-8">
       <header className="mb-6">
         <h1 className="text-2xl font-bold text-remembra-text-primary mb-1">Insights</h1>
         <p className="text-remembra-text-muted">Track your learning progress</p>

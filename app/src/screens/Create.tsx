@@ -5,7 +5,7 @@ import {
   ArrowLeft, Type, Code, Image as ImageIcon, FileText, Layers,
   ChevronRight, Check, Sparkles, Calendar, Upload, X,
   Bold, Italic, List, ListOrdered, Quote, Link2, Code2,
-  Heading1, Heading2, Eye, Edit
+  Heading1, Heading2, Eye, Edit, Plus
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -37,7 +37,7 @@ interface UploadedFile {
 }
 
 export function Create() {
-  const { categories, addMemoryItem, setScreen } = useStore();
+  const { categories, addMemoryItem, addCategory, setScreen } = useStore();
   const [step, setStep] = useState(1);
   const [contentType, setContentType] = useState<ContentType>('text');
   const [title, setTitle] = useState('');
@@ -48,6 +48,8 @@ export function Create() {
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [isPreviewMode, setIsPreviewMode] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [showNewCategory, setShowNewCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -56,6 +58,10 @@ export function Create() {
   const handleNext = () => {
     if (step === 2 && (!title.trim() || !content.trim())) {
       toast.error('Please fill in both title and content');
+      return;
+    }
+    if (step === 3 && !categoryId && categories.length > 0) {
+      toast.error('Please select a category');
       return;
     }
     setStep(step + 1);
@@ -85,7 +91,12 @@ export function Create() {
       })),
       difficulty,
       status: 'learning' as const,
-      next_review_date: new Date(Date.now() + 86400000).toISOString().split('T')[0],
+      next_review_date: (() => {
+        // Schedule for exactly 1 day from now (first review in the 1-4-7 system)
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        return tomorrow.toISOString().split('T')[0];
+      })(),
       review_stage: 0,
       review_history: [],
       ai_summary: isGenerating ? '• AI summary will be generated\n• Key points extracted automatically\n• Review schedule created' : undefined,
@@ -437,7 +448,7 @@ export function Create() {
             <div>
               <label className="block text-sm font-medium text-remembra-text-secondary mb-3">Category</label>
               <div className="flex flex-wrap gap-2">
-                {categories.length > 0 ? categories.map((cat) => (
+                {categories.map((cat) => (
                   <button
                     key={cat.id}
                     onClick={() => setCategoryId(cat.id)}
@@ -448,8 +459,80 @@ export function Create() {
                   >
                     {cat.name}
                   </button>
-                )) : (
-                  <p className="text-sm text-remembra-text-muted">No categories yet. Item will be uncategorized.</p>
+                ))}
+
+                {/* New category inline form */}
+                {showNewCategory ? (
+                  <div className="flex items-center gap-2 w-full mt-2">
+                    <Input
+                      type="text"
+                      placeholder="Category name..."
+                      value={newCategoryName}
+                      onChange={(e) => setNewCategoryName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && newCategoryName.trim()) {
+                          const colors = ['#FF8000', '#FF4500', '#E81224', '#00D26A', '#6366F1', '#FFB800', '#06B6D4'];
+                          const icons = ['code', 'book-open', 'flask', 'languages', 'calculator'];
+                          const newCat = {
+                            name: newCategoryName.trim(),
+                            color: colors[categories.length % colors.length],
+                            icon: icons[categories.length % icons.length],
+                            order_index: categories.length,
+                            is_default: false,
+                          };
+                          addCategory(newCat).then((created) => {
+                            setCategoryId(created.id);
+                            setNewCategoryName('');
+                            setShowNewCategory(false);
+                            toast.success('Category created!');
+                          });
+                        }
+                        if (e.key === 'Escape') {
+                          setShowNewCategory(false);
+                          setNewCategoryName('');
+                        }
+                      }}
+                      className="flex-1 glass-card border-white/10 rounded-xl text-remembra-text-primary placeholder:text-remembra-text-muted focus:border-remembra-accent-primary/50 py-2 text-sm"
+                      autoFocus
+                    />
+                    <button
+                      onClick={() => {
+                        if (newCategoryName.trim()) {
+                          const colors = ['#FF8000', '#FF4500', '#E81224', '#00D26A', '#6366F1', '#FFB800', '#06B6D4'];
+                          const icons = ['code', 'book-open', 'flask', 'languages', 'calculator'];
+                          const newCat = {
+                            name: newCategoryName.trim(),
+                            color: colors[categories.length % colors.length],
+                            icon: icons[categories.length % icons.length],
+                            order_index: categories.length,
+                            is_default: false,
+                          };
+                          addCategory(newCat).then((created) => {
+                            setCategoryId(created.id);
+                            setNewCategoryName('');
+                            setShowNewCategory(false);
+                            toast.success('Category created!');
+                          });
+                        }
+                      }}
+                      className="px-3 py-2 rounded-xl gradient-primary text-white text-sm font-medium"
+                    >
+                      <Check size={16} />
+                    </button>
+                    <button
+                      onClick={() => { setShowNewCategory(false); setNewCategoryName(''); }}
+                      className="px-3 py-2 rounded-xl glass-button text-remembra-text-muted text-sm"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowNewCategory(true)}
+                    className="px-4 py-2.5 rounded-xl text-sm font-medium glass-button text-remembra-accent-primary hover:text-white border-dashed border-remembra-accent-primary/30 flex items-center gap-1.5"
+                  >
+                    <Plus size={14} /> New Category
+                  </button>
                 )}
               </div>
             </div>

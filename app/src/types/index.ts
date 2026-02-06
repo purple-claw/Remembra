@@ -94,6 +94,15 @@ export interface DaySchedule {
   items: MemoryItem[];
 }
 
+export interface DailyReview {
+  id: string;
+  memory_item_id: string;
+  scheduled_date: string;
+  completed_at?: string;
+  status: 'pending' | 'in-progress' | 'completed' | 'overdue';
+  performance?: Performance;
+}
+
 export interface Achievement {
   id: string;
   name: string;
@@ -131,8 +140,46 @@ export interface StatsData {
   average_accuracy: number;
 }
 
-// Review intervals for 1-4-7 system
+// Review intervals for 1-4-7 system (in days)
 export const REVIEW_INTERVALS = [1, 4, 7, 30, 90];
+
+// Calculate next review date based on current stage and performance
+export function calculateNextReviewDate(currentStage: number, performance: Performance, currentDate: Date = new Date()): { nextDate: string; nextStage: number } {
+  let nextStage = currentStage;
+  
+  // Adjust stage based on performance
+  if (performance === 'again') {
+    nextStage = 0; // Reset to beginning
+  } else if (performance === 'hard') {
+    nextStage = Math.max(0, currentStage); // Stay at same stage
+  } else if (performance === 'medium') {
+    nextStage = Math.min(currentStage + 1, REVIEW_INTERVALS.length - 1);
+  } else if (performance === 'easy') {
+    nextStage = Math.min(currentStage + 2, REVIEW_INTERVALS.length - 1);
+  }
+  
+  const daysToAdd = REVIEW_INTERVALS[nextStage];
+  const nextDate = new Date(currentDate);
+  nextDate.setDate(nextDate.getDate() + daysToAdd);
+  
+  return {
+    nextDate: nextDate.toISOString().split('T')[0],
+    nextStage
+  };
+}
+
+// Get review status based on item
+export function getReviewStatus(item: MemoryItem): 'pending' | 'overdue' | 'completed' {
+  const today = new Date().toISOString().split('T')[0];
+  const reviewDate = item.next_review_date;
+  
+  if (reviewDate < today) return 'overdue';
+  if (reviewDate === today) return 'pending';
+  return 'completed';
+}
+
+// Review intervals for 1-4-7 system
+// export const REVIEW_INTERVALS = [1, 4, 7, 30, 90];
 
 // Difficulty weights for adaptive algorithm
 export const DIFFICULTY_WEIGHTS: Record<Performance, number> = {

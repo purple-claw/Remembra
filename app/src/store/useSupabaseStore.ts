@@ -1,5 +1,7 @@
 import { create } from 'zustand';
-import type { MemoryItem, Category, Profile, Achievement, DaySchedule, Performance, ReviewStatus, NotificationPreferences } from '@/types';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import type { MemoryItem, Category, Profile, Achievement, DaySchedule, Performance, ReviewStatus, NotificationPreferences, DailyReview } from '@/types';
+import { calculateNextReviewDate } from '@/types';
 import type { User, Session } from '@supabase/supabase-js';
 import { 
   authService,
@@ -22,7 +24,7 @@ import {
   mockCalendarData
 } from '@/data/mockData';
 
-export type Screen = 'dashboard' | 'calendar' | 'review' | 'library' | 'create' | 'ai-tools' | 'stats' | 'test';
+export type Screen = 'dashboard' | 'calendar' | 'review' | 'library' | 'create' | 'ai-tools' | 'stats' | 'test' | 'auth';
 
 interface AuthState {
   user: User | null;
@@ -42,6 +44,7 @@ interface AppState extends AuthState {
   memoryItems: MemoryItem[];
   achievements: Achievement[];
   calendarData: DaySchedule[];
+  dailyReviews: DailyReview[];
   
   // Review Session
   currentReviewIndex: number;
@@ -61,6 +64,9 @@ interface AppState extends AuthState {
   startReviewSession: (items?: MemoryItem[]) => void;
   nextReviewItem: () => void;
   completeReview: (performance: Performance) => Promise<void>;
+  markReviewComplete: (itemId: string, date: string, performance: Performance) => Promise<void>;
+  startReviewForDate: (itemId: string, date: string) => void;
+  getReviewsForDate: (date: string) => DailyReview[];
   
   // Memory Item Actions
   addMemoryItem: (item: Omit<MemoryItem, 'id' | 'user_id' | 'created_at' | 'updated_at'>) => Promise<MemoryItem>;
@@ -83,7 +89,7 @@ interface AppState extends AuthState {
   getCategoryById: (id: string) => Category | undefined;
 }
 
-export const useStore = create<AppState>((set, get) => ({
+export const useStore = create<AppState>()(persist((set, get) => ({
   // Initial Auth State
   user: null,
   session: null,
@@ -94,12 +100,13 @@ export const useStore = create<AppState>((set, get) => ({
   currentScreen: 'dashboard',
   setScreen: (screen) => set({ currentScreen: screen }),
   
-  // Initial Data (will be replaced with real data after auth)
+  // Initial Data (will be replaced with real data after auth or loaded from localStorage)
   profile: mockProfile,
-  categories: mockCategories,
-  memoryItems: mockMemoryItems,
+  categories: [],
+  memoryItems: [],
   achievements: mockAchievements,
   calendarData: mockCalendarData,
+  dailyReviews: [],
   
   // Review State
   currentReviewIndex: 0,
@@ -143,14 +150,8 @@ export const useStore = create<AppState>((set, get) => ({
         if (event === 'SIGNED_IN' && user) {
           await get().loadUserData();
         } else if (event === 'SIGNED_OUT') {
-          // Reset to mock data when signed out
-          set({
-            profile: mockProfile,
-            categories: mockCategories,
-            memoryItems: mockMemoryItems,
-            achievements: mockAchievements,
-            calendarData: mockCalendarData,
-          });
+          // Keep local demo data when signed out (don't reset to empty)
+          // The persist middleware will restore from localStorage
         }
       });
     } catch (error) {
@@ -185,6 +186,14 @@ export const useStore = create<AppState>((set, get) => ({
   // Load all user data from Supabase
   loadUserData: async () => {
     try {
+      const { user } = get();
+      
+      // Ensure user setup (profile, default categories, achievements) exists
+      if (user) {
+        const username = user.user_metadata?.username || user.email?.split('@')[0] || 'User';
+        await authService.ensureUserSetup(user.id, username);
+      }
+      
       const [profile, categories, memoryItems, achievements] = await Promise.all([
         profileService.getProfile(),
         categoryService.getCategories(),
@@ -276,24 +285,11 @@ export const useStore = create<AppState>((set, get) => ({
         }
       } else {
         // Local-only update for unauthenticated users (demo mode)
-        const intervals = [1, 4, 7, 30, 90];
-        let newStage = currentItem.review_stage;
-        
-        if (performance === 'again') {
-          newStage = 0;
-        } else if (performance === 'easy') {
-          newStage = Math.min(currentItem.review_stage + 2, 4);
-        } else {
-          newStage = Math.min(currentItem.review_stage + 1, 4);
-        }
-        
-        const daysToAdd = intervals[newStage];
-        const nextDate = new Date();
-        nextDate.setDate(nextDate.getDate() + daysToAdd);
+        const { nextDate, nextStage } = calculateNextReviewDate(currentItem.review_stage, performance);
         
         let newStatus: ReviewStatus = currentItem.status;
-        if (newStage >= 3) newStatus = 'mastered';
-        else if (newStage > 0) newStatus = 'reviewing';
+        if (nextStage >= 3) newStatus = 'mastered';
+        else if (nextStage > 0) newStatus = 'reviewing';
         else newStatus = 'learning';
         
         const updatedItem: MemoryItem = {
@@ -306,8 +302,8 @@ export const useStore = create<AppState>((set, get) => ({
               time_spent_seconds: Math.floor(Math.random() * 120) + 60,
             },
           ],
-          review_stage: newStage,
-          next_review_date: nextDate.toISOString().split('T')[0],
+          review_stage: nextStage,
+          next_review_date: nextDate,
           status: newStatus,
           updated_at: new Date().toISOString(),
         };
@@ -475,4 +471,88 @@ export const useStore = create<AppState>((set, get) => ({
   getCategoryById: (id) => {
     return get().categories.find(c => c.id === id);
   },
+  
+  // Mark a review as complete from calendar
+  markReviewComplete: async (itemId, date, performance) => {
+    const item = get().memoryItems.find(i => i.id === itemId);
+    if (!item) return;
+    
+    const { nextDate, nextStage } = calculateNextReviewDate(item.review_stage, performance);
+    
+    let newStatus: ReviewStatus = item.status;
+    if (nextStage >= 3) newStatus = 'mastered';
+    else if (nextStage > 0) newStatus = 'reviewing';
+    else newStatus = 'learning';
+    
+    const updatedItem: MemoryItem = {
+      ...item,
+      review_history: [
+        ...item.review_history,
+        {
+          date: date,
+          performance,
+          time_spent_seconds: Math.floor(Math.random() * 120) + 60,
+        },
+      ],
+      review_stage: nextStage,
+      next_review_date: nextDate,
+      status: newStatus,
+      updated_at: new Date().toISOString(),
+    };
+    
+    set(state => ({
+      memoryItems: state.memoryItems.map(i =>
+        i.id === itemId ? updatedItem : i
+      ),
+      dailyReviews: state.dailyReviews.map(r =>
+        r.memory_item_id === itemId && r.scheduled_date === date
+          ? { ...r, status: 'completed', completed_at: new Date().toISOString(), performance }
+          : r
+      ),
+    }));
+  },
+  
+  // Start a review for a specific date
+  startReviewForDate: (itemId, date) => {
+    set(state => ({
+      dailyReviews: [
+        ...state.dailyReviews.filter(r => !(r.memory_item_id === itemId && r.scheduled_date === date)),
+        {
+          id: `review-${itemId}-${date}`,
+          memory_item_id: itemId,
+          scheduled_date: date,
+          status: 'in-progress' as const,
+        },
+      ],
+    }));
+  },
+  
+  // Get all reviews for a specific date
+  getReviewsForDate: (date) => {
+    const items = get().memoryItems.filter(item => item.next_review_date === date);
+    return items.map(item => {
+      const existing = get().dailyReviews.find(r => r.memory_item_id === item.id && r.scheduled_date === date);
+      if (existing) return existing;
+      
+      const today = new Date().toISOString().split('T')[0];
+      let status: 'pending' | 'overdue' | 'in-progress' | 'completed' = 'pending';
+      if (date < today) status = 'overdue';
+      
+      return {
+        id: `review-${item.id}-${date}`,
+        memory_item_id: item.id,
+        scheduled_date: date,
+        status,
+      };
+    });
+  },
+}), {
+  name: 'remembra-storage',
+  storage: createJSONStorage(() => localStorage),
+  partialize: (state) => ({
+    // Only persist data when NOT authenticated (demo mode)
+    categories: state.isAuthenticated ? [] : state.categories,
+    memoryItems: state.isAuthenticated ? [] : state.memoryItems,
+    profile: state.isAuthenticated ? mockProfile : state.profile,
+  }),
 }));

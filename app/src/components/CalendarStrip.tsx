@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { mockCalendarData } from '@/data/mockData';
+import { useStore } from '@/store/useStore';
 
 interface DayData {
   date: string;
@@ -12,6 +12,7 @@ interface DayData {
 
 export function CalendarStrip() {
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const { memoryItems } = useStore();
   
   // Generate 14 days around today
   const generateDays = (): DayData[] => {
@@ -24,15 +25,17 @@ export function CalendarStrip() {
       date.setDate(today.getDate() + i);
       const dateStr = date.toISOString().split('T')[0];
       
-      // Find matching data from mockCalendarData
-      const calendarEntry = mockCalendarData.find(d => d.date === dateStr);
+      // Count items scheduled for this date from actual store data
+      const itemsForDate = memoryItems.filter(item => 
+        item.next_review_date === dateStr && item.status !== 'archived'
+      );
       
       days.push({
         date: dateStr,
         dayName: dayNames[date.getDay()],
         dayNum: date.getDate(),
-        reviewsDue: calendarEntry?.reviews_due || 0,
-        reviewsCompleted: calendarEntry?.reviews_completed || 0,
+        reviewsDue: itemsForDate.length,
+        reviewsCompleted: 0,
         isToday: i === 0,
       });
     }

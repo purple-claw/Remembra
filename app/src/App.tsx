@@ -8,6 +8,7 @@ import { Create } from '@/screens/Create';
 import { AIStudio } from '@/screens/AIStudio';
 import { Stats } from '@/screens/Stats';
 import { DatabaseTest } from '@/screens/DatabaseTest';
+import { Auth } from '@/screens/Auth';
 import { BottomNav } from '@/components/BottomNav';
 import { Toaster } from '@/components/ui/sonner';
 
@@ -32,18 +33,22 @@ function AppContent() {
         return <Stats />;
       case 'test':
         return <DatabaseTest />;
+      case 'auth':
+        return <Auth />;
       default:
         return <Dashboard />;
     }
   };
 
+  const showNav = currentScreen !== 'review' && currentScreen !== 'create' && currentScreen !== 'auth';
+
   return (
-    <div className="min-h-screen bg-black text-remembra-text-primary font-sans">
-      <main>
+    <div className="h-screen bg-black text-remembra-text-primary font-sans flex flex-col overflow-hidden">
+      <main className="flex-1 overflow-y-auto overflow-x-hidden overscroll-contain" id="main-scroll">
         {renderScreen()}
       </main>
       
-      {currentScreen !== 'review' && currentScreen !== 'create' && <BottomNav />}
+      {showNav && <BottomNav />}
       
       <Toaster 
         position="top-center"

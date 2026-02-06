@@ -61,7 +61,7 @@ export function Library() {
   };
 
   return (
-    <div className="min-h-screen bg-black lined-bg-subtle px-5 pt-6 pb-32">
+    <div className="bg-black lined-bg-subtle px-5 pt-6 pb-8">
       {/* Item Detail Modal */}
       {selectedItem && (
         <ItemDetail item={selectedItem} onClose={() => setSelectedItem(null)} />

@@ -118,34 +118,19 @@ function generateDemoResponse(_prompt: string, systemPrompt: string): string {
     ]);
   }
   
-  if (systemPrompt.includes('flowchart')) {
-    return `
-┌─────────────────┐
-│     START       │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│  Core Concept   │
-└────────┬────────┘
-         │
-    ┌────┴────┐
-    ▼         ▼
-┌───────┐ ┌───────┐
-│Step 1 │ │Step 2 │
-└───┬───┘ └───┬───┘
-    │         │
-    └────┬────┘
-         ▼
-┌─────────────────┐
-│   Application   │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│      END        │
-└─────────────────┘
-    `;
+  if (systemPrompt.includes('flowchart') || systemPrompt.includes('mermaid')) {
+    return `graph TD
+    A[Start: Understand Topic] --> B{Have Background?}
+    B -->|Yes| C[Review Core Concepts]
+    B -->|No| D[Research Fundamentals]
+    D --> C
+    C --> E[Identify Key Relationships]
+    E --> F[Practice Application]
+    F --> G{Confident?}
+    G -->|Yes| H[Move to Advanced Topics]
+    G -->|No| I[Review & Retry]
+    I --> C
+    H --> J[Mastery Achieved]`;
   }
   
   return 'AI response placeholder - configure API keys for real responses';
@@ -192,11 +177,11 @@ export const aiService = {
     return [];
   },
 
-  // Generate an ASCII flowchart
+  // Generate a Mermaid flowchart
   async generateFlowchart(content: string, title: string): Promise<string> {
-    const systemPrompt = `You are a learning assistant. Create a simple ASCII flowchart or diagram that visualizes the concept or process described. Use box characters like ┌ ─ ┐ │ └ ┘ and arrows ▼ ▲ → ←. Keep it simple and readable.`;
+    const systemPrompt = `You are a learning assistant. Create a Mermaid.js flowchart diagram that visualizes the concept or process described. Return ONLY valid mermaid syntax starting with 'graph TD' or 'graph LR'. Use simple node labels without special characters. Do not wrap in code blocks or backticks. Keep it readable with 5-12 nodes.`;
     
-    const prompt = `Title: ${title}\n\nContent:\n${content}\n\nCreate a visual ASCII flowchart:`;
+    const prompt = `Title: ${title}\n\nContent:\n${content}\n\nCreate a mermaid flowchart (graph TD format only, no code fences):`;
     
     return callAI(prompt, systemPrompt);
   },

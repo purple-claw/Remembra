@@ -1,12 +1,15 @@
 import { useState } from 'react';
 import { useStore } from '@/store/useStore';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, List, Grid3X3 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, List, Grid3X3, CheckCircle2, Clock, AlertCircle, Play } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { toast } from 'sonner';
+import type { Performance, MemoryItem } from '@/types';
 
 export function Calendar() {
-  const { memoryItems, categories } = useStore();
+  const { memoryItems, categories, markReviewComplete } = useStore();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date());
+  const [reviewingItem, setReviewingItem] = useState<MemoryItem | null>(null);
 
   const monthNames = [
     'January', 'February', 'March', 'April', 'May', 'June',
@@ -77,11 +80,30 @@ export function Calendar() {
 
   const getItemsForDate = (date: Date) => {
     const dateStr = date.toISOString().split('T')[0];
-    return memoryItems.filter(item => item.next_review_date === dateStr);
+    return memoryItems.filter(item => item.next_review_date === dateStr && item.status !== 'archived');
+  };
+
+  const getReviewStatus = (item: MemoryItem, dateStr: string) => {
+    const today = new Date().toISOString().split('T')[0];
+    const hasReviewed = item.review_history.some(r => r.date === dateStr);
+    
+    if (hasReviewed) return 'completed';
+    if (dateStr < today) return 'overdue';
+    if (dateStr === today) return 'pending';
+    return 'scheduled';
+  };
+
+  const handleQuickReview = async (item: MemoryItem, performance: Performance) => {
+    const dateStr = selectedDate?.toISOString().split('T')[0];
+    if (!dateStr) return;
+    
+    await markReviewComplete(item.id, dateStr, performance);
+    toast.success(`Review marked as ${performance}!`);
+    setReviewingItem(null);
   };
 
   return (
-    <div className="min-h-screen bg-black lined-bg-subtle px-5 pt-6 pb-32">
+    <div className="bg-black lined-bg-subtle px-5 pt-6 pb-8">
       <header className="mb-6">
         <h1 className="text-2xl font-bold text-remembra-text-primary mb-1">Calendar</h1>
         <p className="text-remembra-text-muted">Plan your learning schedule</p>
@@ -185,27 +207,93 @@ export function Calendar() {
               
               <div className="space-y-3">
                 {getItemsForDate(selectedDate).length > 0 ? (
-                  getItemsForDate(selectedDate).map(item => (
-                    <div 
-                      key={item.id}
-                      className="p-4 glass-card rounded-2xl flex items-center gap-4"
-                    >
+                  getItemsForDate(selectedDate).map(item => {
+                    const dateStr = selectedDate.toISOString().split('T')[0];
+                    const status = getReviewStatus(item, dateStr);
+                    const isReviewing = reviewingItem?.id === item.id;
+                    
+                    return (
                       <div 
-                        className="w-10 h-10 rounded-xl flex items-center justify-center"
-                        style={{ backgroundColor: `${categories.find(c => c.id === item.category_id)?.color || '#FF8000'}20` }}
+                        key={item.id}
+                        className="glass-card rounded-2xl overflow-hidden"
                       >
-                        <span className="text-lg">
-                          {item.content_type === 'code' ? '</>' : item.content_type === 'text' ? 'T' : '?'}
-                        </span>
+                        <div className="p-4 flex items-center gap-4">
+                          <div 
+                            className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                            style={{ backgroundColor: `${categories.find(c => c.id === item.category_id)?.color || '#FF8000'}20` }}
+                          >
+                            <span className="text-lg">
+                              {item.content_type === 'code' ? '</>' : item.content_type === 'text' ? 'T' : '?'}
+                            </span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h4 className="text-sm font-medium text-remembra-text-primary truncate">{item.title}</h4>
+                            <p className="text-xs text-remembra-text-muted">
+                              Stage {item.review_stage + 1} • {item.difficulty}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {status === 'completed' && (
+                              <div className="px-2 py-1 rounded-lg bg-remembra-success/20 text-remembra-success text-xs font-medium flex items-center gap-1">
+                                <CheckCircle2 size={12} />
+                                Done
+                              </div>
+                            )}
+                            {status === 'overdue' && (
+                              <div className="px-2 py-1 rounded-lg bg-red-500/20 text-red-400 text-xs font-medium flex items-center gap-1">
+                                <AlertCircle size={12} />
+                                Overdue
+                              </div>
+                            )}
+                            {status === 'pending' && !isReviewing && (
+                              <button
+                                onClick={() => setReviewingItem(item)}
+                                className="px-3 py-1.5 rounded-lg gradient-primary text-white text-xs font-medium flex items-center gap-1"
+                              >
+                                <Play size={12} />
+                                Review
+                              </button>
+                            )}
+                            {status === 'scheduled' && (
+                              <div className="px-2 py-1 rounded-lg bg-remembra-text-muted/20 text-remembra-text-muted text-xs font-medium flex items-center gap-1">
+                                <Clock size={12} />
+                                Scheduled
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        
+                        {/* Quick review actions */}
+                        {isReviewing && status !== 'completed' && (
+                          <div className="px-4 pb-4 pt-2 border-t border-white/5 bg-remembra-bg-tertiary/50">
+                            <p className="text-xs text-remembra-text-muted mb-3">How well did you recall this?</p>
+                            <div className="grid grid-cols-4 gap-2">
+                              {[
+                                { label: 'Again', value: 'again' as Performance, color: 'bg-red-500' },
+                                { label: 'Hard', value: 'hard' as Performance, color: 'bg-orange-500' },
+                                { label: 'Good', value: 'medium' as Performance, color: 'bg-blue-500' },
+                                { label: 'Easy', value: 'easy' as Performance, color: 'bg-green-500' },
+                              ].map(btn => (
+                                <button
+                                  key={btn.value}
+                                  onClick={() => handleQuickReview(item, btn.value)}
+                                  className={`${btn.color} text-white px-3 py-2 rounded-lg text-xs font-medium hover:opacity-90 transition-opacity`}
+                                >
+                                  {btn.label}
+                                </button>
+                              ))}
+                            </div>
+                            <button
+                              onClick={() => setReviewingItem(null)}
+                              className="mt-2 text-xs text-remembra-text-muted hover:text-white w-full text-center py-1"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        )}
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <h4 className="text-sm font-medium text-remembra-text-primary truncate">{item.title}</h4>
-                        <p className="text-xs text-remembra-text-muted">
-                          Stage {item.review_stage + 1} • {item.difficulty}
-                        </p>
-                      </div>
-                    </div>
-                  ))
+                    );
+                  })
                 ) : (
                   <div className="p-8 text-center bg-remembra-bg-secondary rounded-2xl border border-white/5">
                     <p className="text-remembra-text-muted text-sm">No reviews scheduled</p>
@@ -218,38 +306,62 @@ export function Calendar() {
 
         <TabsContent value="week" className="mt-0">
           <div className="space-y-4">
-            {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map((day, index) => (
-              <div key={day} className="bg-remembra-bg-secondary rounded-2xl p-4 border border-white/5">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-medium text-remembra-text-primary">{day}</h3>
-                  <span className="text-xs text-remembra-text-muted">
-                    {index === 0 ? '3 reviews' : index === 2 ? '1 review' : '0 reviews'}
-                  </span>
-                </div>
-                
-                {index === 0 && (
-                  <div className="space-y-2">
-                    <div className="p-3 bg-remembra-bg-tertiary rounded-xl text-sm text-remembra-text-secondary">
-                      React Hooks Deep Dive
+            {(() => {
+              // Generate the upcoming 7 days starting from today (with weekday names)
+              const today = new Date();
+              const weekDayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+              const weekDays = Array.from({ length: 7 }, (_, i) => {
+                const d = new Date(today);
+                d.setDate(today.getDate() + i);
+                return d;
+              });
+
+              return weekDays.map((day) => {
+                const dateStr = day.toISOString().split('T')[0];
+                const dayItems = memoryItems.filter(
+                  item => item.next_review_date === dateStr && item.status !== 'archived'
+                );
+                const dayName = weekDayNames[day.getDay()];
+                const isToday = dateStr === today.toISOString().split('T')[0];
+
+                return (
+                  <div key={dateStr} className="bg-remembra-bg-secondary rounded-2xl p-4 border border-white/5">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-sm font-medium text-remembra-text-primary">
+                        {dayName}{isToday ? ' (Today)' : ''}
+                      </h3>
+                      <span className="text-xs text-remembra-text-muted">
+                        {dayItems.length} review{dayItems.length !== 1 ? 's' : ''}
+                      </span>
                     </div>
-                    <div className="p-3 bg-remembra-bg-tertiary rounded-xl text-sm text-remembra-text-secondary">
-                      Spanish Verb Conjugations
-                    </div>
-                    <div className="p-3 bg-remembra-bg-tertiary rounded-xl text-sm text-remembra-text-secondary">
-                      Calculus Derivatives
-                    </div>
+                    
+                    {dayItems.length > 0 ? (
+                      <div className="space-y-2">
+                        {dayItems.map(item => {
+                          const status = getReviewStatus(item, dateStr);
+                          return (
+                            <div key={item.id} className="p-3 bg-remembra-bg-tertiary rounded-xl flex items-center justify-between gap-2">
+                              <span className="text-sm text-remembra-text-secondary truncate flex-1">{item.title}</span>
+                              {status === 'completed' && (
+                                <CheckCircle2 size={14} className="text-remembra-success flex-shrink-0" />
+                              )}
+                              {status === 'overdue' && (
+                                <AlertCircle size={14} className="text-red-400 flex-shrink-0" />
+                              )}
+                              {status === 'pending' && (
+                                <Clock size={14} className="text-remembra-accent-primary flex-shrink-0" />
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-remembra-text-muted py-1">No reviews scheduled</p>
+                    )}
                   </div>
-                )}
-                
-                {index === 2 && (
-                  <div className="space-y-2">
-                    <div className="p-3 bg-remembra-bg-tertiary rounded-xl text-sm text-remembra-text-secondary">
-                      JavaScript Async/Await
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
+                );
+              });
+            })()}
           </div>
         </TabsContent>
 

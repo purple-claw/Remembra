@@ -183,6 +183,55 @@ USING (
 - Ensure Site URL matches your app URL exactly
 - Check browser console for specific error messages
 
+### Database error saving new user
+This is a common issue when the database trigger for creating profiles isn't set up yet.
+
+**Solution:** Run the fix script in Supabase SQL Editor:
+1. Go to **SQL Editor** → **New Query**
+2. Copy the contents of `supabase/fix_new_user.sql`
+3. Click **Run**
+
+This will:
+- Create/fix the profile creation trigger
+- Set proper permissions
+- Create profiles for any existing users without one
+
+### User can't sign in after signup
+If email confirmation is enabled:
+1. User must confirm email before signing in
+2. To disable confirmation: **Authentication** → **Providers** → **Email** → Disable "Confirm email"
+
+### Email validation errors
+The app accepts all valid email addresses including modern TLDs like `.in`, `.ai`, `.dev`, etc.
+
+If you see "invalid email" errors:
+- Check for typos in the email address
+- Ensure there are no spaces before/after the email
+- Browser autocomplete may cause issues - try typing manually
+
+All standard email formats are supported (e.g., `user@example.com`, `dev@remembra.in`)
+
+### Email rate limit exceeded
+This happens when you try to sign up/sign in too many times in a short period.
+
+**Quick Solutions:**
+1. **Wait 60 seconds** - Rate limits reset automatically
+2. **Use Demo Mode** - Click away from the auth screen to use the app with localStorage
+3. **Use a different email** - Each email has separate rate limits
+
+**Permanent Fix (Recommended for Development):**
+1. Go to **Supabase Dashboard** → **Authentication** → **Rate Limits**
+2. Increase or disable rate limits for development:
+   - **Email signups per hour**: Increase from 3-4 to 100
+   - **Email logins per hour**: Increase from 30 to 100
+   - **Password recovery per hour**: Increase to 50
+3. **Remember to restore these limits before production!**
+
+**Alternative - Disable Email Confirmation:**
+1. **Authentication** → **Providers** → **Email**
+2. Toggle off "Confirm email"
+3. This speeds up testing and reduces rate limit hits
+
 ## Database Schema Overview
 
 | Table | Description |

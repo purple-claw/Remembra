@@ -15,7 +15,7 @@ import { Button } from '@/components/ui/button';
 import { useEffect, useState } from 'react';
 
 export function Dashboard() {
-  const { profile, categories, memoryItems, setScreen, startReviewSession } = useStore();
+  const { profile, categories, memoryItems, setScreen, startReviewSession, isAuthenticated } = useStore();
   const [greeting, setGreeting] = useState('Good morning');
   
   // Get items due today from store
@@ -39,7 +39,24 @@ export function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-black lined-bg-subtle">
+    <div className="bg-black lined-bg-subtle">
+      {/* Demo Mode Banner */}
+      {!isAuthenticated && (
+        <div className="bg-gradient-to-r from-remembra-accent-primary/10 to-remembra-accent-secondary/10 border-b border-remembra-accent-primary/20 px-5 py-2">
+          <div className="flex items-center justify-center gap-3">
+            <p className="text-xs text-remembra-text-secondary">
+              <span className="text-remembra-accent-primary font-semibold">Demo Mode:</span> Data saved locally
+            </p>
+            <button
+              onClick={() => setScreen('auth')}
+              className="text-xs font-semibold text-remembra-accent-primary hover:text-remembra-accent-secondary transition-colors underline underline-offset-2"
+            >
+              Sign In to Sync
+            </button>
+          </div>
+        </div>
+      )}
+      
       <header className="px-5 pt-6 pb-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -78,7 +95,7 @@ export function Dashboard() {
         </div>
       </header>
 
-      <div className="px-5 space-y-6 pb-32">
+      <div className="px-5 space-y-6 pb-8">
         <section className="animate-slide-up">
           <div 
             className="relative overflow-hidden rounded-3xl p-6"
@@ -233,15 +250,6 @@ export function Dashboard() {
             </div>
           </section>
         )}
-      </div>
-
-      <div className="fixed bottom-28 right-5 z-40">
-        <button 
-          onClick={() => setScreen('create')}
-          className="w-14 h-14 rounded-full gradient-primary shadow-lg shadow-remembra-accent-primary/30 flex items-center justify-center text-white hover:scale-105 active:scale-95 transition-transform duration-200"
-        >
-          <Plus size={24} />
-        </button>
       </div>
     </div>
   );

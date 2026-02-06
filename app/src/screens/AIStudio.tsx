@@ -20,6 +20,8 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
+import { MarkdownRenderer } from '@/components/MarkdownRenderer';
+import { MermaidDiagram } from '@/components/MermaidDiagram';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -296,9 +298,22 @@ export function AIStudio() {
                   </div>
                 </div>
                 
-                <pre className="text-sm text-remembra-text-secondary whitespace-pre-wrap font-mono">
-                  {result}
-                </pre>
+                {activeTool === 'flowchart' && result ? (
+                  (() => {
+                    // Extract mermaid code from result
+                    const mermaidMatch = result.match(/```mermaid\n([\s\S]*?)\n```/);
+                    const mermaidCode = mermaidMatch ? mermaidMatch[1].trim() : result.replace(/```mermaid\n?/gi, '').replace(/```\n?/g, '').trim();
+                    return (
+                      <div className="overflow-x-auto">
+                        <MermaidDiagram chart={mermaidCode} className="my-2" />
+                      </div>
+                    );
+                  })()
+                ) : (
+                  <div className="prose prose-invert prose-sm max-w-none">
+                    <MarkdownRenderer content={result} />
+                  </div>
+                )}
               </div>
               
               <div className="flex gap-3">
@@ -414,7 +429,7 @@ export function AIStudio() {
   }
 
   return (
-    <div className="min-h-screen bg-black lined-bg-subtle px-5 pt-6 pb-32">
+    <div className="bg-black lined-bg-subtle px-5 pt-6 pb-8">
       <header className="mb-6">
         <h1 className="text-2xl font-bold text-remembra-text-primary mb-1">AI Studio</h1>
         <p className="text-remembra-text-muted">Supercharge your learning with AI</p>

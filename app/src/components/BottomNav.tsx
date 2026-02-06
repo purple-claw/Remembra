@@ -1,4 +1,3 @@
-import { useState, useEffect } from 'react';
 import { useStore } from '@/store/useStore';
 import type { Screen } from '@/store/useStore';
 import { Home, Calendar, BookOpen, PlusCircle, Sparkles, ChartLine } from 'lucide-react';
@@ -20,41 +19,12 @@ const navItems: NavItem[] = [
 
 export function BottomNav() {
   const { currentScreen, setScreen } = useStore();
-  const [isVisible, setIsVisible] = useState(true);
-  const [lastScrollY, setLastScrollY] = useState(0);
-
-  useEffect(() => {
-    const handleScroll = () => {
-      const currentScrollY = window.scrollY;
-      const scrollDiff = currentScrollY - lastScrollY;
-      
-      // Show nav when scrolling up or at top
-      if (scrollDiff < -5 || currentScrollY < 50) {
-        setIsVisible(true);
-      }
-      // Hide nav when scrolling down past threshold
-      else if (scrollDiff > 5 && currentScrollY > 100) {
-        setIsVisible(false);
-      }
-      
-      setLastScrollY(currentScrollY);
-    };
-
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, [lastScrollY]);
 
   return (
     <nav 
-      className={`
-        fixed bottom-0 left-0 right-0 z-50
-        transition-transform duration-300 ease-out
-        ${isVisible ? 'translate-y-0' : 'translate-y-full'}
-      `}
+      className="flex-shrink-0 relative z-50"
     >
-      <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-black via-black/90 to-transparent pointer-events-none" />
-      
-      <div className="relative mx-auto max-w-lg px-4 pb-6 pt-2">
+      <div className="relative mx-auto max-w-lg px-4 pb-4 pt-2 bg-black/95 backdrop-blur-sm">
         <div className="glass-strong rounded-2xl shadow-lg shadow-black/40 overflow-hidden">
           <div className="absolute inset-0 opacity-50" />
           <div className="relative flex items-center justify-around py-2.5">
