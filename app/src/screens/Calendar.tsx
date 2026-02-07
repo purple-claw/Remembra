@@ -283,7 +283,7 @@ export function Calendar() {
                               {[
                                 { label: 'Again', value: 'again' as Performance, color: 'bg-red-500' },
                                 { label: 'Hard', value: 'hard' as Performance, color: 'bg-orange-500' },
-                                { label: 'Good', value: 'medium' as Performance, color: 'bg-blue-500' },
+                                { label: 'Good', value: 'good' as Performance, color: 'bg-blue-500' },
                                 { label: 'Easy', value: 'easy' as Performance, color: 'bg-green-500' },
                               ].map(btn => (
                                 <button

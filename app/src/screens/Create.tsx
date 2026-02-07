@@ -77,9 +77,8 @@ export function Create() {
     }
   };
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     const newItem = {
-      user_id: '1',
       category_id: categoryId,
       title,
       content,
@@ -91,12 +90,7 @@ export function Create() {
       })),
       difficulty,
       status: 'active' as const,
-      next_review_date: (() => {
-        // Schedule for exactly 1 day from now (first review)
-        const tomorrow = new Date();
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        return tomorrow.toISOString().split('T')[0];
-      })(),
+      next_review_date: new Date().toISOString().split('T')[0],
       review_stage: 0,
       review_template: 'sm2',
       current_stage_index: 0,
@@ -107,9 +101,14 @@ export function Create() {
       review_history: [],
       ai_summary: isGenerating ? '• AI summary will be generated\n• Key points extracted automatically\n• Review schedule created' : undefined,
     };
-    addMemoryItem(newItem);
-    toast.success('Item created successfully!');
-    setScreen('dashboard');
+    try {
+      await addMemoryItem(newItem);
+      toast.success('Item created successfully!');
+      setScreen('dashboard');
+    } catch (error) {
+      console.error('Error creating item:', error);
+      toast.error('Failed to create item. Please try again.');
+    }
   };
 
   const generateAISummary = () => {
@@ -119,7 +118,7 @@ export function Create() {
 
   const getReviewDates = () => {
     const dates = [];
-    const intervals = [1, 4, 7];
+    const intervals = [1, 6, 15]; // SM-2 typical early intervals
     for (const interval of intervals) {
       const date = new Date();
       date.setDate(date.getDate() + interval);
@@ -644,7 +643,7 @@ export function Create() {
             <div className="glass-card rounded-2xl p-4">
               <div className="flex items-center gap-2 mb-3">
                 <Calendar size={16} className="text-[#E81224]" />
-                <span className="text-sm font-medium text-remembra-text-primary">1-4-7 Review Schedule</span>
+                <span className="text-sm font-medium text-remembra-text-primary">SM-2 Adaptive Schedule</span>
               </div>
               <div className="flex justify-around">
                 {getReviewDates().map((date, index) => (
@@ -655,7 +654,7 @@ export function Create() {
                       <span className={`text-xs font-bold ${
                         index === 0 ? 'text-remembra-accent-primary' : index === 1 ? 'text-[#FF4500]' : 'text-[#E81224]'
                       }`}>
-                        Day {['1', '4', '7'][index]}
+                        Day {['1', '6', '15'][index]}
                       </span>
                     </div>
                     <span className="text-xs text-remembra-text-muted">{date}</span>

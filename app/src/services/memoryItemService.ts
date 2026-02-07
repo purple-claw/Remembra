@@ -12,9 +12,11 @@ const transformItem = (item: any): MemoryItem => ({
   content_type: item.content_type as ContentType,
   attachments: (item.attachments || []) as Attachment[],
   difficulty: item.difficulty as Difficulty,
-  status: (item.status === 'learning' || item.status === 'reviewing' || item.status === 'mastered')
+  status: (item.status === 'learning' || item.status === 'reviewing')
     ? 'active' as ReviewStatus
-    : item.status as ReviewStatus,
+    : item.status === 'mastered'
+      ? 'completed' as ReviewStatus
+      : item.status as ReviewStatus,
   // SM-2 fields with sensible defaults for legacy items
   easiness_factor: item.easiness_factor ?? 2.5,
   interval: item.interval ?? 0,
@@ -154,12 +156,21 @@ export const memoryItemService = {
       content_type: item.content_type,
       attachments: item.attachments,
       difficulty: item.difficulty,
-      status: item.status,
+      status: item.status || 'active',
       next_review_date: item.next_review_date,
-      review_stage: item.review_stage,
-      review_history: item.review_history,
+      review_stage: item.review_stage ?? 0,
+      review_history: item.review_history || [],
       ai_summary: item.ai_summary,
       ai_flowchart: item.ai_flowchart,
+      // SM-2 fields
+      easiness_factor: item.easiness_factor ?? 2.5,
+      interval: item.interval ?? 0,
+      repetition: item.repetition ?? 0,
+      lapse_count: item.lapse_count ?? 0,
+      review_template: item.review_template || 'sm2',
+      current_stage_index: item.current_stage_index ?? 0,
+      is_bookmarked: item.is_bookmarked ?? false,
+      notes: item.notes,
     };
     
     const { data, error } = await supabase
@@ -217,7 +228,7 @@ export const memoryItemService = {
       {
         date: new Date().toISOString().split('T')[0],
         performance,
-        time_spent_seconds: timeSpentSeconds || Math.floor(Math.random() * 120) + 30,
+        time_spent_seconds: timeSpentSeconds ?? Math.floor(Math.random() * 120) + 30,
         interval: result.interval,
         easiness_factor: result.easinessFactor,
       },
@@ -231,7 +242,7 @@ export const memoryItemService = {
         lapse_count: result.newLapseCount,
         current_stage_index: result.repetition,
         review_stage: result.repetition,
-        next_review_date: '',
+        next_review_date: result.nextReviewDate,
         status: 'completed',
         completed_at: result.completedAt,
         archive_at: result.archiveAt,

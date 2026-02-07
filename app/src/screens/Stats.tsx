@@ -175,7 +175,7 @@ export function Stats() {
 
   const masteredItems = memoryItems.filter(i => i.status === 'completed').length;
   const learningItems = memoryItems.filter(i => i.status === 'active').length;
-  const reviewingItems = memoryItems.filter(i => i.status === 'archived').length;
+  const archivedItems = memoryItems.filter(i => i.status === 'archived').length;
 
   const getHeatmapColor = (level: number) => {
     const colors = [
@@ -334,8 +334,8 @@ export function Stats() {
                 <div className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center mx-auto mb-2">
                   <CalendarIcon size={16} className="text-purple-500" />
                 </div>
-                <p className="text-lg font-bold text-remembra-text-primary">{reviewingItems}</p>
-                <p className="text-[10px] text-remembra-text-muted">Reviewing</p>
+                <p className="text-lg font-bold text-remembra-text-primary">{archivedItems}</p>
+                <p className="text-[10px] text-remembra-text-muted">Archived</p>
               </div>
               <div className="flex-1 bg-remembra-bg-tertiary rounded-xl p-3 text-center">
                 <div className="w-8 h-8 rounded-full bg-remembra-success/20 flex items-center justify-center mx-auto mb-2">

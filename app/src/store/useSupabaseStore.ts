@@ -16,10 +16,9 @@ import {
 } from '@/services';
 import { supabase } from '@/lib/supabase';
 
-// For fallback profile
-import { 
-  mockProfile
-} from '@/data/mockData';
+// Track if already initialized to prevent double data loads
+let _initialized = false;
+let _authSubscription: { unsubscribe: () => void } | null = null;
 
 export type Screen = 'dashboard' | 'calendar' | 'review' | 'library' | 'create' | 'ai-tools' | 'stats' | 'profile' | 'test' | 'auth';
 
@@ -111,6 +110,10 @@ export const useStore = create<AppState>()(persist((set, get) => ({
   
   // Initialize app and auth state
   initialize: async () => {
+    // Guard against double initialization
+    if (_initialized) return;
+    _initialized = true;
+    
     try {
       // If Supabase is not configured, show auth screen
       if (!isSupabaseConfigured || !supabase) {
@@ -123,24 +126,42 @@ export const useStore = create<AppState>()(persist((set, get) => ({
       const session = await authService.getSession();
       const user = session?.user ?? null;
       
-      set({ 
-        user, 
-        session, 
-        isAuthenticated: !!user,
-        isLoading: false,
-        currentScreen: user ? 'dashboard' : 'auth',
-      });
-      
-      // Load user data if authenticated
       if (user) {
-        await get().loadUserData();
-        // Initialize notifications
-        await notificationService.createChannel();
-        await notificationService.initialize();
+        // Set authenticated but keep loading until data is fetched
+        set({ 
+          user, 
+          session, 
+          isAuthenticated: true,
+          currentScreen: 'dashboard',
+        });
+        
+        // Load user data before dismissing loading screen
+        try {
+          await get().loadUserData();
+          await notificationService.createChannel();
+          await notificationService.initialize();
+        } catch (e) {
+          console.warn('Failed to load user data during init:', e);
+        }
+        
+        set({ isLoading: false });
+      } else {
+        set({ 
+          user: null, 
+          session: null, 
+          isAuthenticated: false,
+          isLoading: false,
+          currentScreen: 'auth',
+        });
+      }
+      
+      // Unsubscribe previous listener if any
+      if (_authSubscription) {
+        _authSubscription.unsubscribe();
       }
       
       // Subscribe to auth changes
-      supabase.auth.onAuthStateChange(async (event, session) => {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
         const user = session?.user ?? null;
         set({ 
           user, 
@@ -162,10 +183,11 @@ export const useStore = create<AppState>()(persist((set, get) => ({
             dailyReviews: [],
           });
         } else if (event === 'PASSWORD_RECOVERY') {
-          // User clicked password reset link - show update password screen
           set({ currentScreen: 'auth' });
         }
       });
+      
+      _authSubscription = subscription;
     } catch (error) {
       console.error('Error initializing app:', error);
       set({ isLoading: false, currentScreen: 'auth' });
@@ -212,30 +234,66 @@ export const useStore = create<AppState>()(persist((set, get) => ({
         await authService.ensureUserSetup(user.id, username);
       }
       
-      const [profile, categories, memoryItems, achievements] = await Promise.all([
+      // Use allSettled so partial failures don't block everything
+      const results = await Promise.allSettled([
         profileService.getProfile(),
         categoryService.getCategories(),
         memoryItemService.getMemoryItems(),
         achievementService.getAchievements(),
       ]);
       
-      // Get calendar data for current period
-      const today = new Date();
-      const startDate = new Date(today);
-      startDate.setDate(today.getDate() - 7);
-      const endDate = new Date(today);
-      endDate.setDate(today.getDate() + 14);
+      const profile = results[0].status === 'fulfilled' ? results[0].value : null;
+      const categories = results[1].status === 'fulfilled' ? results[1].value : [];
+      const memoryItems = results[2].status === 'fulfilled' ? results[2].value : [];
+      const achievements = results[3].status === 'fulfilled' ? results[3].value : [];
       
-      const calendarData = await statsService.getCalendarData(
-        startDate.toISOString().split('T')[0],
-        endDate.toISOString().split('T')[0]
-      );
+      // Log any failures
+      results.forEach((r, i) => {
+        if (r.status === 'rejected') {
+          console.error(`loadUserData: promise ${i} failed:`, r.reason);
+        }
+      });
+      
+      // Build fallback profile from auth user if DB profile is null
+      const fallbackProfile: Profile | null = user ? {
+        id: user.id,
+        username: user.user_metadata?.username || user.email?.split('@')[0] || 'User',
+        avatar_url: user.user_metadata?.avatar_url,
+        timezone: 'UTC',
+        notification_preferences: {
+          daily_reminder: true,
+          reminder_time: '09:00',
+          streak_reminder: true,
+          achievement_notifications: true,
+          ai_insights: true,
+        },
+        streak_count: 0,
+        total_reviews: 0,
+        created_at: new Date().toISOString(),
+      } : null;
+      
+      // Get calendar data for current period
+      let calendarData: DaySchedule[] = [];
+      try {
+        const today = new Date();
+        const startDate = new Date(today);
+        startDate.setDate(today.getDate() - 7);
+        const endDate = new Date(today);
+        endDate.setDate(today.getDate() + 14);
+        
+        calendarData = await statsService.getCalendarData(
+          startDate.toISOString().split('T')[0],
+          endDate.toISOString().split('T')[0]
+        );
+      } catch (e) {
+        console.warn('Failed to load calendar data:', e);
+      }
       
       set({
-        profile: profile || mockProfile,
-        categories: categories,
-        memoryItems: memoryItems,
-        achievements: achievements,
+        profile: profile || fallbackProfile,
+        categories,
+        memoryItems,
+        achievements,
         calendarData,
       });
     } catch (error) {
@@ -282,7 +340,7 @@ export const useStore = create<AppState>()(persist((set, get) => ({
     if (!currentItem) return;
     
     try {
-      // Update item in Supabase using the 1-4-7 engine
+      // Update item in Supabase using SM-2 engine
       const updatedItem = await memoryItemService.completeReview(currentItem.id, performance, timeSpentSeconds);
       
       // Update local state
@@ -300,13 +358,16 @@ export const useStore = create<AppState>()(persist((set, get) => ({
       }
       
       // Record streak and update profile
-      await streakService.recordReviewCompletion();
-      await profileService.incrementTotalReviews();
-      
-      // Refresh profile
-      const updatedProfile = await profileService.getProfile();
-      if (updatedProfile) {
-        set({ profile: updatedProfile });
+      try {
+        await streakService.recordReviewCompletion();
+        await profileService.incrementTotalReviews();
+        
+        const updatedProfile = await profileService.getProfile();
+        if (updatedProfile) {
+          set({ profile: updatedProfile });
+        }
+      } catch (e) {
+        console.warn('Failed to update streak/profile:', e);
       }
       
       // Run lifecycle processing (archive/delete old items)
@@ -321,11 +382,14 @@ export const useStore = create<AppState>()(persist((set, get) => ({
       if (refreshedItem) {
         notificationService.scheduleNextReview(refreshedItem).catch(console.warn);
       }
+      
+      // Advance to next item only on success
+      get().nextReviewItem();
     } catch (error) {
       console.error('Error completing review:', error);
+      // Still advance so user isn't stuck, but log the error
+      get().nextReviewItem();
     }
-    
-    get().nextReviewItem();
   },
   
   // Memory Item CRUD
@@ -407,15 +471,14 @@ export const useStore = create<AppState>()(persist((set, get) => ({
     return get().categories.find(c => c.id === id);
   },
   
-  // Mark a review as complete from calendar (uses SM-2)
+  // Mark a review as complete from calendar (uses SM-2) — persists to Supabase
   markReviewComplete: async (itemId, date, performance) => {
     const item = get().memoryItems.find(i => i.id === itemId);
     if (!item) return;
     
     const result = processReviewCompletion(item, performance);
     
-    const updatedItem: MemoryItem = {
-      ...item,
+    const updates: Partial<MemoryItem> = {
       review_history: [
         ...item.review_history,
         {
@@ -438,19 +501,36 @@ export const useStore = create<AppState>()(persist((set, get) => ({
       completed_at: result.completedAt,
       archive_at: result.archiveAt,
       delete_at: result.deleteAt,
-      updated_at: new Date().toISOString(),
     };
     
-    set(state => ({
-      memoryItems: state.memoryItems.map(i =>
-        i.id === itemId ? updatedItem : i
-      ),
-      dailyReviews: state.dailyReviews.map(r =>
-        r.memory_item_id === itemId && r.scheduled_date === date
-          ? { ...r, status: 'completed', completed_at: new Date().toISOString(), performance }
-          : r
-      ),
-    }));
+    try {
+      // Persist to Supabase
+      const updatedItem = await memoryItemService.updateMemoryItem(itemId, updates);
+      
+      set(state => ({
+        memoryItems: state.memoryItems.map(i =>
+          i.id === itemId ? updatedItem : i
+        ),
+        dailyReviews: state.dailyReviews.map(r =>
+          r.memory_item_id === itemId && r.scheduled_date === date
+            ? { ...r, status: 'completed' as const, completed_at: new Date().toISOString(), performance }
+            : r
+        ),
+      }));
+    } catch (error) {
+      console.error('Error persisting review to Supabase:', error);
+      // Still update local state so UI isn't broken
+      set(state => ({
+        memoryItems: state.memoryItems.map(i =>
+          i.id === itemId ? { ...i, ...updates, updated_at: new Date().toISOString() } as MemoryItem : i
+        ),
+        dailyReviews: state.dailyReviews.map(r =>
+          r.memory_item_id === itemId && r.scheduled_date === date
+            ? { ...r, status: 'completed' as const, completed_at: new Date().toISOString(), performance }
+            : r
+        ),
+      }));
+    }
   },
   
   // Start a review for a specific date
@@ -490,8 +570,7 @@ export const useStore = create<AppState>()(persist((set, get) => ({
 }), {
   name: 'remembra-storage',
   storage: createJSONStorage(() => localStorage),
-  partialize: (state) => ({
-    // Persist auth-related navigation state only
-    currentScreen: state.isAuthenticated ? state.currentScreen : 'auth',
+  partialize: () => ({
+    // Don't persist screen state — always start from auth/dashboard based on session
   }),
 }));

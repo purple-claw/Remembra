@@ -60,7 +60,7 @@ export const statsService = {
     
     // Calculate stats
     const totalItems = itemsData.length;
-    const masteredItems = itemsData.filter(i => i.status === 'mastered').length;
+    const masteredItems = itemsData.filter(i => i.status === 'completed').length;
     
     // Calculate retention curve (weekly)
     const retentionCurve = await this.calculateRetentionCurve(userId);
@@ -97,10 +97,10 @@ export const statsService = {
     // Calculate average accuracy
     const allReviewHistory = itemsData.flatMap(i => (i.review_history || []) as { performance: string }[]);
     const easyCount = allReviewHistory.filter(r => r.performance === 'easy').length;
-    const mediumCount = allReviewHistory.filter(r => r.performance === 'medium').length;
+    const goodCount = allReviewHistory.filter(r => r.performance === 'good' || r.performance === 'medium').length;
     const totalReviews = allReviewHistory.length;
     const averageAccuracy = totalReviews > 0 
-      ? Math.round(((easyCount + mediumCount * 0.7) / totalReviews) * 100)
+      ? Math.round(((easyCount + goodCount * 0.7) / totalReviews) * 100)
       : 0;
     
     return {
@@ -137,7 +137,7 @@ export const statsService = {
       const reviewsData = (reviews || []) as any[];
       const total = reviewsData.length;
       const successful = reviewsData.filter(r => 
-        r.performance === 'easy' || r.performance === 'medium'
+        r.performance === 'easy' || r.performance === 'good' || r.performance === 'medium'
       ).length;
       
       const retention = total > 0 ? Math.round((successful / total) * 100) : 100;

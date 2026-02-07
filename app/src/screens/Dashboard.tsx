@@ -15,14 +15,19 @@ import { Button } from '@/components/ui/button';
 import { useEffect, useState } from 'react';
 
 export function Dashboard() {
-  const { profile, categories, memoryItems, setScreen, startReviewSession } = useStore();
+  const { profile, categories, memoryItems, setScreen, startReviewSession, getItemsDueToday } = useStore();
   const [greeting, setGreeting] = useState('Good morning');
   
-  // Get items due today from store
+  // Get items due today from store (includes overdue items)
+  const itemsDueToday = getItemsDueToday();
+  
+  // Calculate how many items were reviewed today from review_history
   const today = new Date().toISOString().split('T')[0];
-  const itemsDueToday = memoryItems.filter(item => item.next_review_date === today);
-  const completedToday = 0;
-  const dailyGoal = Math.max(itemsDueToday.length, 5);
+  const completedToday = memoryItems.reduce((count, item) => {
+    return count + (item.review_history || []).filter(r => r.date === today).length;
+  }, 0);
+  
+  const dailyGoal = Math.max(itemsDueToday.length + completedToday, 5);
   const progressPercentage = Math.round((completedToday / dailyGoal) * 100);
 
   useEffect(() => {
@@ -48,11 +53,19 @@ export function Dashboard() {
           >
             <div className="relative">
               <div className="w-12 h-12 rounded-full bg-gradient-to-br from-remembra-accent-primary to-remembra-accent-secondary p-[2px]">
-                <img 
-                  src={profile?.avatar_url || ''} 
-                  alt={profile?.username || 'User'}
-                  className="w-full h-full rounded-full object-cover bg-remembra-bg-secondary"
-                />
+                {profile?.avatar_url ? (
+                  <img 
+                    src={profile.avatar_url} 
+                    alt={profile?.username || 'User'}
+                    className="w-full h-full rounded-full object-cover bg-remembra-bg-secondary"
+                  />
+                ) : (
+                  <div className="w-full h-full rounded-full bg-remembra-bg-secondary flex items-center justify-center">
+                    <span className="text-lg font-bold text-remembra-accent-primary">
+                      {(profile?.username || 'U').charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                )}
               </div>
               <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-remembra-success rounded-full flex items-center justify-center border-2 border-remembra-bg-primary">
                 <div className="w-2 h-2 bg-white rounded-full" />

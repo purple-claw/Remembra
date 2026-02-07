@@ -118,7 +118,7 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
       ? Math.round(item.review_history.reduce((a, b) => a + b.time_spent_seconds, 0) / item.review_history.length)
       : 0,
     successRate: item.review_history.length > 0
-      ? Math.round((item.review_history.filter(r => r.performance !== 'hard').length / item.review_history.length) * 100)
+      ? Math.round((item.review_history.filter(r => r.performance === 'good' || r.performance === 'easy').length / item.review_history.length) * 100)
       : 0,
   };
 
@@ -466,7 +466,8 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
                             variant="outline" 
                             className={`text-[10px] ${
                               review.performance === 'easy' ? 'text-green-400 border-green-400/30' :
-                              review.performance === 'good' ? 'text-yellow-400 border-yellow-400/30' :
+                              review.performance === 'good' ? 'text-blue-400 border-blue-400/30' :
+                              review.performance === 'hard' ? 'text-orange-400 border-orange-400/30' :
                               'text-red-400 border-red-400/30'
                             }`}
                           >

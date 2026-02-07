@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useStore } from '@/store/useStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,8 +33,14 @@ export function Auth() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
 
+  // Redirect to dashboard when authenticated (in useEffect, not during render)
+  useEffect(() => {
+    if (isAuthenticated && view !== 'update-password') {
+      setScreen('dashboard');
+    }
+  }, [isAuthenticated, view, setScreen]);
+
   if (isAuthenticated && view !== 'update-password') {
-    setScreen('dashboard');
     return null;
   }
 
