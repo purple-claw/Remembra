@@ -1,9 +1,9 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { MermaidDiagram } from './MermaidDiagram';
-import { Copy, Check } from 'lucide-react';
+import { Copy, Check, Code2 } from 'lucide-react';
 import { useState } from 'react';
 
 interface MarkdownRendererProps {
@@ -11,23 +11,105 @@ interface MarkdownRendererProps {
   className?: string;
 }
 
-// Custom syntax highlighter theme matching McLaren orange
-const customTheme = {
-  ...oneDark,
+// VS Code-like syntax theme with McLaren orange accents
+const vscodeTheme = {
+  ...vscDarkPlus,
   'pre[class*="language-"]': {
-    ...oneDark['pre[class*="language-"]'],
-    background: 'rgba(0, 0, 0, 0.5)',
-    borderRadius: '12px',
+    ...vscDarkPlus['pre[class*="language-"]'],
+    background: '#1E1E1E',
+    borderRadius: '8px',
     padding: '16px',
     margin: '12px 0',
-    border: '1px solid rgba(255, 255, 255, 0.05)',
+    border: '1px solid rgba(255, 255, 255, 0.08)',
+    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.3)',
   },
   'code[class*="language-"]': {
-    ...oneDark['code[class*="language-"]'],
+    ...vscDarkPlus['code[class*="language-"]'],
     background: 'transparent',
-    fontFamily: 'JetBrains Mono, Fira Code, Consolas, monospace',
+    fontFamily: '"JetBrains Mono", "Fira Code", "Cascadia Code", "Source Code Pro", Consolas, monospace',
     fontSize: '13px',
+    lineHeight: '1.6',
+    textShadow: 'none',
   },
+  // Enhanced token colors for VS Code feel
+  'comment': { color: '#6A9955', fontStyle: 'italic' },
+  'prolog': { color: '#6A9955' },
+  'doctype': { color: '#6A9955' },
+  'cdata': { color: '#6A9955' },
+  'punctuation': { color: '#D4D4D4' },
+  'property': { color: '#9CDCFE' },
+  'tag': { color: '#569CD6' },
+  'boolean': { color: '#569CD6' },
+  'number': { color: '#B5CEA8' },
+  'constant': { color: '#4FC1FF' },
+  'symbol': { color: '#B5CEA8' },
+  'deleted': { color: '#CE9178' },
+  'selector': { color: '#D7BA7D' },
+  'attr-name': { color: '#9CDCFE' },
+  'string': { color: '#CE9178' },
+  'char': { color: '#CE9178' },
+  'builtin': { color: '#4EC9B0' },
+  'inserted': { color: '#B5CEA8' },
+  'operator': { color: '#D4D4D4' },
+  'entity': { color: '#4EC9B0', cursor: 'help' },
+  'url': { color: '#4EC9B0' },
+  'variable': { color: '#9CDCFE' },
+  'atrule': { color: '#C586C0' },
+  'attr-value': { color: '#CE9178' },
+  'function': { color: '#DCDCAA' },
+  'class-name': { color: '#4EC9B0' },
+  'keyword': { color: '#C586C0' },
+  'regex': { color: '#D16969' },
+  'important': { color: '#569CD6', fontWeight: 'bold' },
+};
+
+// Language display names mapping
+const languageLabels: Record<string, string> = {
+  js: 'JavaScript',
+  javascript: 'JavaScript',
+  ts: 'TypeScript',
+  typescript: 'TypeScript',
+  tsx: 'TypeScript React',
+  jsx: 'JavaScript React',
+  py: 'Python',
+  python: 'Python',
+  rb: 'Ruby',
+  ruby: 'Ruby',
+  go: 'Go',
+  rust: 'Rust',
+  rs: 'Rust',
+  java: 'Java',
+  kotlin: 'Kotlin',
+  kt: 'Kotlin',
+  swift: 'Swift',
+  c: 'C',
+  cpp: 'C++',
+  'c++': 'C++',
+  cs: 'C#',
+  csharp: 'C#',
+  php: 'PHP',
+  html: 'HTML',
+  css: 'CSS',
+  scss: 'SCSS',
+  sass: 'Sass',
+  less: 'Less',
+  json: 'JSON',
+  yaml: 'YAML',
+  yml: 'YAML',
+  xml: 'XML',
+  sql: 'SQL',
+  bash: 'Bash',
+  sh: 'Shell',
+  shell: 'Shell',
+  powershell: 'PowerShell',
+  ps1: 'PowerShell',
+  markdown: 'Markdown',
+  md: 'Markdown',
+  docker: 'Dockerfile',
+  dockerfile: 'Dockerfile',
+  graphql: 'GraphQL',
+  vue: 'Vue',
+  svelte: 'Svelte',
 };
 
 function CodeBlock({ language, value }: { language: string; value: string }) {
@@ -44,34 +126,52 @@ function CodeBlock({ language, value }: { language: string; value: string }) {
     return <MermaidDiagram chart={value} className="my-4" />;
   }
 
+  const displayLanguage = languageLabels[language?.toLowerCase()] || language?.toUpperCase() || 'TEXT';
+  const lineCount = value.split('\n').length;
+
   return (
-    <div className="relative group my-4">
-      <div className="absolute right-2 top-2 z-10">
-        <button
-          onClick={handleCopy}
-          className="glass-button px-2 py-1 rounded-lg text-xs flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
-        >
-          {copied ? <Check size={12} /> : <Copy size={12} />}
-          {copied ? 'Copied' : 'Copy'}
-        </button>
-      </div>
-      {language && (
-        <div className="absolute left-3 top-0 transform -translate-y-1/2">
-          <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-remembra-accent-primary/20 text-remembra-accent-primary border border-remembra-accent-primary/30">
-            {language}
+    <div className="relative group my-4 rounded-lg overflow-hidden">
+      {/* VS Code-like header bar */}
+      <div className="flex items-center justify-between px-4 py-2 bg-[#252526] border-b border-white/5">
+        <div className="flex items-center gap-2">
+          <Code2 size={14} className="text-remembra-accent-primary" />
+          <span className="text-xs font-medium text-remembra-text-secondary">
+            {displayLanguage}
           </span>
         </div>
-      )}
+        <div className="flex items-center gap-3">
+          <span className="text-[10px] text-remembra-text-muted">
+            {lineCount} {lineCount === 1 ? 'line' : 'lines'}
+          </span>
+          <button
+            onClick={handleCopy}
+            className="flex items-center gap-1.5 px-2 py-1 rounded text-xs bg-white/5 hover:bg-white/10 text-remembra-text-secondary hover:text-remembra-text-primary transition-all"
+          >
+            {copied ? <Check size={12} className="text-remembra-success" /> : <Copy size={12} />}
+            {copied ? 'Copied!' : 'Copy'}
+          </button>
+        </div>
+      </div>
+      
+      {/* Code content */}
       <SyntaxHighlighter
         language={language || 'text'}
-        style={customTheme}
-        showLineNumbers={value.split('\n').length > 3}
+        style={vscodeTheme}
+        showLineNumbers={lineCount > 3}
         wrapLines
+        wrapLongLines
         lineNumberStyle={{
-          color: 'rgba(255, 255, 255, 0.3)',
-          minWidth: '2.5em',
-          paddingRight: '1em',
+          color: '#858585',
+          minWidth: '3em',
+          paddingRight: '1.5em',
           userSelect: 'none',
+          borderRight: '1px solid #404040',
+          marginRight: '1em',
+        }}
+        customStyle={{
+          margin: 0,
+          borderRadius: 0,
+          background: '#1E1E1E',
         }}
       >
         {value}

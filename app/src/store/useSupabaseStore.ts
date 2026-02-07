@@ -20,7 +20,7 @@ import {
   mockProfile
 } from '@/data/mockData';
 
-export type Screen = 'dashboard' | 'calendar' | 'review' | 'library' | 'create' | 'ai-tools' | 'stats' | 'test' | 'auth';
+export type Screen = 'dashboard' | 'calendar' | 'review' | 'library' | 'create' | 'ai-tools' | 'stats' | 'profile' | 'test' | 'auth';
 
 interface AuthState {
   user: User | null;
@@ -276,15 +276,23 @@ export const useStore = create<AppState>()(persist((set, get) => ({
     if (!currentItem) return;
     
     try {
-      // Update item in Supabase
+      // Update item in Supabase (may return null if auto-deleted after 7-day review)
       const updatedItem = await memoryItemService.completeReview(currentItem.id, performance);
       
       // Update local state
-      set(state => ({
-        memoryItems: state.memoryItems.map(item =>
-          item.id === currentItem.id ? updatedItem : item
-        ),
-      }));
+      if (updatedItem) {
+        // Item was updated
+        set(state => ({
+          memoryItems: state.memoryItems.map(item =>
+            item.id === currentItem.id ? updatedItem : item
+          ),
+        }));
+      } else {
+        // Item was auto-deleted after 7-day review
+        set(state => ({
+          memoryItems: state.memoryItems.filter(item => item.id !== currentItem.id),
+        }));
+      }
       
       // Record streak and update profile
       await streakService.recordReviewCompletion();

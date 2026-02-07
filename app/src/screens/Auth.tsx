@@ -312,11 +312,11 @@ export function Auth() {
               
               <p className="text-xs text-remembra-text-muted text-center mt-2">
                 By signing in with Google, you agree to our{' '}
-                <a href="/TERMS_OF_SERVICE.md" target="_blank" rel="noopener noreferrer" className="text-remembra-accent-primary hover:underline">
+                <a href="/docs/TERMS_OF_SERVICE.md" target="_blank" rel="noopener noreferrer" className="text-remembra-accent-primary hover:underline">
                   Terms
                 </a>
                 {' '}and{' '}
-                <a href="/PRIVACY_POLICY.md" target="_blank" rel="noopener noreferrer" className="text-remembra-accent-primary hover:underline">
+                <a href="/docs/PRIVACY_POLICY.md" target="_blank" rel="noopener noreferrer" className="text-remembra-accent-primary hover:underline">
                   Privacy Policy
                 </a>
               </p>
@@ -419,11 +419,11 @@ export function Auth() {
                     />
                     <label htmlFor="terms" className="text-xs text-remembra-text-muted leading-relaxed cursor-pointer">
                       I agree to the{' '}
-                      <a href="/TERMS_OF_SERVICE.md" target="_blank" rel="noopener noreferrer" className="text-remembra-accent-primary hover:text-remembra-accent-secondary underline underline-offset-2">
+                      <a href="/docs/TERMS_OF_SERVICE.md" target="_blank" rel="noopener noreferrer" className="text-remembra-accent-primary hover:text-remembra-accent-secondary underline underline-offset-2">
                         Terms of Service
                       </a>
                       {' '}and{' '}
-                      <a href="/PRIVACY_POLICY.md" target="_blank" rel="noopener noreferrer" className="text-remembra-accent-primary hover:text-remembra-accent-secondary underline underline-offset-2">
+                      <a href="/docs/PRIVACY_POLICY.md" target="_blank" rel="noopener noreferrer" className="text-remembra-accent-primary hover:text-remembra-accent-secondary underline underline-offset-2">
                         Privacy Policy
                       </a>
                     </label>
@@ -444,7 +444,7 @@ export function Auth() {
                     Privacy Policy
                   </a>
                   <span className="text-remembra-text-muted/30">•</span>
-                  <a href="/TERMS_OF_SERVICE.md" target="_blank" rel="noopener noreferrer" className="text-remembra-text-muted hover:text-remembra-accent-primary transition-colors">
+                  <a href="/docs/TERMS_OF_SERVICE.md" target="_blank" rel="noopener noreferrer" className="text-remembra-text-muted hover:text-remembra-accent-primary transition-colors">
                     Terms of Service
                   </a>
                 </div>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useStore } from '@/store/useStore';
 import { 
   Target, 
@@ -6,11 +6,13 @@ import {
   Award,
   ChevronRight,
   Brain,
-  Clock
+  Clock,
+  Settings,
+  TrendingUp,
+  Calendar as CalendarIcon,
+  Zap
 } from 'lucide-react';
 import { 
-  LineChart, 
-  Line, 
   XAxis, 
   YAxis, 
   CartesianGrid, 
@@ -20,59 +22,160 @@ import {
   Pie,
   Cell,
   BarChart,
-  Bar
+  Bar,
+  AreaChart,
+  Area
 } from 'recharts';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 export function Stats() {
-  const { profile, memoryItems, categories, achievements } = useStore();
+  const { profile, memoryItems, categories, achievements, setScreen } = useStore();
   const [activeTab, setActiveTab] = useState('overview');
 
-  // Compute stats from store data
-  const statsData = {
-    current_streak: profile?.streak_count || 0,
-    longest_streak: profile?.streak_count || 0, // No separate longest_streak in profile
-    mastered_items: memoryItems.filter(i => i.status === 'mastered').length,
-    total_items: memoryItems.length,
-    average_accuracy: profile?.total_reviews ? Math.round(profile.total_reviews * 0.85) : 0, // Estimated
-    retention_curve: [
-      { day: 1, retention: 100 },
-      { day: 2, retention: 85 },
-      { day: 7, retention: 70 },
-      { day: 14, retention: 60 },
-      { day: 30, retention: 50 },
-    ],
-    category_breakdown: categories.map(c => ({
+  // Compute real stats from review history
+  const computedStats = useMemo(() => {
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now);
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    
+    // Collect all review history entries
+    const allReviews = memoryItems.flatMap(item => 
+      (item.review_history || []).map(review => ({
+        ...review,
+        itemId: item.id,
+        itemTitle: item.title,
+        categoryId: item.category_id
+      }))
+    );
+
+    // Reviews in last 30 days
+    const recentReviews = allReviews.filter(r => 
+      new Date(r.date) >= thirtyDaysAgo
+    );
+
+    // Calculate accuracy from performance
+    const goodReviews = recentReviews.filter(r => 
+      r.performance === 'medium' || r.performance === 'easy'
+    ).length;
+    const accuracy = recentReviews.length > 0 
+      ? Math.round((goodReviews / recentReviews.length) * 100) 
+      : 0;
+
+    // Calculate total study time (in hours)
+    const totalSeconds = recentReviews.reduce((sum, r) => 
+      sum + (r.time_spent_seconds || 0), 0
+    );
+    const studyHours = Math.round(totalSeconds / 3600 * 10) / 10;
+    const studyMinutes = Math.round(totalSeconds / 60);
+
+    // Generate heatmap data for last 84 days (12 weeks)
+    const heatmapData = [];
+    const reviewsByDate = new Map<string, number>();
+    allReviews.forEach(r => {
+      const date = r.date;
+      reviewsByDate.set(date, (reviewsByDate.get(date) || 0) + 1);
+    });
+    
+    // Find max reviews per day for scaling
+    const maxReviews = Math.max(1, ...Array.from(reviewsByDate.values()));
+    
+    for (let i = 83; i >= 0; i--) {
+      const date = new Date(now);
+      date.setDate(date.getDate() - i);
+      const dateStr = date.toISOString().split('T')[0];
+      const count = reviewsByDate.get(dateStr) || 0;
+      
+      // Calculate level based on review count
+      let level = 0;
+      if (count > 0) {
+        const ratio = count / maxReviews;
+        if (ratio >= 0.75) level = 4;
+        else if (ratio >= 0.5) level = 3;
+        else if (ratio >= 0.25) level = 2;
+        else level = 1;
+      }
+      
+      heatmapData.push({ 
+        date: dateStr, 
+        count, 
+        level,
+        dayOfWeek: date.toLocaleDateString('en-US', { weekday: 'short' })
+      });
+    }
+
+    // Weekly activity (last 7 days)
+    const dailyActivity = [];
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date(now);
+      date.setDate(date.getDate() - i);
+      const dateStr = date.toISOString().split('T')[0];
+      const count = reviewsByDate.get(dateStr) || 0;
+      dailyActivity.push({
+        day: date.toLocaleDateString('en-US', { weekday: 'short' }),
+        date: dateStr,
+        count
+      });
+    }
+
+    // Items per category (for pie chart)
+    const categoryBreakdown = categories.map(c => ({
       name: c.name,
       value: memoryItems.filter(i => i.category_id === c.id).length,
       color: c.color
-    })).filter(c => c.value > 0),
-    daily_activity: Array.from({ length: 7 }, (_, i) => {
-      const date = new Date();
-      date.setDate(date.getDate() - (6 - i));
-      return {
-        day: date.toLocaleDateString('en-US', { weekday: 'short' }),
-        reviews: Math.floor(Math.random() * 20) // Will be replaced with real data
-      };
-    })
-  };
+    })).filter(c => c.value > 0);
 
-  const generateHeatmapData = () => {
-    const data = [];
-    for (let i = 0; i < 84; i++) {
-      const intensity = Math.random();
-      let level = 0;
-      if (intensity > 0.8) level = 4;
-      else if (intensity > 0.6) level = 3;
-      else if (intensity > 0.3) level = 2;
-      else if (intensity > 0.1) level = 1;
-      
-      data.push({ level });
-    }
-    return data;
-  };
+    // Review progress over time (cumulative mastered items by date)
+    const progressData: { date: string; mastered: number; total: number }[] = [];
+    const sortedItems = [...memoryItems].sort((a, b) => 
+      new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    );
+    
+    let masteredCount = 0;
+    const seenDates = new Set<string>();
+    sortedItems.forEach(item => {
+      const date = new Date(item.created_at).toISOString().split('T')[0];
+      if (item.status === 'mastered') masteredCount++;
+      if (!seenDates.has(date)) {
+        seenDates.add(date);
+        progressData.push({ date, mastered: masteredCount, total: sortedItems.indexOf(item) + 1 });
+      }
+    });
 
-  const heatmapData = generateHeatmapData();
+    // Recent week stats comparison
+    const lastWeekStart = new Date(now);
+    lastWeekStart.setDate(lastWeekStart.getDate() - 7);
+    const twoWeeksAgo = new Date(now);
+    twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
+    
+    const thisWeekReviews = allReviews.filter(r => new Date(r.date) >= lastWeekStart).length;
+    const lastWeekReviews = allReviews.filter(r => {
+      const d = new Date(r.date);
+      return d >= twoWeeksAgo && d < lastWeekStart;
+    }).length;
+    
+    const weeklyChange = lastWeekReviews > 0 
+      ? Math.round(((thisWeekReviews - lastWeekReviews) / lastWeekReviews) * 100)
+      : thisWeekReviews > 0 ? 100 : 0;
+
+    return {
+      accuracy,
+      studyHours,
+      studyMinutes,
+      heatmapData,
+      dailyActivity,
+      categoryBreakdown,
+      progressData: progressData.slice(-30), // Last 30 data points
+      totalReviews: allReviews.length,
+      recentReviews: recentReviews.length,
+      weeklyChange,
+      thisWeekReviews,
+      avgDailyReviews: Math.round(recentReviews.length / 30 * 10) / 10
+    };
+  }, [memoryItems, categories]);
+
+  const masteredItems = memoryItems.filter(i => i.status === 'mastered').length;
+  const learningItems = memoryItems.filter(i => i.status === 'learning').length;
+  const reviewingItems = memoryItems.filter(i => i.status === 'reviewing').length;
 
   const getHeatmapColor = (level: number) => {
     const colors = [
@@ -85,11 +188,26 @@ export function Stats() {
     return colors[level];
   };
 
+  const formatStudyTime = () => {
+    if (computedStats.studyMinutes < 60) {
+      return `${computedStats.studyMinutes}m`;
+    }
+    return `${computedStats.studyHours}h`;
+  };
+
   return (
     <div className="bg-black lined-bg-subtle px-5 pt-6 pb-8">
-      <header className="mb-6">
-        <h1 className="text-2xl font-bold text-remembra-text-primary mb-1">Insights</h1>
-        <p className="text-remembra-text-muted">Track your learning progress</p>
+      <header className="mb-6 flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-remembra-text-primary mb-1">Insights</h1>
+          <p className="text-remembra-text-muted">Track your learning progress</p>
+        </div>
+        <button
+          onClick={() => setScreen('profile')}
+          className="w-10 h-10 rounded-xl bg-remembra-bg-secondary border border-white/5 flex items-center justify-center hover:bg-white/10 transition-colors"
+        >
+          <Settings size={20} className="text-remembra-text-muted" />
+        </button>
       </header>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -115,6 +233,30 @@ export function Stats() {
         </TabsList>
 
         <TabsContent value="overview" className="mt-0 space-y-6">
+          {/* Summary Stats Row */}
+          <div className="bg-gradient-to-r from-remembra-accent-primary/20 to-remembra-accent-secondary/20 rounded-2xl p-4 border border-remembra-accent-primary/20">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-xl bg-remembra-accent-primary/30 flex items-center justify-center">
+                  <TrendingUp size={24} className="text-remembra-accent-primary" />
+                </div>
+                <div>
+                  <p className="text-sm text-remembra-text-muted">This Week</p>
+                  <p className="text-2xl font-bold text-remembra-text-primary">{computedStats.thisWeekReviews} reviews</p>
+                </div>
+              </div>
+              {computedStats.weeklyChange !== 0 && (
+                <div className={`px-3 py-1.5 rounded-full text-sm font-medium ${
+                  computedStats.weeklyChange > 0 
+                    ? 'bg-remembra-success/20 text-remembra-success' 
+                    : 'bg-remembra-error/20 text-remembra-error'
+                }`}>
+                  {computedStats.weeklyChange > 0 ? '+' : ''}{computedStats.weeklyChange}%
+                </div>
+              )}
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div className="bg-remembra-bg-secondary rounded-2xl p-4 border border-white/5">
               <div className="flex items-center gap-2 mb-2">
@@ -124,10 +266,10 @@ export function Stats() {
                 <span className="text-xs text-remembra-text-muted">Current Streak</span>
               </div>
               <p className="text-2xl font-bold text-remembra-text-primary">
-                {statsData.current_streak} days
+                {profile?.streak_count || 0} days
               </p>
               <p className="text-xs text-remembra-text-muted mt-1">
-                Best: {statsData.longest_streak} days
+                {computedStats.totalReviews} total reviews
               </p>
             </div>
 
@@ -139,10 +281,10 @@ export function Stats() {
                 <span className="text-xs text-remembra-text-muted">Items Mastered</span>
               </div>
               <p className="text-2xl font-bold text-remembra-text-primary">
-                {statsData.mastered_items}
+                {masteredItems}
               </p>
               <p className="text-xs text-remembra-text-muted mt-1">
-                of {statsData.total_items} total
+                of {memoryItems.length} total
               </p>
             </div>
 
@@ -154,7 +296,7 @@ export function Stats() {
                 <span className="text-xs text-remembra-text-muted">Accuracy</span>
               </div>
               <p className="text-2xl font-bold text-remembra-text-primary">
-                {statsData.average_accuracy}%
+                {computedStats.accuracy}%
               </p>
               <p className="text-xs text-remembra-text-muted mt-1">
                 Last 30 days
@@ -169,11 +311,39 @@ export function Stats() {
                 <span className="text-xs text-remembra-text-muted">Study Time</span>
               </div>
               <p className="text-2xl font-bold text-remembra-text-primary">
-                24h
+                {formatStudyTime()}
               </p>
               <p className="text-xs text-remembra-text-muted mt-1">
-                This week
+                Last 30 days
               </p>
+            </div>
+          </div>
+
+          {/* Learning Status */}
+          <div className="bg-remembra-bg-secondary rounded-2xl p-5 border border-white/5">
+            <h3 className="font-semibold text-remembra-text-primary mb-4">Learning Status</h3>
+            <div className="flex gap-3">
+              <div className="flex-1 bg-remembra-bg-tertiary rounded-xl p-3 text-center">
+                <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center mx-auto mb-2">
+                  <Zap size={16} className="text-blue-500" />
+                </div>
+                <p className="text-lg font-bold text-remembra-text-primary">{learningItems}</p>
+                <p className="text-[10px] text-remembra-text-muted">Learning</p>
+              </div>
+              <div className="flex-1 bg-remembra-bg-tertiary rounded-xl p-3 text-center">
+                <div className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center mx-auto mb-2">
+                  <CalendarIcon size={16} className="text-purple-500" />
+                </div>
+                <p className="text-lg font-bold text-remembra-text-primary">{reviewingItems}</p>
+                <p className="text-[10px] text-remembra-text-muted">Reviewing</p>
+              </div>
+              <div className="flex-1 bg-remembra-bg-tertiary rounded-xl p-3 text-center">
+                <div className="w-8 h-8 rounded-full bg-remembra-success/20 flex items-center justify-center mx-auto mb-2">
+                  <Award size={16} className="text-remembra-success" />
+                </div>
+                <p className="text-lg font-bold text-remembra-text-primary">{masteredItems}</p>
+                <p className="text-[10px] text-remembra-text-muted">Mastered</p>
+              </div>
             </div>
           </div>
 
@@ -184,11 +354,11 @@ export function Stats() {
             </div>
             
             <div className="grid grid-cols-12 gap-1">
-              {heatmapData.map((day, index) => (
+              {computedStats.heatmapData.map((day, index) => (
                 <div
                   key={index}
-                  className={`aspect-square rounded-sm ${getHeatmapColor(day.level)}`}
-                  title={`Activity level: ${day.level}`}
+                  className={`aspect-square rounded-sm ${getHeatmapColor(day.level)} cursor-default`}
+                  title={`${day.date}: ${day.count} reviews`}
                 />
               ))}
             </div>
@@ -231,87 +401,112 @@ export function Stats() {
                   </p>
                 </div>
               ))}
+              {achievements.filter(a => a.unlocked_at).length === 0 && (
+                <div className="flex-1 text-center py-6">
+                  <p className="text-sm text-remembra-text-muted">Complete reviews to earn badges</p>
+                </div>
+              )}
             </div>
           </div>
         </TabsContent>
 
         <TabsContent value="charts" className="mt-0 space-y-6">
           <div className="bg-remembra-bg-secondary rounded-2xl p-5 border border-white/5">
-            <h3 className="font-semibold text-remembra-text-primary mb-4">Memory Retention</h3>
+            <h3 className="font-semibold text-remembra-text-primary mb-4">Learning Progress</h3>
             <div className="h-48">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={statsData.retention_curve}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#22222E" />
-                  <XAxis 
-                    dataKey="date" 
-                    stroke="#71717A" 
-                    fontSize={12}
-                    tickLine={false}
-                  />
-                  <YAxis 
-                    stroke="#71717A" 
-                    fontSize={12}
-                    tickLine={false}
-                    domain={[0, 100]}
-                  />
-                  <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: '#1A1A24', 
-                      border: '1px solid #22222E',
-                      borderRadius: '12px'
-                    }}
-                    labelStyle={{ color: '#FAFAFA' }}
-                  />
-                  <Line 
-                    type="monotone" 
-                    dataKey="retention" 
-                    stroke="#FF8000" 
-                    strokeWidth={3}
-                    dot={{ fill: '#FF8000', strokeWidth: 0, r: 4 }}
-                    activeDot={{ r: 6, fill: '#E81224' }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
+              {computedStats.progressData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={computedStats.progressData}>
+                    <defs>
+                      <linearGradient id="colorMastered" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#FF8000" stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor="#FF8000" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#22222E" />
+                    <XAxis 
+                      dataKey="date" 
+                      stroke="#71717A" 
+                      fontSize={10}
+                      tickLine={false}
+                      tickFormatter={(value) => new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    />
+                    <YAxis 
+                      stroke="#71717A" 
+                      fontSize={12}
+                      tickLine={false}
+                    />
+                    <Tooltip 
+                      contentStyle={{ 
+                        backgroundColor: '#1A1A24', 
+                        border: '1px solid #22222E',
+                        borderRadius: '12px'
+                      }}
+                      labelStyle={{ color: '#FAFAFA' }}
+                      formatter={(value: number, name: string) => [value, name === 'mastered' ? 'Mastered' : 'Total']}
+                    />
+                    <Area 
+                      type="monotone" 
+                      dataKey="mastered" 
+                      stroke="#FF8000" 
+                      strokeWidth={2}
+                      fillOpacity={1}
+                      fill="url(#colorMastered)"
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex items-center justify-center">
+                  <p className="text-sm text-remembra-text-muted">Add items to see progress</p>
+                </div>
+              )}
             </div>
           </div>
 
           <div className="bg-remembra-bg-secondary rounded-2xl p-5 border border-white/5">
-            <h3 className="font-semibold text-remembra-text-primary mb-4">Time by Category</h3>
+            <h3 className="font-semibold text-remembra-text-primary mb-4">Items by Category</h3>
             <div className="h-48">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={statsData.category_breakdown}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={50}
-                    outerRadius={70}
-                    paddingAngle={5}
-                    dataKey="time_spent"
-                  >
-                    {statsData.category_breakdown.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: '#1A1A24', 
-                      border: '1px solid #22222E',
-                      borderRadius: '12px'
-                    }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
+              {computedStats.categoryBreakdown.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={computedStats.categoryBreakdown}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={50}
+                      outerRadius={70}
+                      paddingAngle={5}
+                      dataKey="value"
+                    >
+                      {computedStats.categoryBreakdown.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip 
+                      contentStyle={{ 
+                        backgroundColor: '#1A1A24', 
+                        border: '1px solid #22222E',
+                        borderRadius: '12px'
+                      }}
+                      formatter={(value: number, _name: string, props: any) => [value, props.payload.name]}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex items-center justify-center">
+                  <p className="text-sm text-remembra-text-muted">No items yet</p>
+                </div>
+              )}
             </div>
             
             <div className="flex flex-wrap gap-3 mt-4">
-              {statsData.category_breakdown.map((cat) => (
+              {computedStats.categoryBreakdown.map((cat) => (
                 <div key={cat.name} className="flex items-center gap-2">
                   <div 
                     className="w-3 h-3 rounded-full" 
                     style={{ backgroundColor: cat.color }}
                   />
-                  <span className="text-xs text-remembra-text-secondary">{cat.name}</span>
+                  <span className="text-xs text-remembra-text-secondary">{cat.name} ({cat.value})</span>
                 </div>
               ))}
             </div>
@@ -321,10 +516,10 @@ export function Stats() {
             <h3 className="font-semibold text-remembra-text-primary mb-4">Weekly Activity</h3>
             <div className="h-48">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={statsData.daily_activity}>
+                <BarChart data={computedStats.dailyActivity}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#22222E" vertical={false} />
                   <XAxis 
-                    dataKey="date" 
+                    dataKey="day" 
                     stroke="#71717A" 
                     fontSize={12}
                     tickLine={false}
@@ -333,6 +528,7 @@ export function Stats() {
                     stroke="#71717A" 
                     fontSize={12}
                     tickLine={false}
+                    allowDecimals={false}
                   />
                   <Tooltip 
                     contentStyle={{ 
@@ -340,6 +536,7 @@ export function Stats() {
                       border: '1px solid #22222E',
                       borderRadius: '12px'
                     }}
+                    formatter={(value: number) => [`${value} reviews`, 'Reviews']}
                   />
                   <Bar 
                     dataKey="count" 

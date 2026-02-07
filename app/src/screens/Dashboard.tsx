@@ -42,7 +42,10 @@ export function Dashboard() {
     <div className="bg-black lined-bg-subtle">
       <header className="px-5 pt-6 pb-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
+          <button 
+            onClick={() => setScreen('profile')} 
+            className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+          >
             <div className="relative">
               <div className="w-12 h-12 rounded-full bg-gradient-to-br from-remembra-accent-primary to-remembra-accent-secondary p-[2px]">
                 <img 
@@ -56,11 +59,11 @@ export function Dashboard() {
               </div>
             </div>
             
-            <div>
+            <div className="text-left">
               <p className="text-remembra-text-muted text-sm">{greeting}</p>
               <h1 className="text-lg font-semibold text-remembra-text-primary">{profile?.username || 'User'}</h1>
             </div>
-          </div>
+          </button>
           
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-1.5 bg-remembra-bg-secondary rounded-full px-3 py-1.5">

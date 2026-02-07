@@ -190,7 +190,8 @@ export const memoryItemService = {
   },
 
   // Complete a review and update spaced repetition
-  async completeReview(id: string, performance: Performance): Promise<MemoryItem> {
+  // Returns the updated item, or null if the item was auto-deleted after 7-day review
+  async completeReview(id: string, performance: Performance): Promise<MemoryItem | null> {
     // First, get the current item
     const item = await this.getMemoryItemById(id);
     if (!item) {
@@ -205,6 +206,14 @@ export const memoryItemService = {
       newStage = Math.min(item.review_stage + 2, 4);
     } else {
       newStage = Math.min(item.review_stage + 1, 4);
+    }
+    
+    // Auto-delete after completing 7-day review (stage 2)
+    // This happens when current stage is 2 and user progresses (not 'again')
+    if (item.review_stage === 2 && performance !== 'again') {
+      await this.deleteMemoryItem(id);
+      console.log(`Auto-deleted item "${item.title}" after 7-day review completion`);
+      return null;
     }
     
     // Calculate next review date

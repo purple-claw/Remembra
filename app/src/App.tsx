@@ -7,6 +7,7 @@ import { Library } from '@/screens/Library';
 import { Create } from '@/screens/Create';
 import { AIStudio } from '@/screens/AIStudio';
 import { Stats } from '@/screens/Stats';
+import { Profile } from '@/screens/Profile';
 import { DatabaseTest } from '@/screens/DatabaseTest';
 import { Auth } from '@/screens/Auth';
 import { BottomNav } from '@/components/BottomNav';
@@ -35,6 +36,8 @@ function AppContent() {
         return <AIStudio />;
       case 'stats':
         return <Stats />;
+      case 'profile':
+        return <Profile />;
       case 'test':
         return <DatabaseTest />;
       case 'auth':
