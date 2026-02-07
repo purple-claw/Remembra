@@ -55,7 +55,7 @@ export function Stats() {
 
     // Calculate accuracy from performance
     const goodReviews = recentReviews.filter(r => 
-      r.performance === 'medium' || r.performance === 'easy'
+      r.performance === 'good' || r.performance === 'easy'
     ).length;
     const accuracy = recentReviews.length > 0 
       ? Math.round((goodReviews / recentReviews.length) * 100) 
@@ -134,7 +134,7 @@ export function Stats() {
     const seenDates = new Set<string>();
     sortedItems.forEach(item => {
       const date = new Date(item.created_at).toISOString().split('T')[0];
-      if (item.status === 'mastered') masteredCount++;
+      if (item.status === 'completed') masteredCount++;
       if (!seenDates.has(date)) {
         seenDates.add(date);
         progressData.push({ date, mastered: masteredCount, total: sortedItems.indexOf(item) + 1 });
@@ -173,9 +173,9 @@ export function Stats() {
     };
   }, [memoryItems, categories]);
 
-  const masteredItems = memoryItems.filter(i => i.status === 'mastered').length;
-  const learningItems = memoryItems.filter(i => i.status === 'learning').length;
-  const reviewingItems = memoryItems.filter(i => i.status === 'reviewing').length;
+  const masteredItems = memoryItems.filter(i => i.status === 'completed').length;
+  const learningItems = memoryItems.filter(i => i.status === 'active').length;
+  const reviewingItems = memoryItems.filter(i => i.status === 'archived').length;
 
   const getHeatmapColor = (level: number) => {
     const colors = [

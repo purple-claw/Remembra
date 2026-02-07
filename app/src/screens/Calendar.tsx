@@ -393,9 +393,9 @@ export function Calendar() {
                   </div>
                   <div className={`
                     px-3 py-1 rounded-full text-xs font-medium
-                    ${item.status === 'mastered' ? 'bg-remembra-success/20 text-remembra-success' : ''}
-                    ${item.status === 'reviewing' ? 'bg-remembra-accent-primary/20 text-remembra-accent-primary' : ''}
-                    ${item.status === 'learning' ? 'bg-remembra-warning/20 text-remembra-warning' : ''}
+                    ${item.status === 'completed' ? 'bg-remembra-success/20 text-remembra-success' : ''}
+                    ${item.status === 'active' ? 'bg-remembra-accent-primary/20 text-remembra-accent-primary' : ''}
+                    ${item.status === 'archived' ? 'bg-remembra-warning/20 text-remembra-warning' : ''}
                   `}>
                     {item.status}
                   </div>

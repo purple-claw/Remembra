@@ -17,12 +17,14 @@ const navItems: NavItem[] = [
   { id: 'stats', icon: ChartLine, label: 'Stats' },
 ];
 
-export function BottomNav() {
+export function BottomNav({ visible = true }: { visible?: boolean }) {
   const { currentScreen, setScreen } = useStore();
 
   return (
     <nav 
-      className="flex-shrink-0 relative z-50"
+      className={`flex-shrink-0 relative z-50 transition-all duration-300 ease-in-out ${
+        visible ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0'
+      }`}
     >
       <div className="relative mx-auto max-w-lg px-4 pb-4 pt-2 bg-black/95 backdrop-blur-sm">
         <div className="glass-strong rounded-2xl shadow-lg shadow-black/40 overflow-hidden">

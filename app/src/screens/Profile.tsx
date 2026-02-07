@@ -45,7 +45,7 @@ export function Profile() {
   // Get user stats
   const stats = {
     totalItems: memoryItems.length,
-    masteredItems: memoryItems.filter(i => i.status === 'mastered').length,
+    masteredItems: memoryItems.filter(i => i.status === 'completed').length,
     categories: categories.length,
     streak: profile?.streak_count || 0,
     totalReviews: profile?.total_reviews || 0,
@@ -131,7 +131,7 @@ export function Profile() {
           </div>
           <div className="text-center">
             <p className="text-xl font-bold text-remembra-text-primary">{stats.masteredItems}</p>
-            <p className="text-xs text-remembra-text-muted">Mastered</p>
+            <p className="text-xs text-remembra-text-muted">Completed</p>
           </div>
           <div className="text-center">
             <p className="text-xl font-bold text-remembra-accent-primary">{stats.streak}</p>

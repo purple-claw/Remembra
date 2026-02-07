@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import type { MemoryItem, Category, Profile, Achievement, DaySchedule, Performance, ReviewStatus, NotificationPreferences, DailyReview } from '@/types';
-import { calculateNextReviewDate } from '@/types';
+import { processReviewCompletion, calculatePriority } from '@/types';
 import type { User, Session } from '@supabase/supabase-js';
 import { 
   authService,
@@ -11,6 +11,7 @@ import {
   achievementService,
   statsService,
   streakService,
+  notificationService,
   isSupabaseConfigured,
 } from '@/services';
 import { supabase } from '@/lib/supabase';
@@ -59,7 +60,7 @@ interface AppState extends AuthState {
   // Review Actions
   startReviewSession: (items?: MemoryItem[]) => void;
   nextReviewItem: () => void;
-  completeReview: (performance: Performance) => Promise<void>;
+  completeReview: (performance: Performance, timeSpentSeconds?: number) => Promise<void>;
   markReviewComplete: (itemId: string, date: string, performance: Performance) => Promise<void>;
   startReviewForDate: (itemId: string, date: string) => void;
   getReviewsForDate: (date: string) => DailyReview[];
@@ -133,6 +134,9 @@ export const useStore = create<AppState>()(persist((set, get) => ({
       // Load user data if authenticated
       if (user) {
         await get().loadUserData();
+        // Initialize notifications
+        await notificationService.createChannel();
+        await notificationService.initialize();
       }
       
       // Subscribe to auth changes
@@ -246,11 +250,13 @@ export const useStore = create<AppState>()(persist((set, get) => ({
     }
   },
   
-  // Review Session
+  // Review Session (smart priority sorting)
   startReviewSession: (items) => {
     const itemsToReview = items || get().getItemsDueToday();
+    // Sort by priority: most urgent first
+    const sorted = [...itemsToReview].sort((a, b) => calculatePriority(b) - calculatePriority(a));
     set({ 
-      reviewQueue: itemsToReview, 
+      reviewQueue: sorted, 
       currentReviewIndex: 0,
       currentScreen: 'review' 
     });
@@ -269,26 +275,25 @@ export const useStore = create<AppState>()(persist((set, get) => ({
     }
   },
   
-  completeReview: async (performance) => {
+  completeReview: async (performance, timeSpentSeconds) => {
     const { currentReviewIndex, reviewQueue } = get();
     const currentItem = reviewQueue[currentReviewIndex];
     
     if (!currentItem) return;
     
     try {
-      // Update item in Supabase (may return null if auto-deleted after 7-day review)
-      const updatedItem = await memoryItemService.completeReview(currentItem.id, performance);
+      // Update item in Supabase using the 1-4-7 engine
+      const updatedItem = await memoryItemService.completeReview(currentItem.id, performance, timeSpentSeconds);
       
       // Update local state
       if (updatedItem) {
-        // Item was updated
         set(state => ({
           memoryItems: state.memoryItems.map(item =>
             item.id === currentItem.id ? updatedItem : item
           ),
         }));
       } else {
-        // Item was auto-deleted after 7-day review
+        // Item was auto-deleted
         set(state => ({
           memoryItems: state.memoryItems.filter(item => item.id !== currentItem.id),
         }));
@@ -303,6 +308,19 @@ export const useStore = create<AppState>()(persist((set, get) => ({
       if (updatedProfile) {
         set({ profile: updatedProfile });
       }
+      
+      // Run lifecycle processing (archive/delete old items)
+      try {
+        await memoryItemService.processLifecycle();
+      } catch (e) {
+        console.warn('Lifecycle processing failed:', e);
+      }
+      
+      // Schedule next review notification
+      const refreshedItem = get().memoryItems.find(i => i.id === currentItem.id);
+      if (refreshedItem) {
+        notificationService.scheduleNextReview(refreshedItem).catch(console.warn);
+      }
     } catch (error) {
       console.error('Error completing review:', error);
     }
@@ -314,6 +332,8 @@ export const useStore = create<AppState>()(persist((set, get) => ({
   addMemoryItem: async (item) => {
     const newItem = await memoryItemService.createMemoryItem(item);
     set(state => ({ memoryItems: [newItem, ...state.memoryItems] }));
+    // Schedule review notifications for this item
+    notificationService.scheduleReviewNotifications(newItem).catch(console.warn);
     return newItem;
   },
   
@@ -371,7 +391,7 @@ export const useStore = create<AppState>()(persist((set, get) => ({
   getItemsDueToday: () => {
     const today = new Date().toISOString().split('T')[0];
     return get().memoryItems.filter(item => 
-      item.next_review_date <= today && item.status !== 'archived'
+      item.next_review_date <= today && item.status === 'active'
     );
   },
   
@@ -387,17 +407,12 @@ export const useStore = create<AppState>()(persist((set, get) => ({
     return get().categories.find(c => c.id === id);
   },
   
-  // Mark a review as complete from calendar
+  // Mark a review as complete from calendar (uses SM-2)
   markReviewComplete: async (itemId, date, performance) => {
     const item = get().memoryItems.find(i => i.id === itemId);
     if (!item) return;
     
-    const { nextDate, nextStage } = calculateNextReviewDate(item.review_stage, performance);
-    
-    let newStatus: ReviewStatus = item.status;
-    if (nextStage >= 3) newStatus = 'mastered';
-    else if (nextStage > 0) newStatus = 'reviewing';
-    else newStatus = 'learning';
+    const result = processReviewCompletion(item, performance);
     
     const updatedItem: MemoryItem = {
       ...item,
@@ -406,12 +421,23 @@ export const useStore = create<AppState>()(persist((set, get) => ({
         {
           date: date,
           performance,
-          time_spent_seconds: Math.floor(Math.random() * 120) + 60,
+          time_spent_seconds: 0,
+          interval: result.interval,
+          easiness_factor: result.easinessFactor,
         },
       ],
-      review_stage: nextStage,
-      next_review_date: nextDate,
-      status: newStatus,
+      easiness_factor: result.easinessFactor,
+      interval: result.interval,
+      repetition: result.repetition,
+      lapse_count: result.newLapseCount,
+      current_stage_index: result.repetition,
+      review_stage: result.repetition,
+      next_review_date: result.nextReviewDate,
+      status: result.nextStatus,
+      last_reviewed_at: new Date().toISOString(),
+      completed_at: result.completedAt,
+      archive_at: result.archiveAt,
+      delete_at: result.deleteAt,
       updated_at: new Date().toISOString(),
     };
     

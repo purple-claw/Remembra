@@ -106,7 +106,7 @@ export function Dashboard() {
               </div>
               
               <p className="text-white/80 text-sm mb-5">
-                Keep your memory sharp with the 1-4-7 system
+                Keep your memory sharp with adaptive repetition
               </p>
               
               <Button
@@ -185,7 +185,7 @@ export function Dashboard() {
                 <Layers size={18} className="text-remembra-success" />
                 <span className="text-sm text-remembra-text-secondary">Items Learned</span>
               </div>
-              <p className="text-2xl font-bold text-remembra-text-primary">{memoryItems.filter(i => i.status === 'mastered').length}</p>
+              <p className="text-2xl font-bold text-remembra-text-primary">{memoryItems.filter(i => i.status === 'completed').length}</p>
             </div>
           </div>
         </section>

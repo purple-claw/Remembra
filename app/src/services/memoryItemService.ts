@@ -1,10 +1,8 @@
 import { getSupabase, requireAuth } from '@/lib/supabase';
 import type { MemoryItem, Attachment, ReviewHistory, Performance, ReviewStatus, Difficulty, ContentType } from '@/types';
+import { processReviewCompletion } from '@/types';
 
-// Review intervals for 1-4-7 system
-const REVIEW_INTERVALS = [1, 4, 7, 30, 90];
-
-// Helper to transform database record to MemoryItem
+// Helper to transform database record to MemoryItem (handles legacy + SM-2 fields)
 const transformItem = (item: any): MemoryItem => ({
   id: item.id,
   user_id: item.user_id,
@@ -14,12 +12,30 @@ const transformItem = (item: any): MemoryItem => ({
   content_type: item.content_type as ContentType,
   attachments: (item.attachments || []) as Attachment[],
   difficulty: item.difficulty as Difficulty,
-  status: item.status as ReviewStatus,
+  status: (item.status === 'learning' || item.status === 'reviewing' || item.status === 'mastered')
+    ? 'active' as ReviewStatus
+    : item.status as ReviewStatus,
+  // SM-2 fields with sensible defaults for legacy items
+  easiness_factor: item.easiness_factor ?? 2.5,
+  interval: item.interval ?? 0,
+  repetition: item.repetition ?? 0,
+  lapse_count: item.lapse_count ?? 0,
   next_review_date: item.next_review_date,
-  review_stage: item.review_stage,
+  last_reviewed_at: item.last_reviewed_at,
   review_history: (item.review_history || []) as ReviewHistory[],
+  // Legacy compat
+  review_template: item.review_template || 'sm2',
+  current_stage_index: item.current_stage_index ?? item.review_stage ?? item.repetition ?? 0,
+  review_stage: item.review_stage ?? item.repetition ?? 0,
+  // Lifecycle
+  completed_at: item.completed_at,
+  archive_at: item.archive_at,
+  delete_at: item.delete_at,
+  // AI & notes
   ai_summary: item.ai_summary,
   ai_flowchart: item.ai_flowchart,
+  notes: item.notes,
+  is_bookmarked: item.is_bookmarked ?? false,
   created_at: item.created_at,
   updated_at: item.updated_at,
 });
@@ -189,61 +205,100 @@ export const memoryItemService = {
     return transformItem(data);
   },
 
-  // Complete a review and update spaced repetition
-  // Returns the updated item, or null if the item was auto-deleted after 7-day review
-  async completeReview(id: string, performance: Performance): Promise<MemoryItem | null> {
-    // First, get the current item
+  // ─── Complete a review using SM-2 Adaptive Algorithm ───
+  async completeReview(id: string, performance: Performance, timeSpentSeconds?: number): Promise<MemoryItem | null> {
     const item = await this.getMemoryItemById(id);
-    if (!item) {
-      throw new Error('Memory item not found');
-    }
-    
-    // Calculate new review stage
-    let newStage = item.review_stage;
-    if (performance === 'again') {
-      newStage = 0;
-    } else if (performance === 'easy') {
-      newStage = Math.min(item.review_stage + 2, 4);
-    } else {
-      newStage = Math.min(item.review_stage + 1, 4);
-    }
-    
-    // Auto-delete after completing 7-day review (stage 2)
-    // This happens when current stage is 2 and user progresses (not 'again')
-    if (item.review_stage === 2 && performance !== 'again') {
-      await this.deleteMemoryItem(id);
-      console.log(`Auto-deleted item "${item.title}" after 7-day review completion`);
-      return null;
-    }
-    
-    // Calculate next review date
-    const daysToAdd = REVIEW_INTERVALS[newStage];
-    const nextDate = new Date();
-    nextDate.setDate(nextDate.getDate() + daysToAdd);
-    
-    // Determine new status
-    let newStatus: ReviewStatus = item.status;
-    if (newStage >= 3) newStatus = 'mastered';
-    else if (newStage > 0) newStatus = 'reviewing';
-    else newStatus = 'learning';
-    
-    // Add to review history
+    if (!item) throw new Error('Memory item not found');
+
+    const result = processReviewCompletion(item, performance);
+
     const newReviewHistory: ReviewHistory[] = [
       ...item.review_history,
       {
         date: new Date().toISOString().split('T')[0],
         performance,
-        time_spent_seconds: Math.floor(Math.random() * 120) + 60, // TODO: Track actual time
+        time_spent_seconds: timeSpentSeconds || Math.floor(Math.random() * 120) + 30,
+        interval: result.interval,
+        easiness_factor: result.easinessFactor,
       },
     ];
-    
-    // Update the item
+
+    if (result.isGraduated) {
+      return this.updateMemoryItem(id, {
+        easiness_factor: result.easinessFactor,
+        interval: result.interval,
+        repetition: result.repetition,
+        lapse_count: result.newLapseCount,
+        current_stage_index: result.repetition,
+        review_stage: result.repetition,
+        next_review_date: '',
+        status: 'completed',
+        completed_at: result.completedAt,
+        archive_at: result.archiveAt,
+        delete_at: result.deleteAt,
+        last_reviewed_at: new Date().toISOString(),
+        review_history: newReviewHistory,
+      });
+    }
+
     return this.updateMemoryItem(id, {
-      review_stage: newStage,
-      next_review_date: nextDate.toISOString().split('T')[0],
-      status: newStatus,
+      easiness_factor: result.easinessFactor,
+      interval: result.interval,
+      repetition: result.repetition,
+      lapse_count: result.newLapseCount,
+      current_stage_index: result.repetition,
+      review_stage: result.repetition,
+      next_review_date: result.nextReviewDate,
+      status: 'active',
+      last_reviewed_at: new Date().toISOString(),
       review_history: newReviewHistory,
     });
+  },
+
+  // ─── Lifecycle: Process archived/deleted items ───
+  // Call this periodically (on app load, etc.)
+  async processLifecycle(): Promise<{ archived: number; deleted: number }> {
+    const supabase = getSupabase();
+    const userId = await requireAuth();
+    const today = new Date().toISOString().split('T')[0];
+    let archived = 0;
+    let deleted = 0;
+
+    // 1. Delete items past delete_at
+    const { data: toDelete } = await supabase
+      .from('memory_items')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('status', 'archived')
+      .lte('delete_at', today);
+
+    if (toDelete && toDelete.length > 0) {
+      const ids = toDelete.map(i => i.id);
+      await supabase.from('memory_items').delete().in('id', ids);
+      deleted = ids.length;
+    }
+
+    // 2. Archive items past archive_at
+    const { data: toArchive } = await supabase
+      .from('memory_items')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('status', 'completed')
+      .lte('archive_at', today);
+
+    if (toArchive && toArchive.length > 0) {
+      const ids = toArchive.map(i => i.id);
+      await supabase
+        .from('memory_items')
+        .update({ status: 'archived', updated_at: new Date().toISOString() })
+        .in('id', ids);
+      archived = ids.length;
+    }
+
+    if (archived > 0 || deleted > 0) {
+      console.log(`Lifecycle: archived ${archived}, deleted ${deleted} items`);
+    }
+    return { archived, deleted };
   },
 
   // Delete a memory item
@@ -268,7 +323,7 @@ export const memoryItemService = {
 
   // Restore an archived item
   async restoreMemoryItem(id: string): Promise<MemoryItem> {
-    return this.updateMemoryItem(id, { status: 'reviewing' });
+    return this.updateMemoryItem(id, { status: 'active' });
   },
 
   // Search memory items

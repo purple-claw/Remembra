@@ -90,14 +90,20 @@ export function Create() {
         type: contentType,
       })),
       difficulty,
-      status: 'learning' as const,
+      status: 'active' as const,
       next_review_date: (() => {
-        // Schedule for exactly 1 day from now (first review in the 1-4-7 system)
+        // Schedule for exactly 1 day from now (first review)
         const tomorrow = new Date();
         tomorrow.setDate(tomorrow.getDate() + 1);
         return tomorrow.toISOString().split('T')[0];
       })(),
       review_stage: 0,
+      review_template: 'sm2',
+      current_stage_index: 0,
+      easiness_factor: 2.5,
+      interval: 0,
+      repetition: 0,
+      lapse_count: 0,
       review_history: [],
       ai_summary: isGenerating ? '• AI summary will be generated\n• Key points extracted automatically\n• Review schedule created' : undefined,
     };

@@ -105,9 +105,9 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'learning': return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
-      case 'reviewing': return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
-      case 'mastered': return 'bg-green-500/20 text-green-400 border-green-500/30';
+      case 'active': return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
+      case 'completed': return 'bg-green-500/20 text-green-400 border-green-500/30';
+      case 'archived': return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
       default: return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
     }
   };
@@ -196,9 +196,9 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
             <div className="text-center">
               <div className="flex items-center justify-center gap-1 text-remembra-accent-secondary mb-1">
                 <Brain size={14} />
-                <span className="text-lg font-bold">{item.review_stage + 1}</span>
+                <span className="text-lg font-bold">{item.repetition}</span>
               </div>
-              <span className="text-[10px] text-remembra-text-muted">Stage</span>
+              <span className="text-[10px] text-remembra-text-muted">Reps</span>
             </div>
           </div>
         </div>
@@ -244,9 +244,9 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
                 </div>
                 
                 {item.content_type === 'code' ? (
-                  <pre className="bg-black/50 rounded-xl p-4 overflow-x-auto text-sm font-mono text-green-400 border border-white/5">
-                    <code>{item.content}</code>
-                  </pre>
+                  <div className="bg-black/50 rounded-xl overflow-hidden border border-white/5">
+                    <MarkdownRenderer content={`\`\`\`\n${item.content}\n\`\`\``} />
+                  </div>
                 ) : (
                   <div className="prose prose-invert prose-sm max-w-none">
                     <MarkdownRenderer content={item.content} />
@@ -466,7 +466,7 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
                             variant="outline" 
                             className={`text-[10px] ${
                               review.performance === 'easy' ? 'text-green-400 border-green-400/30' :
-                              review.performance === 'medium' ? 'text-yellow-400 border-yellow-400/30' :
+                              review.performance === 'good' ? 'text-yellow-400 border-yellow-400/30' :
                               'text-red-400 border-red-400/30'
                             }`}
                           >

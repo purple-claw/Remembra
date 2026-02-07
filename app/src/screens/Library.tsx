@@ -37,25 +37,23 @@ export function Library() {
 
   const statusTabs: { value: ReviewStatus | 'all'; label: string; count: number }[] = [
     { value: 'all', label: 'All', count: memoryItems.length },
-    { value: 'learning', label: 'Learning', count: memoryItems.filter(i => i.status === 'learning').length },
-    { value: 'reviewing', label: 'Reviewing', count: memoryItems.filter(i => i.status === 'reviewing').length },
-    { value: 'mastered', label: 'Mastered', count: memoryItems.filter(i => i.status === 'mastered').length },
+    { value: 'active', label: 'Active', count: memoryItems.filter(i => i.status === 'active').length },
+    { value: 'completed', label: 'Completed', count: memoryItems.filter(i => i.status === 'completed').length },
+    { value: 'archived', label: 'Archived', count: memoryItems.filter(i => i.status === 'archived').length },
   ];
 
   const getStatusIcon = (status: ReviewStatus) => {
     switch (status) {
-      case 'learning': return BookOpen;
-      case 'reviewing': return Brain;
-      case 'mastered': return CheckCircle2;
+      case 'active': return BookOpen;
+      case 'completed': return CheckCircle2;
       case 'archived': return Archive;
     }
   };
 
   const getStatusColor = (status: ReviewStatus) => {
     switch (status) {
-      case 'learning': return 'bg-remembra-warning/20 text-remembra-warning';
-      case 'reviewing': return 'bg-remembra-accent-primary/20 text-remembra-accent-primary';
-      case 'mastered': return 'bg-remembra-success/20 text-remembra-success';
+      case 'active': return 'bg-remembra-warning/20 text-remembra-warning';
+      case 'completed': return 'bg-remembra-success/20 text-remembra-success';
       case 'archived': return 'bg-remembra-text-muted/20 text-remembra-text-muted';
     }
   };
@@ -271,17 +269,17 @@ export function Library() {
         </div>
       )}
 
-      {filteredItems.some(item => item.status === 'reviewing') && (
+      {filteredItems.some(item => item.status === 'active') && (
         <div className="fixed bottom-24 left-5 right-5 z-40">
           <Button
             onClick={() => {
-              const itemsToReview = filteredItems.filter(item => item.status === 'reviewing');
+              const itemsToReview = filteredItems.filter(item => item.status === 'active');
               startReviewSession(itemsToReview);
             }}
             className="w-full gradient-primary py-6 rounded-2xl text-white font-semibold shadow-lg shadow-remembra-accent-primary/30"
           >
             <Brain size={20} className="mr-2" />
-            Quick Review ({filteredItems.filter(i => i.status === 'reviewing').length})
+            Quick Review ({filteredItems.filter(i => i.status === 'active').length})
           </Button>
         </div>
       )}

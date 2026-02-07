@@ -19,7 +19,7 @@ export function CategoryCard({ category, style }: CategoryCardProps) {
   const { getItemsByCategory } = useStore();
   const items = getItemsByCategory(category.id);
   const activeItems = items.filter(item => item.status !== 'archived').length;
-  const masteredItems = items.filter(item => item.status === 'mastered').length;
+  const masteredItems = items.filter(item => item.status === 'completed').length;
   const progressPercentage = activeItems > 0 ? Math.round((masteredItems / activeItems) * 100) : 0;
   
   const Icon = iconMap[category.icon] || Code;
