@@ -14,9 +14,13 @@ import { Toaster } from '@/components/ui/sonner';
 
 function AppContent() {
   const currentScreen = useStore(state => state.currentScreen);
+  const isAuthenticated = useStore(state => state.isAuthenticated);
+
+  // If not authenticated, always show auth screen
+  const activeScreen = isAuthenticated ? currentScreen : 'auth';
 
   const renderScreen = () => {
-    switch (currentScreen) {
+    switch (activeScreen) {
       case 'dashboard':
         return <Dashboard />;
       case 'calendar':
@@ -40,7 +44,7 @@ function AppContent() {
     }
   };
 
-  const showNav = currentScreen !== 'review' && currentScreen !== 'create' && currentScreen !== 'auth';
+  const showNav = isAuthenticated && activeScreen !== 'review' && activeScreen !== 'create' && activeScreen !== 'auth';
 
   return (
     <div className="h-screen bg-black text-remembra-text-primary font-sans flex flex-col overflow-hidden">

@@ -46,9 +46,22 @@ export function Calendar() {
     return days;
   };
 
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  // Get items for a specific date - overdue items appear on today
+  const getItemsForDateStr = (dateStr: string) => {
+    return memoryItems.filter(item => {
+      if (item.status === 'archived') return false;
+      if (item.next_review_date === dateStr) return true;
+      // Show overdue items on today
+      if (dateStr === todayStr && item.next_review_date < todayStr) return true;
+      return false;
+    });
+  };
+
   const getDayData = (day: number) => {
     const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    const itemsForDay = memoryItems.filter(item => item.next_review_date === dateStr);
+    const itemsForDay = getItemsForDateStr(dateStr);
     if (itemsForDay.length === 0) return null;
     return {
       date: dateStr,
@@ -79,23 +92,22 @@ export function Calendar() {
   const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
   const getItemsForDate = (date: Date) => {
-    const dateStr = date.toISOString().split('T')[0];
-    return memoryItems.filter(item => item.next_review_date === dateStr && item.status !== 'archived');
+    const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    return getItemsForDateStr(dateStr);
   };
 
   const getReviewStatus = (item: MemoryItem, dateStr: string) => {
-    const today = new Date().toISOString().split('T')[0];
     const hasReviewed = item.review_history.some(r => r.date === dateStr);
     
     if (hasReviewed) return 'completed';
-    if (dateStr < today) return 'overdue';
-    if (dateStr === today) return 'pending';
+    if (item.next_review_date < todayStr) return 'overdue';
+    if (item.next_review_date === todayStr || dateStr === todayStr) return 'pending';
     return 'scheduled';
   };
 
   const handleQuickReview = async (item: MemoryItem, performance: Performance) => {
-    const dateStr = selectedDate?.toISOString().split('T')[0];
-    if (!dateStr) return;
+    if (!selectedDate) return;
+    const dateStr = `${selectedDate.getFullYear()}-${String(selectedDate.getMonth() + 1).padStart(2, '0')}-${String(selectedDate.getDate()).padStart(2, '0')}`;
     
     await markReviewComplete(item.id, dateStr, performance);
     toast.success(`Review marked as ${performance}!`);
@@ -208,7 +220,7 @@ export function Calendar() {
               <div className="space-y-3">
                 {getItemsForDate(selectedDate).length > 0 ? (
                   getItemsForDate(selectedDate).map(item => {
-                    const dateStr = selectedDate.toISOString().split('T')[0];
+                    const dateStr = `${selectedDate.getFullYear()}-${String(selectedDate.getMonth() + 1).padStart(2, '0')}-${String(selectedDate.getDate()).padStart(2, '0')}`;
                     const status = getReviewStatus(item, dateStr);
                     const isReviewing = reviewingItem?.id === item.id;
                     
@@ -317,12 +329,10 @@ export function Calendar() {
               });
 
               return weekDays.map((day) => {
-                const dateStr = day.toISOString().split('T')[0];
-                const dayItems = memoryItems.filter(
-                  item => item.next_review_date === dateStr && item.status !== 'archived'
-                );
+                const dateStr = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+                const dayItems = getItemsForDateStr(dateStr);
                 const dayName = weekDayNames[day.getDay()];
-                const isToday = dateStr === today.toISOString().split('T')[0];
+                const isToday = dateStr === todayStr;
 
                 return (
                   <div key={dateStr} className="bg-remembra-bg-secondary rounded-2xl p-4 border border-white/5">

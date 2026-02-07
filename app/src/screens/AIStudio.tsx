@@ -430,19 +430,48 @@ export function AIStudio() {
 
   return (
     <div className="bg-black lined-bg-subtle px-5 pt-6 pb-8">
-      <header className="mb-6">
-        <h1 className="text-2xl font-bold text-remembra-text-primary mb-1">AI Studio</h1>
-        <p className="text-remembra-text-muted">Supercharge your learning with AI</p>
+      <header className="mb-8">
+        <div className="flex items-center gap-3 mb-2">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-remembra-accent-primary to-remembra-accent-secondary flex items-center justify-center">
+            <Sparkles size={20} className="text-white" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-remembra-text-primary">AI Studio</h1>
+            <p className="text-sm text-remembra-text-muted">Supercharge your learning with AI</p>
+          </div>
+        </div>
       </header>
 
-      <div className="grid grid-cols-2 gap-4">
-        {mockAITools.map((tool, index) => {
+      {/* Featured tool - Chat */}
+      <button
+        onClick={() => handleToolSelect('chat')}
+        className="w-full mb-6 relative overflow-hidden rounded-2xl p-6 text-left transition-all hover:scale-[1.01] active:scale-[0.99]"
+        style={{
+          background: 'linear-gradient(135deg, #FF8000 0%, #FF4500 50%, #E81224 100%)',
+        }}
+      >
+        <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
+        <div className="relative z-10 flex items-center gap-4">
+          <div className="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center flex-shrink-0">
+            <MessageCircle size={28} className="text-white" />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-lg font-bold text-white mb-0.5">Study Buddy</h3>
+            <p className="text-sm text-white/70">Chat with your AI tutor about anything</p>
+          </div>
+          <ArrowLeft size={20} className="text-white/50 rotate-180" />
+        </div>
+      </button>
+
+      {/* Tool grid */}
+      <h2 className="text-sm font-semibold text-remembra-text-muted uppercase tracking-wider mb-4">AI Tools</h2>
+      <div className="grid grid-cols-2 gap-3 mb-8">
+        {mockAITools.filter(t => t.id !== 'chat').map((tool, index) => {
           const icons: Record<string, React.ElementType> = {
             summarizer: FileText,
             flowchart: GitBranch,
             quiz: HelpCircle,
             'memory-palace': Home,
-            chat: MessageCircle,
           };
           const Icon = icons[tool.id] || Sparkles;
           
@@ -450,47 +479,60 @@ export function AIStudio() {
             <button
               key={tool.id}
               onClick={() => handleToolSelect(tool.id)}
-              className="bg-remembra-bg-secondary rounded-2xl p-5 border border-white/5 text-left card-press hover:border-white/10 transition-colors animate-slide-up"
-              style={{ animationDelay: `${index * 50}ms` }}
+              className="group bg-remembra-bg-secondary/80 backdrop-blur-sm rounded-2xl p-5 border border-white/5 text-left transition-all hover:border-white/10 hover:bg-remembra-bg-secondary active:scale-[0.97] animate-slide-up"
+              style={{ animationDelay: `${index * 60}ms` }}
             >
               <div 
-                className="w-12 h-12 rounded-xl flex items-center justify-center mb-4"
-                style={{ backgroundColor: `${tool.color}20` }}
+                className="w-11 h-11 rounded-xl flex items-center justify-center mb-3 transition-transform group-hover:scale-110"
+                style={{ backgroundColor: `${tool.color}15` }}
               >
-                <Icon size={24} style={{ color: tool.color }} />
+                <Icon size={22} style={{ color: tool.color }} />
               </div>
               
-              <h3 className="font-semibold text-remembra-text-primary mb-1">{tool.name}</h3>
-              <p className="text-xs text-remembra-text-muted">{tool.description}</p>
+              <h3 className="font-semibold text-sm text-remembra-text-primary mb-1">{tool.name}</h3>
+              <p className="text-xs text-remembra-text-muted leading-relaxed">{tool.description}</p>
             </button>
           );
         })}
       </div>
 
-      <div className="mt-8">
-        <h2 className="text-lg font-semibold text-remembra-text-primary mb-4">Recent Activity</h2>
-        <div className="space-y-3">
-          {[
-            { tool: 'Smart Summary', item: 'React Hooks Deep Dive', time: '2 hours ago' },
-            { tool: 'Quiz Generator', item: 'Spanish Verbs', time: 'Yesterday' },
-            { tool: 'Visual Mapper', item: 'Photosynthesis Process', time: '2 days ago' },
-          ].map((activity, index) => (
-            <div 
-              key={index}
-              className="flex items-center gap-4 p-4 bg-remembra-bg-secondary rounded-2xl border border-white/5"
-            >
-              <div className="w-10 h-10 rounded-xl bg-remembra-accent-primary/10 flex items-center justify-center">
-                <Sparkles size={18} className="text-remembra-accent-primary" />
-              </div>
-              <div className="flex-1">
-                <p className="text-sm text-remembra-text-primary">{activity.tool}</p>
-                <p className="text-xs text-remembra-text-muted">{activity.item}</p>
-              </div>
-              <span className="text-xs text-remembra-text-muted">{activity.time}</span>
-            </div>
-          ))}
+      {/* Quick tips section */}
+      {memoryItems.length > 0 && (
+        <div>
+          <h2 className="text-sm font-semibold text-remembra-text-muted uppercase tracking-wider mb-4">Quick Actions</h2>
+          <div className="space-y-2">
+            {memoryItems.slice(0, 3).map((item) => (
+              <button
+                key={item.id}
+                onClick={() => {
+                  setInputText(item.content);
+                  handleToolSelect('summarizer');
+                }}
+                className="w-full flex items-center gap-3 p-3.5 bg-remembra-bg-secondary/60 rounded-xl border border-white/5 text-left transition-all hover:bg-remembra-bg-secondary"
+              >
+                <div className="w-9 h-9 rounded-lg bg-remembra-accent-primary/10 flex items-center justify-center flex-shrink-0">
+                  <Wand2 size={16} className="text-remembra-accent-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-remembra-text-primary truncate">{item.title}</p>
+                  <p className="text-xs text-remembra-text-muted">Tap to summarize</p>
+                </div>
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
+
+      {memoryItems.length === 0 && (
+        <div className="text-center py-8">
+          <div className="w-14 h-14 mx-auto mb-3 rounded-full bg-remembra-bg-secondary flex items-center justify-center">
+            <Sparkles size={24} className="text-remembra-text-muted" />
+          </div>
+          <p className="text-sm text-remembra-text-muted">
+            Add memory items to unlock quick AI actions
+          </p>
+        </div>
+      )}
     </div>
   );
 }

@@ -15,13 +15,9 @@ import {
 } from '@/services';
 import { supabase } from '@/lib/supabase';
 
-// For fallback when not authenticated
+// For fallback profile
 import { 
-  mockMemoryItems, 
-  mockCategories, 
-  mockProfile, 
-  mockAchievements, 
-  mockCalendarData
+  mockProfile
 } from '@/data/mockData';
 
 export type Screen = 'dashboard' | 'calendar' | 'review' | 'library' | 'create' | 'ai-tools' | 'stats' | 'test' | 'auth';
@@ -97,15 +93,15 @@ export const useStore = create<AppState>()(persist((set, get) => ({
   isLoading: true,
   
   // Navigation
-  currentScreen: 'dashboard',
+  currentScreen: 'auth',
   setScreen: (screen) => set({ currentScreen: screen }),
   
-  // Initial Data (will be replaced with real data after auth or loaded from localStorage)
-  profile: mockProfile,
+  // Initial Data - empty until authenticated and loaded from Supabase
+  profile: null,
   categories: [],
   memoryItems: [],
-  achievements: mockAchievements,
-  calendarData: mockCalendarData,
+  achievements: [],
+  calendarData: [],
   dailyReviews: [],
   
   // Review State
@@ -115,10 +111,10 @@ export const useStore = create<AppState>()(persist((set, get) => ({
   // Initialize app and auth state
   initialize: async () => {
     try {
-      // If Supabase is not configured, just use mock data
+      // If Supabase is not configured, show auth screen
       if (!isSupabaseConfigured || !supabase) {
-        console.log('Running in demo mode with mock data');
-        set({ isLoading: false });
+        console.log('Supabase not configured. Please set environment variables.');
+        set({ isLoading: false, currentScreen: 'auth' });
         return;
       }
       
@@ -131,6 +127,7 @@ export const useStore = create<AppState>()(persist((set, get) => ({
         session, 
         isAuthenticated: !!user,
         isLoading: false,
+        currentScreen: user ? 'dashboard' : 'auth',
       });
       
       // Load user data if authenticated
@@ -148,15 +145,26 @@ export const useStore = create<AppState>()(persist((set, get) => ({
         });
         
         if (event === 'SIGNED_IN' && user) {
+          set({ currentScreen: 'dashboard' });
           await get().loadUserData();
         } else if (event === 'SIGNED_OUT') {
-          // Keep local demo data when signed out (don't reset to empty)
-          // The persist middleware will restore from localStorage
+          set({
+            currentScreen: 'auth',
+            profile: null,
+            categories: [],
+            memoryItems: [],
+            achievements: [],
+            calendarData: [],
+            dailyReviews: [],
+          });
+        } else if (event === 'PASSWORD_RECOVERY') {
+          // User clicked password reset link - show update password screen
+          set({ currentScreen: 'auth' });
         }
       });
     } catch (error) {
       console.error('Error initializing app:', error);
-      set({ isLoading: false });
+      set({ isLoading: false, currentScreen: 'auth' });
     }
   },
   
@@ -179,7 +187,13 @@ export const useStore = create<AppState>()(persist((set, get) => ({
       user: null,
       session: null,
       isAuthenticated: false,
-      currentScreen: 'dashboard',
+      currentScreen: 'auth',
+      profile: null,
+      categories: [],
+      memoryItems: [],
+      achievements: [],
+      calendarData: [],
+      dailyReviews: [],
     });
   },
   
@@ -215,14 +229,13 @@ export const useStore = create<AppState>()(persist((set, get) => ({
       
       set({
         profile: profile || mockProfile,
-        categories: categories.length > 0 ? categories : mockCategories,
-        memoryItems: memoryItems.length > 0 ? memoryItems : mockMemoryItems,
-        achievements: achievements.length > 0 ? achievements : mockAchievements,
+        categories: categories,
+        memoryItems: memoryItems,
+        achievements: achievements,
         calendarData,
       });
     } catch (error) {
       console.error('Error loading user data:', error);
-      // Keep mock data on error
     }
   },
   
@@ -257,66 +270,30 @@ export const useStore = create<AppState>()(persist((set, get) => ({
   },
   
   completeReview: async (performance) => {
-    const { currentReviewIndex, reviewQueue, isAuthenticated, profile } = get();
+    const { currentReviewIndex, reviewQueue } = get();
     const currentItem = reviewQueue[currentReviewIndex];
     
     if (!currentItem) return;
     
     try {
-      if (isAuthenticated) {
-        // Update item in Supabase
-        const updatedItem = await memoryItemService.completeReview(currentItem.id, performance);
-        
-        // Update local state
-        set(state => ({
-          memoryItems: state.memoryItems.map(item =>
-            item.id === currentItem.id ? updatedItem : item
-          ),
-        }));
-        
-        // Record streak and update profile
-        await streakService.recordReviewCompletion();
-        await profileService.incrementTotalReviews();
-        
-        // Refresh profile
-        const updatedProfile = await profileService.getProfile();
-        if (updatedProfile) {
-          set({ profile: updatedProfile });
-        }
-      } else {
-        // Local-only update for unauthenticated users (demo mode)
-        const { nextDate, nextStage } = calculateNextReviewDate(currentItem.review_stage, performance);
-        
-        let newStatus: ReviewStatus = currentItem.status;
-        if (nextStage >= 3) newStatus = 'mastered';
-        else if (nextStage > 0) newStatus = 'reviewing';
-        else newStatus = 'learning';
-        
-        const updatedItem: MemoryItem = {
-          ...currentItem,
-          review_history: [
-            ...currentItem.review_history,
-            {
-              date: new Date().toISOString().split('T')[0],
-              performance,
-              time_spent_seconds: Math.floor(Math.random() * 120) + 60,
-            },
-          ],
-          review_stage: nextStage,
-          next_review_date: nextDate,
-          status: newStatus,
-          updated_at: new Date().toISOString(),
-        };
-        
-        set(state => ({
-          memoryItems: state.memoryItems.map(item =>
-            item.id === currentItem.id ? updatedItem : item
-          ),
-          profile: profile ? {
-            ...profile,
-            total_reviews: profile.total_reviews + 1,
-          } : null,
-        }));
+      // Update item in Supabase
+      const updatedItem = await memoryItemService.completeReview(currentItem.id, performance);
+      
+      // Update local state
+      set(state => ({
+        memoryItems: state.memoryItems.map(item =>
+          item.id === currentItem.id ? updatedItem : item
+        ),
+      }));
+      
+      // Record streak and update profile
+      await streakService.recordReviewCompletion();
+      await profileService.incrementTotalReviews();
+      
+      // Refresh profile
+      const updatedProfile = await profileService.getProfile();
+      if (updatedProfile) {
+        set({ profile: updatedProfile });
       }
     } catch (error) {
       console.error('Error completing review:', error);
@@ -327,52 +304,22 @@ export const useStore = create<AppState>()(persist((set, get) => ({
   
   // Memory Item CRUD
   addMemoryItem: async (item) => {
-    const { isAuthenticated } = get();
-    
-    if (isAuthenticated) {
-      const newItem = await memoryItemService.createMemoryItem(item);
-      set(state => ({ memoryItems: [newItem, ...state.memoryItems] }));
-      return newItem;
-    } else {
-      // Demo mode - local only
-      const newItem: MemoryItem = {
-        ...item,
-        id: Math.random().toString(36).substr(2, 9),
-        user_id: '1',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-      set(state => ({ memoryItems: [newItem, ...state.memoryItems] }));
-      return newItem;
-    }
+    const newItem = await memoryItemService.createMemoryItem(item);
+    set(state => ({ memoryItems: [newItem, ...state.memoryItems] }));
+    return newItem;
   },
   
   updateMemoryItem: async (id, updates) => {
-    const { isAuthenticated } = get();
-    
-    if (isAuthenticated) {
-      const updatedItem = await memoryItemService.updateMemoryItem(id, updates);
-      set(state => ({
-        memoryItems: state.memoryItems.map(item =>
-          item.id === id ? updatedItem : item
-        ),
-      }));
-    } else {
-      set(state => ({
-        memoryItems: state.memoryItems.map(item =>
-          item.id === id ? { ...item, ...updates, updated_at: new Date().toISOString() } : item
-        ),
-      }));
-    }
+    const updatedItem = await memoryItemService.updateMemoryItem(id, updates);
+    set(state => ({
+      memoryItems: state.memoryItems.map(item =>
+        item.id === id ? updatedItem : item
+      ),
+    }));
   },
   
   deleteMemoryItem: async (id) => {
-    const { isAuthenticated } = get();
-    
-    if (isAuthenticated) {
-      await memoryItemService.deleteMemoryItem(id);
-    }
-    
+    await memoryItemService.deleteMemoryItem(id);
     set(state => ({
       memoryItems: state.memoryItems.filter(item => item.id !== id),
     }));
@@ -380,50 +327,22 @@ export const useStore = create<AppState>()(persist((set, get) => ({
   
   // Category CRUD
   addCategory: async (category) => {
-    const { isAuthenticated } = get();
-    
-    if (isAuthenticated) {
-      const newCategory = await categoryService.createCategory(category);
-      set(state => ({ categories: [...state.categories, newCategory] }));
-      return newCategory;
-    } else {
-      const newCategory: Category = {
-        ...category,
-        id: Math.random().toString(36).substr(2, 9),
-        user_id: '1',
-        created_at: new Date().toISOString(),
-      };
-      set(state => ({ categories: [...state.categories, newCategory] }));
-      return newCategory;
-    }
+    const newCategory = await categoryService.createCategory(category);
+    set(state => ({ categories: [...state.categories, newCategory] }));
+    return newCategory;
   },
   
   updateCategory: async (id, updates) => {
-    const { isAuthenticated } = get();
-    
-    if (isAuthenticated) {
-      const updatedCategory = await categoryService.updateCategory(id, updates);
-      set(state => ({
-        categories: state.categories.map(cat =>
-          cat.id === id ? updatedCategory : cat
-        ),
-      }));
-    } else {
-      set(state => ({
-        categories: state.categories.map(cat =>
-          cat.id === id ? { ...cat, ...updates } : cat
-        ),
-      }));
-    }
+    const updatedCategory = await categoryService.updateCategory(id, updates);
+    set(state => ({
+      categories: state.categories.map(cat =>
+        cat.id === id ? updatedCategory : cat
+      ),
+    }));
   },
   
   deleteCategory: async (id) => {
-    const { isAuthenticated } = get();
-    
-    if (isAuthenticated) {
-      await categoryService.deleteCategory(id);
-    }
-    
+    await categoryService.deleteCategory(id);
     set(state => ({
       categories: state.categories.filter(cat => cat.id !== id),
     }));
@@ -431,25 +350,13 @@ export const useStore = create<AppState>()(persist((set, get) => ({
   
   // Profile Updates
   updateProfile: async (updates) => {
-    const { isAuthenticated, profile } = get();
-    
-    if (isAuthenticated) {
-      const updatedProfile = await profileService.updateProfile(updates);
-      set({ profile: updatedProfile });
-    } else if (profile) {
-      set({ profile: { ...profile, ...updates } });
-    }
+    const updatedProfile = await profileService.updateProfile(updates);
+    set({ profile: updatedProfile });
   },
   
   updateNotificationPreferences: async (prefs) => {
-    const { isAuthenticated, profile } = get();
-    
-    if (isAuthenticated) {
-      const updatedProfile = await profileService.updateNotificationPreferences(prefs);
-      set({ profile: updatedProfile });
-    } else if (profile) {
-      set({ profile: { ...profile, notification_preferences: prefs } });
-    }
+    const updatedProfile = await profileService.updateNotificationPreferences(prefs);
+    set({ profile: updatedProfile });
   },
   
   // Helper functions
@@ -550,9 +457,7 @@ export const useStore = create<AppState>()(persist((set, get) => ({
   name: 'remembra-storage',
   storage: createJSONStorage(() => localStorage),
   partialize: (state) => ({
-    // Only persist data when NOT authenticated (demo mode)
-    categories: state.isAuthenticated ? [] : state.categories,
-    memoryItems: state.isAuthenticated ? [] : state.memoryItems,
-    profile: state.isAuthenticated ? mockProfile : state.profile,
+    // Persist auth-related navigation state only
+    currentScreen: state.isAuthenticated ? state.currentScreen : 'auth',
   }),
 }));
