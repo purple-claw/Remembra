@@ -7,10 +7,12 @@
 - npm
 
 ### For Android APK
-- Java JDK 17+
+- **Java JDK 17 or 21** (LTS versions recommended, Java 25+ not yet fully supported)
 - Android Studio with SDK 34+
 - Android SDK Build-Tools
 - Android SDK Platform-Tools
+
+**Important:** If you have Java 25 installed, you must use Java 17 or 21 for Android builds. See the troubleshooting section below.
 
 ---
 
@@ -73,6 +75,50 @@ npx cap open android
 
 # Run on connected Android device
 npx cap run android
+
+# Build APK directly with Gradle (requires Java 17 or 21)
+cd android
+./gradlew assembleDebug        # Debug APK
+./gradlew assembleRelease      # Release APK (requires signing)
+./gradlew clean                # Clean build cache
+
+# One-command build (uses helper script)
+./build-apk.sh
+```
+
+### Build APK with Gradle Wrapper (Command Line)
+
+If you prefer to build from command line without Android Studio:
+
+1. **Ensure Java 17 or 21 is active:**
+   ```bash
+   # Check current Java version
+   java -version
+   
+   # If using Java 25, switch to Java 21
+   export JAVA_HOME=/usr/local/sdkman/candidates/java/21.0.9-ms
+   export PATH=$JAVA_HOME/bin:$PATH
+   ```
+
+2. **Build web app and sync:**
+   ```bash
+   npm run build
+   npx cap sync android
+   ```
+
+3. **Build APK:**
+   ```bash
+   cd android
+   ./gradlew assembleDebug
+   ```
+
+4. **APK location:**
+   - Debug: `android/app/build/outputs/apk/debug/app-debug.apk`
+   - Release: `android/app/build/outputs/apk/release/app-release.apk`
+
+**OR use the automated script:**
+```bash
+./build-apk.sh
 ```
 
 ---
@@ -100,15 +146,34 @@ VITE_GROQ_API_KEY=your-groq-key
 
 ## Troubleshooting
 
+### "Unsupported class file major version 69" error
+This means Gradle is trying to use Java 25, which isn't fully supported yet. **Solution:**
+
+```bash
+# Switch to Java 21
+export JAVA_HOME=/usr/local/sdkman/candidates/java/21.0.9-ms
+export PATH=$JAVA_HOME/bin:$PATH
+
+# Verify
+java -version  # Should show 21.x.x
+
+# Then rebuild
+cd android
+./gradlew clean assembleDebug
+```
+
+To make this permanent, add the export commands to your `~/.bashrc` or `~/.zshrc`.
+
 ### Data not saving to Supabase
 - Make sure you're **signed in** (not in Demo Mode)
 - Check browser console for errors
 - Verify `.env` credentials are correct
 
 ### Android build fails
-- Ensure Java JDK 17+ is installed
+- Ensure Java JDK 17 or 21 is installed and active
 - Run `npx cap doctor` to diagnose issues
 - Update Android Studio and SDK
+- Try `./gradlew clean` then rebuild
 
 ### App not updating after changes
 1. Run `npm run build`
