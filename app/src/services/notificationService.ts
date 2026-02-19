@@ -8,6 +8,7 @@ import { getSupabase } from '@/lib/supabase';
 const REVIEW_CHANNEL_ID = 'review-reminders';
 const DAILY_CHANNEL_ID = 'daily-review-summary';
 const DAILY_SUMMARY_NOTIFICATION_ID = 147000;
+const ENABLE_PUSH_REGISTRATION = import.meta.env.VITE_ENABLE_PUSH_REGISTRATION === 'true';
 
 class NotificationService {
   private isNative = Capacitor.isNativePlatform();
@@ -61,10 +62,8 @@ class NotificationService {
           id: notifId,
           title: 'Review Reminder',
           body,
-          schedule: { at: reviewDate, allowWhileIdle: true },
+          schedule: { at: reviewDate },
           extra: { itemId: item.id, stage: item.review_stage },
-          smallIcon: 'ic_stat_icon_config_sample',
-          largeIcon: 'ic_launcher',
           channelId: REVIEW_CHANNEL_ID,
         }],
       });
@@ -111,10 +110,8 @@ class NotificationService {
             ? `${dueForReminderDay.length} review${dueForReminderDay.length === 1 ? '' : 's'} due`
             : 'No reviews due',
           body,
-          schedule: { at: triggerAt, allowWhileIdle: true },
+          schedule: { at: triggerAt },
           channelId: DAILY_CHANNEL_ID,
-          smallIcon: 'ic_stat_icon_config_sample',
-          largeIcon: 'ic_launcher',
         }],
       });
     } catch (error) {
@@ -183,6 +180,11 @@ class NotificationService {
   }
 
   private async setupPushRegistration(): Promise<void> {
+    if (!ENABLE_PUSH_REGISTRATION) {
+      console.info('Push registration skipped: set VITE_ENABLE_PUSH_REGISTRATION=true after Firebase setup');
+      return;
+    }
+
     try {
       const permStatus = await PushNotifications.requestPermissions();
       if (permStatus.receive !== 'granted') {
@@ -248,7 +250,9 @@ class NotificationService {
       hash = ((hash << 5) - hash) + char;
       hash |= 0;
     }
-    return Math.abs(hash);
+    const normalized = Math.abs(hash);
+    // Ensure a safe positive 31-bit integer for Android notification IDs.
+    return normalized === 2147483648 ? 2147483647 : Math.max(1, Math.min(2147483647, normalized));
   }
 }
 
