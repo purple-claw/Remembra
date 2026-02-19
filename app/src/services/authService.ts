@@ -1,5 +1,6 @@
 import { getSupabase } from '@/lib/supabase';
 import type { User, Session } from '@supabase/supabase-js';
+import { avatarService } from './avatarService';
 
 export interface AuthState {
   user: User | null;
@@ -53,14 +54,20 @@ export const authService = {
   },
 
   // Ensure user profile and default data exists (call after confirmed auth)
-  async ensureUserSetup(userId: string, username: string): Promise<void> {
+  async ensureUserSetup(userId: string, username: string, email?: string): Promise<void> {
     const supabase = getSupabase();
     
     try {
+      const defaultAvatarUrl = avatarService.generateProfileAvatarUrl({
+        username,
+        email,
+        userId,
+      });
+
       // Check if profile exists
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .select('id')
+        .select('id, avatar_url')
         .eq('id', userId)
         .single();
       
@@ -71,12 +78,21 @@ export const authService = {
           .insert({
             id: userId,
             username: username || 'User',
+            avatar_url: defaultAvatarUrl,
             streak_count: 0,
             total_reviews: 0,
           });
         
         if (insertError && insertError.code !== '23505') { // Ignore duplicate key error
           console.error('Error creating profile:', insertError);
+        }
+      } else if (!profile.avatar_url) {
+        const { error: avatarUpdateError } = await supabase
+          .from('profiles')
+          .update({ avatar_url: defaultAvatarUrl })
+          .eq('id', userId);
+        if (avatarUpdateError) {
+          console.error('Error assigning auto avatar:', avatarUpdateError);
         }
       }
       

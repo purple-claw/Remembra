@@ -1,16 +1,22 @@
-// AI Service using free-tier models with fallback and lightweight caching.
+// AI service tuned for free-tier providers with quality guards and deterministic fallbacks.
 
 const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY;
 const OPENROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY;
 
 const MAX_PROMPT_CHARS = 24000;
 const DEFAULT_MAX_TOKENS = 1024;
+const DEFAULT_TEMPERATURE = 0.4;
+const DEFAULT_TOP_P = 0.9;
+const DEFAULT_PRESENCE_PENALTY = 0.05;
+const DEFAULT_FREQUENCY_PENALTY = 0.1;
 const AI_TIMEOUT_MS = 20000;
 const CACHE_LIMIT = 100;
+
 const GROQ_MODELS = [
   'deepseek-r1-distill-llama-70b',
   'llama-3.3-70b-versatile',
 ] as const;
+
 const OPENROUTER_FREE_MODELS = [
   'deepseek/deepseek-r1:free',
   'qwen/qwq-32b:free',
@@ -23,10 +29,20 @@ interface AIResponse {
   content: string;
 }
 
+interface AIRequestOptions {
+  maxTokens?: number;
+  temperature?: number;
+  topP?: number;
+  presencePenalty?: number;
+  frequencyPenalty?: number;
+  skipCache?: boolean;
+  minLength?: number;
+}
+
 function toPlainText(input: string): string {
   return input
     .replace(/```[\s\S]*?```/g, ' ')
-    .replace(/[#>*_\-`]/g, ' ')
+    .replace(/[#>*_`]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -40,13 +56,21 @@ function firstSentences(input: string, maxSentences: number = 3): string {
 }
 
 function pickKeywords(input: string, max: number = 6): string[] {
-  const stop = new Set(['the', 'and', 'for', 'that', 'with', 'from', 'this', 'your', 'have', 'will', 'about', 'into', 'when', 'then', 'than', 'what', 'where', 'which', 'while', 'were', 'been', 'their', 'there', 'also', 'just', 'into', 'using', 'used', 'use', 'how']);
+  const stop = new Set([
+    'the', 'and', 'for', 'that', 'with', 'from', 'this', 'your', 'have', 'will', 'about', 'into',
+    'when', 'then', 'than', 'what', 'where', 'which', 'while', 'were', 'been', 'their', 'there',
+    'also', 'just', 'using', 'used', 'use', 'how', 'each', 'should', 'them', 'they', 'only',
+  ]);
   const words = toPlainText(input)
     .toLowerCase()
     .split(/\W+/)
     .filter((w) => w.length > 3 && !stop.has(w));
+
   const freq = new Map<string, number>();
-  for (const w of words) freq.set(w, (freq.get(w) || 0) + 1);
+  for (const w of words) {
+    freq.set(w, (freq.get(w) || 0) + 1);
+  }
+
   return [...freq.entries()]
     .sort((a, b) => b[1] - a[1])
     .slice(0, max)
@@ -75,8 +99,27 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   });
 }
 
-function makeCacheKey(systemPrompt: string, prompt: string): string {
-  return `${systemPrompt.slice(0, 120)}::${prompt.slice(0, 1000)}`;
+function normalizeAIOutput(input: string): string {
+  return input
+    .replace(/\r\n/g, '\n')
+    .replace(/\n{4,}/g, '\n\n\n')
+    .trim();
+}
+
+function cleanSingleLine(input: string): string {
+  return input.replace(/\s+/g, ' ').trim();
+}
+
+function makeCacheKey(systemPrompt: string, prompt: string, options: AIRequestOptions): string {
+  const optionFingerprint = [
+    options.maxTokens ?? DEFAULT_MAX_TOKENS,
+    options.temperature ?? DEFAULT_TEMPERATURE,
+    options.topP ?? DEFAULT_TOP_P,
+    options.presencePenalty ?? DEFAULT_PRESENCE_PENALTY,
+    options.frequencyPenalty ?? DEFAULT_FREQUENCY_PENALTY,
+    options.minLength ?? 30,
+  ].join('|');
+  return `${systemPrompt.slice(0, 140)}::${prompt.slice(0, 1000)}::${optionFingerprint}`;
 }
 
 function writeCache(key: string, value: string): void {
@@ -89,7 +132,15 @@ function writeCache(key: string, value: string): void {
   responseCache.set(key, value);
 }
 
-async function callGroq(prompt: string, systemPrompt: string, maxTokens: number = DEFAULT_MAX_TOKENS): Promise<AIResponse> {
+function lowQuality(content: string, minLength: number): boolean {
+  const normalized = normalizeAIOutput(content);
+  if (!normalized) return true;
+  if (normalized.length < minLength) return true;
+  if (/AI response placeholder/i.test(normalized)) return true;
+  return false;
+}
+
+async function callGroq(prompt: string, systemPrompt: string, options: AIRequestOptions): Promise<AIResponse> {
   if (!GROQ_API_KEY) {
     throw new Error('Groq API key not configured');
   }
@@ -109,8 +160,11 @@ async function callGroq(prompt: string, systemPrompt: string, maxTokens: number 
             { role: 'system', content: systemPrompt },
             { role: 'user', content: clampText(prompt) },
           ],
-          temperature: 0.55,
-          max_tokens: maxTokens,
+          temperature: options.temperature ?? DEFAULT_TEMPERATURE,
+          top_p: options.topP ?? DEFAULT_TOP_P,
+          max_tokens: options.maxTokens ?? DEFAULT_MAX_TOKENS,
+          presence_penalty: options.presencePenalty ?? DEFAULT_PRESENCE_PENALTY,
+          frequency_penalty: options.frequencyPenalty ?? DEFAULT_FREQUENCY_PENALTY,
         }),
       }), AI_TIMEOUT_MS);
 
@@ -129,7 +183,7 @@ async function callGroq(prompt: string, systemPrompt: string, maxTokens: number 
   throw new Error(lastError?.message || 'All Groq free model attempts failed');
 }
 
-async function callOpenRouter(prompt: string, systemPrompt: string, maxTokens: number = DEFAULT_MAX_TOKENS): Promise<AIResponse> {
+async function callOpenRouter(prompt: string, systemPrompt: string, options: AIRequestOptions): Promise<AIResponse> {
   if (!OPENROUTER_API_KEY) {
     throw new Error('OpenRouter API key not configured');
   }
@@ -151,8 +205,11 @@ async function callOpenRouter(prompt: string, systemPrompt: string, maxTokens: n
             { role: 'system', content: systemPrompt },
             { role: 'user', content: clampText(prompt) },
           ],
-          temperature: 0.55,
-          max_tokens: maxTokens,
+          temperature: options.temperature ?? DEFAULT_TEMPERATURE,
+          top_p: options.topP ?? DEFAULT_TOP_P,
+          max_tokens: options.maxTokens ?? DEFAULT_MAX_TOKENS,
+          presence_penalty: options.presencePenalty ?? DEFAULT_PRESENCE_PENALTY,
+          frequency_penalty: options.frequencyPenalty ?? DEFAULT_FREQUENCY_PENALTY,
         }),
       }), AI_TIMEOUT_MS);
 
@@ -171,6 +228,24 @@ async function callOpenRouter(prompt: string, systemPrompt: string, maxTokens: n
   throw new Error(lastError?.message || 'All OpenRouter free model attempts failed');
 }
 
+async function callLiveProvider(prompt: string, systemPrompt: string, options: AIRequestOptions): Promise<string> {
+  if (OPENROUTER_API_KEY) {
+    try {
+      const result = await callOpenRouter(prompt, systemPrompt, options);
+      return result.content;
+    } catch (error) {
+      console.warn('OpenRouter API failed, trying Groq:', error);
+    }
+  }
+
+  if (GROQ_API_KEY) {
+    const result = await callGroq(prompt, systemPrompt, options);
+    return result.content;
+  }
+
+  throw new Error('No live provider configured');
+}
+
 function generateDemoResponse(prompt: string, systemPrompt: string): string {
   if (systemPrompt.includes('daily reminder')) {
     return 'Small steps win memory. Review your due cards now and lock in today\'s recall.';
@@ -182,86 +257,131 @@ function generateDemoResponse(prompt: string, systemPrompt: string): string {
 
   if (systemPrompt.includes('summary')) {
     const summary = firstSentences(prompt, 2);
-    return `This topic focuses on ${summary}. Use active recall to explain it in your own words, then connect each idea to one practical example.`;
+    return [
+      '### Core Idea',
+      `This topic focuses on ${summary}.`,
+      '',
+      '### Why It Matters',
+      'Use active recall and connect each concept to one real example.',
+      '',
+      '### Recall Cues',
+      '- Explain it in your own words',
+      '- Test one practical scenario',
+      '- Revisit weak points in the next review',
+    ].join('\n');
   }
 
   if (systemPrompt.includes('bullet')) {
     const keywords = pickKeywords(prompt, 5);
     return JSON.stringify([
       ...keywords.map((k) => `Define and explain ${k} in one sentence`),
-      'Connect each key point with one real-world example',
+      'Connect each point with a practical example',
       'Review using short active recall prompts',
-      'Track weak areas and revise again quickly',
     ]);
   }
 
   if (systemPrompt.includes('flowchart') || systemPrompt.includes('mermaid')) {
     return `graph TD
-A[Read Content] --> B[Extract Core Ideas]
-B --> C[Generate Prompts]
-C --> D[Review on Day 1]
-D --> E[Review on Day 4]
-E --> F[Review on Day 7]
+A[Read Topic] --> B[Extract Core Ideas]
+B --> C[Create Recall Prompts]
+C --> D[Review Day 1]
+D --> E[Review Day 4]
+E --> F[Review Day 7]
 F --> G{Stable Recall?}
 G -->|Yes| H[Mastered]
-G -->|No| I[Reset to Day 1]\nI --> D`;
+G -->|No| I[Reset to Day 1]
+I --> D`;
   }
 
-  return `AI response placeholder for prompt: ${prompt.slice(0, 80)}...`;
+  return `Key takeaway: ${firstSentences(prompt, 1)}`;
 }
 
-async function callAI(
-  prompt: string,
-  systemPrompt: string,
-  options?: { maxTokens?: number; skipCache?: boolean },
-): Promise<string> {
-  const maxTokens = options?.maxTokens ?? DEFAULT_MAX_TOKENS;
-  const key = makeCacheKey(systemPrompt, prompt);
+async function callAI(prompt: string, systemPrompt: string, options: AIRequestOptions = {}): Promise<string> {
+  const effectiveOptions: AIRequestOptions = {
+    maxTokens: options.maxTokens ?? DEFAULT_MAX_TOKENS,
+    temperature: options.temperature ?? DEFAULT_TEMPERATURE,
+    topP: options.topP ?? DEFAULT_TOP_P,
+    presencePenalty: options.presencePenalty ?? DEFAULT_PRESENCE_PENALTY,
+    frequencyPenalty: options.frequencyPenalty ?? DEFAULT_FREQUENCY_PENALTY,
+    minLength: options.minLength ?? 30,
+    skipCache: options.skipCache ?? false,
+  };
 
-  if (!options?.skipCache && responseCache.has(key)) {
+  const key = makeCacheKey(systemPrompt, prompt, effectiveOptions);
+  if (!effectiveOptions.skipCache && responseCache.has(key)) {
     return responseCache.get(key) || '';
   }
 
-  if (OPENROUTER_API_KEY) {
-    try {
-      const result = await callOpenRouter(prompt, systemPrompt, maxTokens);
-      writeCache(key, result.content);
-      return result.content;
-    } catch (error) {
-      console.warn('OpenRouter API failed, trying fallback:', error);
+  if (OPENROUTER_API_KEY || GROQ_API_KEY) {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const attemptOptions: AIRequestOptions = {
+        ...effectiveOptions,
+        // If first answer is too short/noisy, retry with slightly larger budget and lower temperature.
+        maxTokens: attempt === 0
+          ? effectiveOptions.maxTokens
+          : Math.min(2200, Math.round((effectiveOptions.maxTokens || DEFAULT_MAX_TOKENS) * 1.4)),
+        temperature: attempt === 0
+          ? effectiveOptions.temperature
+          : Math.max(0.2, (effectiveOptions.temperature || DEFAULT_TEMPERATURE) - 0.1),
+      };
+
+      try {
+        const live = normalizeAIOutput(await callLiveProvider(prompt, systemPrompt, attemptOptions));
+        if (!lowQuality(live, effectiveOptions.minLength || 30)) {
+          writeCache(key, live);
+          return live;
+        }
+      } catch (error) {
+        if (attempt === 1) {
+          console.warn('Live AI generation failed, using fallback:', error);
+        }
+      }
     }
   }
 
-  if (GROQ_API_KEY) {
-    try {
-      const result = await callGroq(prompt, systemPrompt, maxTokens);
-      writeCache(key, result.content);
-      return result.content;
-    } catch (error) {
-      console.warn('Groq API failed:', error);
-    }
-  }
-
-  const demo = generateDemoResponse(prompt, systemPrompt);
+  const demo = normalizeAIOutput(generateDemoResponse(prompt, systemPrompt));
   writeCache(key, demo);
   return demo;
 }
 
+function extractJsonArraySnippet(input: string): string | null {
+  const fenced = input.match(/```json\s*([\s\S]*?)```/i);
+  if (fenced?.[1]) {
+    return fenced[1].trim();
+  }
+  const start = input.indexOf('[');
+  const end = input.lastIndexOf(']');
+  if (start !== -1 && end !== -1 && end > start) {
+    return input.slice(start, end + 1);
+  }
+  return null;
+}
+
 function parseJsonArraySafely(input: string): string[] {
-  try {
-    const parsed = JSON.parse(input);
-    if (Array.isArray(parsed)) {
-      return parsed.map((v) => String(v)).filter(Boolean);
+  const snippet = extractJsonArraySnippet(input);
+  if (snippet) {
+    try {
+      const parsed = JSON.parse(snippet);
+      if (Array.isArray(parsed)) {
+        return parsed.map((v) => String(v)).filter(Boolean);
+      }
+    } catch {
+      // no-op
     }
-  } catch {
-    // no-op
   }
 
   return input
     .split('\n')
-    .map(line => line.replace(/^[-•*]\s*/, '').trim())
+    .map((line) => line.replace(/^[-•*\d.()]+\s*/, '').trim())
     .filter(Boolean)
     .slice(0, 8);
+}
+
+function normalizeMermaid(input: string): string {
+  return input
+    .replace(/```mermaid/gi, '')
+    .replace(/```/g, '')
+    .trim();
 }
 
 export const aiService = {
@@ -288,83 +408,187 @@ export const aiService = {
   },
 
   async generateSummary(content: string, title: string): Promise<string> {
-    const systemPrompt = 'You are a learning assistant helping users with 1-4-7 spaced review. Produce a concise 2-3 sentence memory-focused summary.';
-    const prompt = `Title: ${title}\n\nContent:\n${clampText(content)}\n\nProvide a brief memorable summary.`;
-    return callAI(prompt, systemPrompt);
+    const systemPrompt = [
+      'You are Remembra AI, a memory-retention coach.',
+      'Return concise markdown with sections:',
+      '### Core Idea',
+      '### Why It Matters',
+      '### Recall Cues',
+      'No fluff. Use practical wording. Avoid mentioning you are an AI.',
+    ].join(' ');
+    const prompt = `Title: ${title}\n\nContent:\n${clampText(content)}\n\nCreate a concise study summary.`;
+    return callAI(prompt, systemPrompt, {
+      maxTokens: 520,
+      temperature: 0.3,
+      topP: 0.9,
+      minLength: 140,
+    });
   },
 
   async generateBulletPoints(content: string, title: string): Promise<string[]> {
-    const systemPrompt = 'You are a learning assistant. Return ONLY a JSON array with 3-8 concise bullet points for memorization.';
-    const prompt = `Title: ${title}\n\nContent:\n${clampText(content)}\n\nReturn a JSON string array.`;
-    const response = await callAI(prompt, systemPrompt);
+    const systemPrompt = [
+      'You are a learning assistant.',
+      'Return ONLY a valid JSON array with 4-8 concise bullet strings.',
+      'Each bullet must be actionable for recall and at most 14 words.',
+      'No markdown fences.',
+    ].join(' ');
+    const prompt = `Title: ${title}\n\nContent:\n${clampText(content)}\n\nReturn JSON array only.`;
+    const response = await callAI(prompt, systemPrompt, {
+      maxTokens: 420,
+      temperature: 0.2,
+      topP: 0.85,
+      minLength: 24,
+    });
     return parseJsonArraySafely(response).slice(0, 8);
   },
 
   async generateFlowchart(content: string, title: string): Promise<string> {
-    const systemPrompt = 'Create valid Mermaid syntax only (graph TD or graph LR), no code fences, 5-12 nodes, clean labels.';
+    const systemPrompt = [
+      'Create valid Mermaid syntax only.',
+      'Output must start with graph TD or graph LR.',
+      'Use 5-12 nodes, concise labels, no markdown fences.',
+    ].join(' ');
     const prompt = `Title: ${title}\n\nContent:\n${clampText(content)}\n\nCreate Mermaid flowchart.`;
-    const result = await callAI(prompt, systemPrompt);
-    return result.trim();
+    const result = await callAI(prompt, systemPrompt, {
+      maxTokens: 700,
+      temperature: 0.2,
+      topP: 0.85,
+      minLength: 20,
+    });
+    return normalizeMermaid(result);
   },
 
   async explainCode(code: string, language?: string): Promise<string> {
-    const systemPrompt = 'You are a concise programming tutor. Explain behavior, key structures, and likely pitfalls.';
+    const systemPrompt = [
+      'You are a precise programming tutor.',
+      'Respond in markdown with sections:',
+      '### What It Does',
+      '### How It Flows',
+      '### Risks and Edge Cases',
+      '### Quick Recall Checklist',
+      'Keep it practical and concise.',
+    ].join(' ');
     const prompt = `${language ? `Language: ${language}\n\n` : ''}Code:\n\`\`\`\n${clampText(code)}\n\`\`\`\n\nExplain this code.`;
-    return callAI(prompt, systemPrompt);
+    return callAI(prompt, systemPrompt, {
+      maxTokens: 980,
+      temperature: 0.3,
+      topP: 0.9,
+      minLength: 180,
+    });
   },
 
   async generateQuizQuestions(content: string, title: string, count: number = 3): Promise<{ question: string; answer: string }[]> {
-    const systemPrompt = `Generate ${count} quiz Q&A pairs. Return ONLY valid JSON array with objects containing question and answer.`;
-    const prompt = `Title: ${title}\n\nContent:\n${clampText(content)}\n\nReturn JSON.`;
-    const response = await callAI(prompt, systemPrompt);
+    const safeCount = Math.max(1, Math.min(8, count));
+    const systemPrompt = [
+      `Generate exactly ${safeCount} quiz pairs for active recall.`,
+      'Return ONLY valid JSON array.',
+      'Each object must contain string keys: question, answer.',
+      'No markdown fences or extra text.',
+    ].join(' ');
+    const prompt = `Title: ${title}\n\nContent:\n${clampText(content)}\n\nReturn JSON only.`;
+    const response = await callAI(prompt, systemPrompt, {
+      maxTokens: 900,
+      temperature: 0.45,
+      topP: 0.92,
+      minLength: 80,
+    });
 
-    try {
-      const parsed = JSON.parse(response);
-      if (Array.isArray(parsed)) {
-        return parsed
-          .map((q) => ({ question: String(q.question || ''), answer: String(q.answer || '') }))
-          .filter((q) => q.question && q.answer)
-          .slice(0, count);
+    const snippet = extractJsonArraySnippet(response);
+    if (snippet) {
+      try {
+        const parsed = JSON.parse(snippet);
+        if (Array.isArray(parsed)) {
+          const normalized = parsed
+            .map((q) => ({
+              question: String(q.question || '').trim(),
+              answer: String(q.answer || '').trim(),
+            }))
+            .filter((q) => q.question && q.answer)
+            .slice(0, safeCount);
+          if (normalized.length > 0) {
+            return normalized;
+          }
+        }
+      } catch {
+        // no-op
       }
-    } catch {
-      // no-op
     }
 
-    const keywords = pickKeywords(`${title} ${content}`, count);
+    const keywords = pickKeywords(`${title} ${content}`, safeCount);
     if (keywords.length === 0) {
-      return [{ question: 'What is the core concept in this topic?', answer: 'Explain the main idea and why it matters.' }];
+      return [{
+        question: 'What is the core concept in this topic?',
+        answer: 'Explain the main idea, why it matters, and one practical example.',
+      }];
     }
     return keywords.map((k) => ({
-      question: `What is ${k}, and how is it used in this topic?`,
-      answer: `Define ${k} clearly and give one practical example.`,
+      question: `What is ${k}, and why is it important here?`,
+      answer: `Define ${k} clearly and give one concrete example.`,
     }));
   },
 
   async generateMnemonics(content: string, title: string): Promise<string> {
-    const systemPrompt = 'You are a memory expert. Create mnemonic hooks, analogies, and short recall cues.';
+    const systemPrompt = [
+      'You are a memory expert.',
+      'Create mnemonic hooks that are vivid and easy to recall.',
+      'Return markdown with sections:',
+      '### Mnemonic Hooks',
+      '### Story Link',
+      '### 10-Second Recall Script',
+    ].join(' ');
     const prompt = `Title: ${title}\n\nContent:\n${clampText(content)}\n\nCreate memory aids.`;
-    return callAI(prompt, systemPrompt);
+    return callAI(prompt, systemPrompt, {
+      maxTokens: 760,
+      temperature: 0.7,
+      topP: 0.95,
+      minLength: 140,
+    });
   },
 
   async chat(content: string, title: string, userMessage: string): Promise<string> {
-    const systemPrompt = 'You are a helpful learning assistant. Answer clearly and practically in 3-8 sentences.';
+    const systemPrompt = [
+      'You are an advanced study tutor for spaced repetition.',
+      'Answer with practical reasoning, not generic advice.',
+      'Use markdown and include:',
+      '1) Direct Answer',
+      '2) Why This Works',
+      '3) One Recall Question',
+    ].join(' ');
     const prompt = `Study Material:\nTitle: ${title}\nContent: ${clampText(content)}\n\nUser Question: ${userMessage}`;
-    const answer = await callAI(prompt, systemPrompt);
+    const answer = await callAI(prompt, systemPrompt, {
+      maxTokens: 1000,
+      temperature: 0.45,
+      topP: 0.9,
+      minLength: 120,
+      skipCache: true,
+    });
     return answer.trim();
   },
 
   async generateReviewReminderMessage(title: string, stage: number): Promise<string> {
     const systemPrompt = 'Write one short review reminder (max 18 words) for a 1-4-7 schedule. Mention momentum and recall.';
     const prompt = `Item title: ${title}\nCurrent stage: ${stage}\nReturn one sentence.`;
-    const response = await callAI(prompt, systemPrompt, { maxTokens: 60 });
-    return response.replace(/\s+/g, ' ').trim().slice(0, 180);
+    const response = await callAI(prompt, systemPrompt, {
+      maxTokens: 60,
+      temperature: 0.5,
+      topP: 0.9,
+      minLength: 14,
+      skipCache: true,
+    });
+    return cleanSingleLine(response).slice(0, 180);
   },
 
   async generateDailyReminderSummary(itemTitles: string[], dueCount: number): Promise<string> {
     const joined = itemTitles.slice(0, 5).join(', ');
     const systemPrompt = 'Write one motivating daily reminder (max 22 words) for today\'s study queue with practical tone.';
     const prompt = `Due count: ${dueCount}\nItems: ${joined || 'none'}\nReturn one sentence daily reminder.`;
-    const response = await callAI(prompt, systemPrompt, { maxTokens: 80 });
-    return response.replace(/\s+/g, ' ').trim().slice(0, 200);
+    const response = await callAI(prompt, systemPrompt, {
+      maxTokens: 80,
+      temperature: 0.55,
+      topP: 0.9,
+      minLength: 16,
+      skipCache: true,
+    });
+    return cleanSingleLine(response).slice(0, 200);
   },
 };

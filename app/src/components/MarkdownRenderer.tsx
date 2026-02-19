@@ -135,7 +135,7 @@ function CodeBlock({ language, value }: { language: string; value: string }) {
   const isLargeBlock = lineCount > LARGE_CODE_BLOCK_LINES || value.length > LARGE_CODE_BLOCK_CHARS;
 
   return (
-    <div className="relative group my-4 rounded-lg overflow-hidden">
+    <div className="relative group my-4 rounded-lg overflow-hidden border border-white/5">
       {/* VS Code-like header bar */}
       <div className="flex items-center justify-between px-4 py-2 bg-[#252526] border-b border-white/5">
         <div className="flex items-center gap-2">
@@ -160,32 +160,34 @@ function CodeBlock({ language, value }: { language: string; value: string }) {
       
       {/* Code content */}
       {isLargeBlock ? (
-        <pre className="m-0 p-4 overflow-x-auto text-xs leading-6 font-mono bg-[#1E1E1E] text-remembra-text-secondary">
+        <pre className="m-0 p-4 overflow-auto custom-scrollbar max-h-[62dvh] text-xs leading-6 font-mono bg-[#1E1E1E] text-remembra-text-secondary whitespace-pre">
           {value}
         </pre>
       ) : (
-        <SyntaxHighlighter
-          language={language || 'text'}
-          style={vscodeTheme}
-          showLineNumbers={lineCount > 3}
-          wrapLines
-          wrapLongLines
-          lineNumberStyle={{
-            color: '#858585',
-            minWidth: '3em',
-            paddingRight: '1.5em',
-            userSelect: 'none',
-            borderRight: '1px solid #404040',
-            marginRight: '1em',
-          }}
-          customStyle={{
-            margin: 0,
-            borderRadius: 0,
-            background: '#1E1E1E',
-          }}
-        >
-          {value}
-        </SyntaxHighlighter>
+        <div className="max-h-[62dvh] overflow-auto custom-scrollbar">
+          <SyntaxHighlighter
+            language={language || 'text'}
+            style={vscodeTheme}
+            showLineNumbers={lineCount > 3}
+            wrapLines
+            wrapLongLines
+            lineNumberStyle={{
+              color: '#858585',
+              minWidth: '3em',
+              paddingRight: '1.5em',
+              userSelect: 'none',
+              borderRight: '1px solid #404040',
+              marginRight: '1em',
+            }}
+            customStyle={{
+              margin: 0,
+              borderRadius: 0,
+              background: '#1E1E1E',
+            }}
+          >
+            {value}
+          </SyntaxHighlighter>
+        </div>
       )}
     </div>
   );
@@ -200,7 +202,7 @@ export function MarkdownRenderer({ content, className = '' }: MarkdownRendererPr
   }, [content, isLargeContent]);
 
   return (
-    <div className={`markdown-content ${className}`}>
+    <div className={`markdown-content w-full max-w-full overflow-x-hidden break-words ${className}`}>
       {isLargeContent && (
         <div className="mb-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
           Rendering preview mode for large content to keep scrolling smooth.
@@ -299,7 +301,7 @@ export function MarkdownRenderer({ content, className = '' }: MarkdownRendererPr
           
           // Tables
           table: ({ children }) => (
-            <div className="overflow-x-auto my-4 rounded-xl border border-white/10">
+            <div className="overflow-x-auto custom-scrollbar my-4 rounded-xl border border-white/10">
               <table className="w-full text-sm">
                 {children}
               </table>

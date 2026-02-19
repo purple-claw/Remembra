@@ -128,7 +128,7 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
       {/* Backdrop blur overlay */}
       <div className="absolute inset-0 bg-gradient-to-br from-remembra-accent-primary/5 via-transparent to-remembra-accent-secondary/5" />
       
-      <div className="relative h-full flex flex-col overflow-hidden">
+      <div className="relative h-full flex flex-col overflow-hidden smooth-scroll-content">
         {/* Header */}
         <header className="glass-panel border-b border-white/5 px-4 py-4 flex-shrink-0">
           <div className="flex items-center gap-3">
@@ -229,11 +229,11 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
         </div>
 
         {/* Content Area */}
-        <div className="flex-1 overflow-y-auto px-4 py-4">
+        <div className="flex-1 overflow-y-auto custom-scrollbar px-4 py-4">
           {/* Content Tab */}
           {activeTab === 'content' && (
             <div className="space-y-4 animate-fade-in">
-              <div className="glass-card p-4 rounded-2xl">
+              <div className="glass-card p-4 rounded-2xl dynamic-container">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-semibold text-white">
                     {item.content_type === 'code' ? 'Code Snippet' : 'Content'}
@@ -248,11 +248,11 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
                 </div>
                 
                 {item.content_type === 'code' ? (
-                  <div className="bg-black/50 rounded-xl overflow-hidden border border-white/5">
+                  <div className="bg-black/50 rounded-xl overflow-hidden border border-white/5 max-h-[58dvh] overflow-y-auto custom-scrollbar">
                     <MarkdownRenderer content={`\`\`\`\n${item.content}\n\`\`\``} />
                   </div>
                 ) : (
-                  <div className="prose prose-invert prose-sm max-w-none">
+                  <div className="prose prose-invert prose-sm max-w-none max-h-[58dvh] overflow-y-auto custom-scrollbar pr-1">
                     <MarkdownRenderer content={item.content} />
                   </div>
                 )}
@@ -280,7 +280,7 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
           {activeTab === 'summary' && (
             <div className="space-y-4 animate-fade-in">
               {/* Summary Section */}
-              <div className="glass-card p-4 rounded-2xl">
+              <div className="glass-card p-4 rounded-2xl dynamic-container">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-semibold text-white flex items-center gap-2">
                     <Sparkles size={16} className="text-remembra-accent-primary" />
@@ -297,7 +297,7 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
                 </div>
                 
                 {aiSummary ? (
-                  <div className="prose prose-invert prose-sm max-w-none">
+                  <div className="prose prose-invert prose-sm max-w-none max-h-[50dvh] overflow-y-auto custom-scrollbar pr-1">
                     <MarkdownRenderer content={aiSummary} />
                   </div>
                 ) : (
@@ -313,7 +313,7 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
               </div>
 
               {/* Bullet Points Section */}
-              <div className="glass-card p-4 rounded-2xl">
+              <div className="glass-card p-4 rounded-2xl dynamic-container">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-semibold text-white flex items-center gap-2">
                     <ListChecks size={16} className="text-remembra-success" />
@@ -330,7 +330,7 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
                 </div>
                 
                 {aiBulletPoints.length > 0 ? (
-                  <ul className="space-y-2">
+                  <ul className="space-y-2 max-h-[40dvh] overflow-y-auto custom-scrollbar pr-1">
                     {aiBulletPoints.map((point, idx) => (
                       <li key={idx} className="flex items-start gap-2 text-sm text-remembra-text-secondary">
                         <span className="w-1.5 h-1.5 rounded-full bg-remembra-success mt-2 flex-shrink-0" />
@@ -355,7 +355,7 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
           {/* Flowchart Tab */}
           {activeTab === 'flowchart' && (
             <div className="space-y-4 animate-fade-in">
-              <div className="glass-card p-4 rounded-2xl">
+              <div className="glass-card p-4 rounded-2xl dynamic-container">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-semibold text-white flex items-center gap-2">
                     <GitBranch size={16} className="text-remembra-accent-secondary" />
@@ -372,7 +372,7 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
                 </div>
                 
                 {aiFlowchart ? (
-                  <div className="overflow-x-auto">
+                  <div className="max-h-[56dvh] overflow-auto custom-scrollbar rounded-xl border border-white/5 bg-black/20 p-2">
                     <MermaidDiagram chart={aiFlowchart} className="my-2" />
                   </div>
                 ) : (
@@ -395,7 +395,7 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
           {/* Notes Tab */}
           {activeTab === 'notes' && (
             <div className="space-y-4 animate-fade-in">
-              <div className="glass-card p-4 rounded-2xl">
+              <div className="glass-card p-4 rounded-2xl dynamic-container">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-semibold text-white flex items-center gap-2">
                     <StickyNote size={16} className="text-remembra-warning" />
@@ -430,7 +430,7 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
                     autoFocus
                   />
                 ) : notes ? (
-                  <p className="text-remembra-text-secondary text-sm leading-relaxed whitespace-pre-wrap">
+                  <p className="text-remembra-text-secondary text-sm leading-relaxed whitespace-pre-wrap max-h-[36dvh] overflow-y-auto custom-scrollbar pr-1">
                     {notes}
                   </p>
                 ) : (

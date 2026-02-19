@@ -348,6 +348,31 @@
     max-height: none;
   }
 
+  .content-window {
+    width: 100%;
+    min-height: 10rem;
+    max-height: min(70dvh, 860px);
+    overflow: auto;
+    scrollbar-gutter: stable;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .content-window-compact {
+    max-height: min(54dvh, 620px);
+  }
+
+  .modal-body-scroll {
+    max-height: calc(100dvh - 10rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable both-edges;
+  }
+
+  .popup-safe {
+    width: min(96vw, 42rem);
+    max-height: calc(100dvh - 1.25rem);
+  }
+
   /* Smooth interaction helpers */
   .smooth-surface {
     transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
@@ -359,6 +384,10 @@
   }
   .smooth-scroll-content {
     contain: layout paint style;
+  }
+
+  .smooth-scroll-content * {
+    scroll-behavior: smooth;
   }
 }
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useStore } from '@/store/useStore';
 import { 
   User,
@@ -11,9 +11,12 @@ import {
   HelpCircle,
   FileText,
   Check,
-  AlertTriangle
+  AlertTriangle,
+  RefreshCw
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
+import { avatarService } from '@/services/avatarService';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,9 +29,12 @@ import {
 } from "@/components/ui/alert-dialog";
 
 export function Profile() {
-  const { user, profile, signOut, memoryItems, categories } = useStore();
+  const { user, profile, signOut, memoryItems, categories, updateProfile } = useStore();
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [isGeneratingAvatar, setIsGeneratingAvatar] = useState(false);
+  const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
+  const [didAutoAvatarAttempt, setDidAutoAvatarAttempt] = useState(false);
 
   const handleLogout = async () => {
     setIsLoggingOut(true);
@@ -51,16 +57,48 @@ export function Profile() {
     totalReviews: profile?.total_reviews || 0,
   };
 
-  // Get user initials
-  const getInitials = () => {
-    if (profile?.username) {
-      return profile.username.slice(0, 2).toUpperCase();
+  const displayName = profile?.username || user?.email?.split('@')[0] || 'User';
+  const avatarUrl = profile?.avatar_url || '';
+
+  const userInitials = useMemo(() => {
+    const source = profile?.username || user?.email || 'U';
+    return source.slice(0, 2).toUpperCase();
+  }, [profile?.username, user?.email]);
+
+  const generateAvatar = useCallback(async (randomize: boolean) => {
+    if (!profile || !user) return;
+    setIsGeneratingAvatar(true);
+    try {
+      const url = avatarService.generateProfileAvatarUrl({
+        username: profile.username,
+        email: user.email,
+        userId: profile.id,
+        nonce: randomize ? Date.now().toString() : undefined,
+      });
+      await updateProfile({ avatar_url: url });
+      setAvatarLoadFailed(false);
+      if (randomize) {
+        toast.success('Profile avatar refreshed');
+      }
+    } catch (error) {
+      console.error('Avatar generation failed:', error);
+      toast.error('Failed to update avatar');
+    } finally {
+      setIsGeneratingAvatar(false);
     }
-    if (user?.email) {
-      return user.email.slice(0, 2).toUpperCase();
-    }
-    return 'U';
-  };
+  }, [profile, updateProfile, user]);
+
+  useEffect(() => {
+    setDidAutoAvatarAttempt(false);
+    setAvatarLoadFailed(false);
+  }, [profile?.id]);
+
+  useEffect(() => {
+    if (!profile || !user || profile.avatar_url || isGeneratingAvatar) return;
+    if (didAutoAvatarAttempt) return;
+    setDidAutoAvatarAttempt(true);
+    generateAvatar(false).catch(console.error);
+  }, [profile, user, isGeneratingAvatar, generateAvatar, didAutoAvatarAttempt]);
 
   const menuItems = [
     {
@@ -101,26 +139,44 @@ export function Profile() {
   ];
 
   return (
-    <div className="bg-black lined-bg-subtle px-5 pt-6 pb-8 min-h-screen">
+    <div className="bg-black lined-bg-subtle px-5 pt-6 pb-8 min-h-screen smooth-scroll-content">
       <header className="mb-6">
         <h1 className="text-2xl font-bold text-remembra-text-primary mb-1">Profile</h1>
         <p className="text-remembra-text-muted">Manage your account</p>
       </header>
 
       {/* User Info Card */}
-      <div className="bg-remembra-bg-secondary rounded-2xl p-5 border border-white/5 mb-6">
+      <div className="bg-remembra-bg-secondary rounded-2xl p-5 border border-white/5 mb-6 dynamic-container smooth-surface">
         <div className="flex items-center gap-4">
           <div className="w-16 h-16 rounded-full bg-gradient-to-br from-remembra-accent-primary to-remembra-accent-secondary flex items-center justify-center flex-shrink-0">
-            <span className="text-xl font-bold text-white">{getInitials()}</span>
+            {avatarUrl && !avatarLoadFailed ? (
+              <img
+                src={avatarUrl}
+                alt={`${displayName} avatar`}
+                onError={() => setAvatarLoadFailed(true)}
+                className="w-full h-full rounded-full object-cover bg-remembra-bg-secondary"
+              />
+            ) : (
+              <span className="text-xl font-bold text-white">{userInitials}</span>
+            )}
           </div>
           <div className="flex-1 min-w-0">
             <h2 className="text-lg font-semibold text-remembra-text-primary truncate">
-              {profile?.username || 'User'}
+              {displayName}
             </h2>
             <p className="text-sm text-remembra-text-muted truncate">
               {user?.email || 'No email'}
             </p>
           </div>
+          <button
+            onClick={() => generateAvatar(true)}
+            disabled={isGeneratingAvatar}
+            className="h-10 px-3 rounded-xl bg-remembra-bg-tertiary border border-white/10 text-remembra-text-secondary text-xs font-medium hover:bg-white/10 transition-colors disabled:opacity-50 flex items-center gap-2"
+            title="Generate new avatar"
+          >
+            <RefreshCw size={13} className={isGeneratingAvatar ? 'animate-spin' : ''} />
+            Avatar
+          </button>
         </div>
 
         {/* Quick Stats */}
@@ -141,7 +197,7 @@ export function Profile() {
       </div>
 
       {/* Account Info */}
-      <div className="bg-remembra-bg-secondary rounded-2xl border border-white/5 mb-6">
+      <div className="bg-remembra-bg-secondary rounded-2xl border border-white/5 mb-6 dynamic-container smooth-surface">
         <div className="px-5 py-3 border-b border-white/5">
           <h3 className="text-sm font-medium text-remembra-text-secondary">Account</h3>
         </div>
@@ -174,7 +230,7 @@ export function Profile() {
       </div>
 
       {/* Settings Menu */}
-      <div className="bg-remembra-bg-secondary rounded-2xl border border-white/5 mb-6">
+      <div className="bg-remembra-bg-secondary rounded-2xl border border-white/5 mb-6 dynamic-container smooth-surface">
         <div className="px-5 py-3 border-b border-white/5">
           <h3 className="text-sm font-medium text-remembra-text-secondary">Settings</h3>
         </div>
@@ -215,7 +271,7 @@ export function Profile() {
 
       {/* Logout Confirmation Dialog */}
       <AlertDialog open={showLogoutDialog} onOpenChange={setShowLogoutDialog}>
-        <AlertDialogContent className="bg-remembra-bg-secondary border-white/10">
+        <AlertDialogContent className="bg-remembra-bg-secondary border-white/10 sm:max-w-md">
           <AlertDialogHeader>
             <div className="w-12 h-12 rounded-full bg-remembra-error/20 flex items-center justify-center mx-auto mb-4">
               <AlertTriangle size={24} className="text-remembra-error" />

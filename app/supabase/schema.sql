@@ -201,7 +201,18 @@ BEGIN
   VALUES (
     NEW.id,
     COALESCE(NEW.raw_user_meta_data->>'username', split_part(NEW.email, '@', 1)),
-    NEW.raw_user_meta_data->>'avatar_url'
+    COALESCE(
+      NEW.raw_user_meta_data->>'avatar_url',
+      format(
+        'https://api.dicebear.com/9.x/adventurer-neutral/svg?seed=%s&size=160&radius=50&backgroundType=gradientLinear&backgroundColor=ff8000,ff6b00,e81224',
+        regexp_replace(
+          lower(COALESCE(NEW.raw_user_meta_data->>'username', split_part(NEW.email, '@', 1), NEW.id::text)),
+          '[^a-z0-9_-]+',
+          '-',
+          'g'
+        )
+      )
+    )
   )
   ON CONFLICT (id) DO NOTHING;
   RETURN NEW;

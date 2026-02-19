@@ -12,6 +12,7 @@ import {
   statsService,
   streakService,
   notificationService,
+  avatarService,
   isSupabaseConfigured,
 } from '@/services';
 import { supabase } from '@/lib/supabase';
@@ -253,7 +254,7 @@ export const useStore = create<AppState>()(persist((set, get) => ({
       // Ensure user setup (profile, default categories, achievements) exists
       if (user) {
         const username = user.user_metadata?.username || user.email?.split('@')[0] || 'User';
-        await authService.ensureUserSetup(user.id, username);
+        await authService.ensureUserSetup(user.id, username, user.email);
         try {
           await memoryItemService.processLifecycle();
         } catch (e) {
@@ -285,7 +286,11 @@ export const useStore = create<AppState>()(persist((set, get) => ({
       const fallbackProfile: Profile | null = user ? {
         id: user.id,
         username: user.user_metadata?.username || user.email?.split('@')[0] || 'User',
-        avatar_url: user.user_metadata?.avatar_url,
+        avatar_url: user.user_metadata?.avatar_url || avatarService.generateProfileAvatarUrl({
+          username: user.user_metadata?.username || user.email?.split('@')[0] || 'User',
+          email: user.email,
+          userId: user.id,
+        }),
         timezone: 'UTC',
         notification_preferences: {
           daily_reminder: true,

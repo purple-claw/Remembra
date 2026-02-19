@@ -17,6 +17,7 @@ import { useEffect, useState } from 'react';
 export function Dashboard() {
   const { profile, categories, memoryItems, setScreen, startReviewSession, getItemsDueToday } = useStore();
   const [greeting, setGreeting] = useState('Good morning');
+  const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
   
   // Get items due today from store (includes overdue items)
   const itemsDueToday = getItemsDueToday();
@@ -37,6 +38,10 @@ export function Dashboard() {
     else setGreeting('Good evening');
   }, []);
 
+  useEffect(() => {
+    setAvatarLoadFailed(false);
+  }, [profile?.avatar_url]);
+
   const handleStartReview = () => {
     if (itemsDueToday.length > 0) {
       startReviewSession();
@@ -53,10 +58,11 @@ export function Dashboard() {
           >
             <div className="relative">
               <div className="w-12 h-12 rounded-full bg-gradient-to-br from-remembra-accent-primary to-remembra-accent-secondary p-[2px]">
-                {profile?.avatar_url ? (
+                {profile?.avatar_url && !avatarLoadFailed ? (
                   <img 
                     src={profile.avatar_url} 
                     alt={profile?.username || 'User'}
+                    onError={() => setAvatarLoadFailed(true)}
                     className="w-full h-full rounded-full object-cover bg-remembra-bg-secondary"
                   />
                 ) : (

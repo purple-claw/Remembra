@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '@/store/useStore';
 import { aiService } from '@/services/aiService';
 import {
@@ -11,7 +11,9 @@ import {
   HelpCircle,
   Home,
   Loader2,
+  Maximize2,
   MessageCircle,
+  Minimize2,
   Save,
   Send,
   Sparkles,
@@ -117,12 +119,14 @@ export function AIStudio() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [lastError, setLastError] = useState<string>('');
+  const [expandOutput, setExpandOutput] = useState(false);
 
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     { role: 'assistant', content: 'I am ready. Ask any study question and I will answer with recall-first steps.' },
   ]);
   const [chatInput, setChatInput] = useState('');
   const [isChatting, setIsChatting] = useState(false);
+  const chatViewportRef = useRef<HTMLDivElement | null>(null);
 
   const tool = useMemo(() => TOOL_DEFS.find((t) => t.id === toolId) || TOOL_DEFS[0], [toolId]);
   const selectedItem = useMemo(
@@ -138,6 +142,7 @@ export function AIStudio() {
     setMode('tools');
     setResult('');
     setLastError('');
+    setExpandOutput(false);
   };
 
   const handleGenerate = async () => {
@@ -240,6 +245,14 @@ export function AIStudio() {
     }
   };
 
+  useEffect(() => {
+    if (!chatViewportRef.current) return;
+    chatViewportRef.current.scrollTo({
+      top: chatViewportRef.current.scrollHeight,
+      behavior: 'smooth',
+    });
+  }, [chatMessages, isChatting]);
+
   if (mode === 'chat') {
     return (
       <div className="min-h-screen bg-black lined-bg-subtle flex flex-col smooth-scroll-content">
@@ -263,7 +276,7 @@ export function AIStudio() {
           </div>
         </header>
 
-        <main className="flex-1 px-4 sm:px-5 py-4 overflow-y-auto space-y-3">
+        <main ref={chatViewportRef} className="flex-1 px-4 sm:px-5 py-4 overflow-y-auto custom-scrollbar space-y-3">
           {chatMessages.map((message, idx) => (
             <div key={idx} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div
@@ -337,7 +350,7 @@ export function AIStudio() {
           </div>
         </header>
 
-        <main className="flex-1 px-4 sm:px-5 py-4 overflow-y-auto space-y-4">
+        <main className="flex-1 px-4 sm:px-5 py-4 overflow-y-auto custom-scrollbar space-y-4">
           <div className="glass-card rounded-2xl p-4 border border-white/5 dynamic-container smooth-surface">
             <p className="text-xs font-semibold uppercase tracking-wider text-remembra-text-muted mb-2">Context Source</p>
             <select
@@ -363,15 +376,24 @@ export function AIStudio() {
             {selectedItem && (
               <div className="mt-3 rounded-xl border border-white/10 bg-remembra-bg-secondary p-3">
                 <p className="text-xs text-remembra-text-muted mb-1">Using selected memory item content</p>
-                <p className="text-sm text-remembra-text-primary line-clamp-4">{selectedItem.content}</p>
+                <p className="text-sm text-remembra-text-primary max-h-28 overflow-y-auto custom-scrollbar whitespace-pre-wrap break-words">
+                  {selectedItem.content}
+                </p>
               </div>
             )}
           </div>
 
           <div className="glass-card rounded-2xl p-4 border border-white/5 dynamic-container smooth-surface">
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
               <p className="text-xs font-semibold uppercase tracking-wider text-remembra-text-muted">Generated Output</p>
               <div className="flex gap-2">
+                <button
+                  onClick={() => setExpandOutput((prev) => !prev)}
+                  className="px-2.5 py-1 rounded-lg bg-remembra-bg-secondary text-[11px] text-remembra-text-secondary border border-white/5 flex items-center gap-1"
+                >
+                  {expandOutput ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
+                  {expandOutput ? 'Compact' : 'Expand'}
+                </button>
                 <button
                   onClick={handleCopy}
                   disabled={!result}
@@ -391,16 +413,24 @@ export function AIStudio() {
               </div>
             </div>
 
-            {!result ? (
-              <div className="rounded-xl border border-dashed border-white/10 p-8 text-center">
-                <Wand2 size={18} className="mx-auto text-remembra-text-muted mb-2" />
-                <p className="text-sm text-remembra-text-muted">Generate to view AI output here.</p>
-              </div>
-            ) : tool.id === 'flowchart' ? (
-              <MermaidDiagram chart={extractMermaid(result)} className="my-1" />
-            ) : (
-              <MarkdownRenderer content={result} />
-            )}
+            <div
+              className={`rounded-xl border border-white/10 bg-black/20 p-3 transition-all duration-300 ${
+                expandOutput ? 'max-h-[72dvh]' : 'max-h-[48dvh] sm:max-h-[56dvh]'
+              } overflow-y-auto overflow-x-hidden custom-scrollbar`}
+            >
+              {!result ? (
+                <div className="rounded-xl border border-dashed border-white/10 p-8 text-center min-h-36 flex flex-col items-center justify-center">
+                  <Wand2 size={18} className="mx-auto text-remembra-text-muted mb-2" />
+                  <p className="text-sm text-remembra-text-muted">Generate to view AI output here.</p>
+                </div>
+              ) : tool.id === 'flowchart' ? (
+                <div className="overflow-auto custom-scrollbar">
+                  <MermaidDiagram chart={extractMermaid(result)} className="my-1 min-w-max" />
+                </div>
+              ) : (
+                <MarkdownRenderer content={result} className="max-w-none break-words" />
+              )}
+            </div>
 
             {lastError && (
               <p className="mt-3 text-xs text-red-400">{lastError}</p>
