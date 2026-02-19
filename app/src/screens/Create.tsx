@@ -12,6 +12,8 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { toast } from 'sonner';
+import { OPTIONAL_REVIEW_DAY_30, REVIEW_INTERVALS_147, getScheduledDateForStage, toIsoDate } from '@/domain/review147';
+import { storageService } from '@/services/storageService';
 
 const contentTypes: { id: ContentType; icon: React.ElementType; label: string; description: string }[] = [
   { id: 'text', icon: Type, label: 'Notes & Text', description: 'General notes, concepts, and explanations' },
@@ -34,6 +36,9 @@ interface UploadedFile {
   size: number;
   url?: string;
   content?: string;
+  path?: string;
+  bucket?: string;
+  mime_type?: string;
 }
 
 export function Create() {
@@ -78,6 +83,7 @@ export function Create() {
   };
 
   const handleCreate = async () => {
+    const cycleStartedAt = toIsoDate(new Date());
     const newItem = {
       category_id: categoryId,
       title,
@@ -86,16 +92,21 @@ export function Create() {
       attachments: uploadedFiles.map(f => ({
         name: f.name,
         url: f.url || '',
-        type: contentType,
+        type: f.type.startsWith('image/') ? 'image' as const : contentType,
+        size: f.size,
+        path: f.path,
+        bucket: f.bucket,
+        mime_type: f.mime_type || f.type,
       })),
       difficulty,
       status: 'active' as const,
-      next_review_date: new Date().toISOString().split('T')[0],
+      next_review_date: getScheduledDateForStage(cycleStartedAt, 0),
+      cycle_started_at: cycleStartedAt,
       review_stage: 0,
-      review_template: 'sm2',
+      review_template: '1-4-7',
       current_stage_index: 0,
       easiness_factor: 2.5,
-      interval: 0,
+      interval: REVIEW_INTERVALS_147[0],
       repetition: 0,
       lapse_count: 0,
       review_history: [],
@@ -118,7 +129,7 @@ export function Create() {
 
   const getReviewDates = () => {
     const dates = [];
-    const intervals = [1, 6, 15]; // SM-2 typical early intervals
+    const intervals = [...REVIEW_INTERVALS_147, OPTIONAL_REVIEW_DAY_30];
     for (const interval of intervals) {
       const date = new Date();
       date.setDate(date.getDate() + interval);
@@ -166,22 +177,59 @@ export function Create() {
         };
         reader.readAsText(file);
       } else if (file.type.startsWith('image/')) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const dataUrl = e.target?.result as string;
-          setUploadedFiles(prev => [...prev, { id, name: file.name, type: file.type, size: file.size, url: dataUrl }]);
-          setContent(prev => prev + `\n\n![${file.name}](${dataUrl})`);
+        try {
+          const uploaded = await storageService.uploadImage(file);
+          setUploadedFiles(prev => [
+            ...prev,
+            {
+              id,
+              name: file.name,
+              type: file.type,
+              size: file.size,
+              url: uploaded.url,
+              path: uploaded.path,
+              bucket: uploaded.bucket,
+              mime_type: uploaded.mime_type,
+            },
+          ]);
+          setContent(prev => prev + `\n\n![${file.name}](${uploaded.url})`);
           setContentType('image');
-        };
-        reader.readAsDataURL(file);
+          toast.success(`Uploaded ${file.name}`);
+        } catch (error) {
+          console.warn('Image upload failed, using local data URL fallback:', error);
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            const dataUrl = e.target?.result as string;
+            setUploadedFiles(prev => [...prev, { id, name: file.name, type: file.type, size: file.size, url: dataUrl, mime_type: file.type }]);
+            setContent(prev => prev + `\n\n![${file.name}](${dataUrl})`);
+            setContentType('image');
+          };
+          reader.readAsDataURL(file);
+          toast.warning(`Cloud upload failed for ${file.name}. Stored locally in this item.`);
+        }
       } else {
-        setUploadedFiles(prev => [...prev, { id, name: file.name, type: file.type, size: file.size }]);
+        setUploadedFiles(prev => [...prev, { id, name: file.name, type: file.type, size: file.size, mime_type: file.type }]);
         toast.info(`File "${file.name}" attached`);
       }
     }
   }, [content, title]);
 
-  const removeFile = (id: string) => setUploadedFiles(prev => prev.filter(f => f.id !== id));
+  const removeFile = async (id: string) => {
+    const target = uploadedFiles.find(f => f.id === id);
+    setUploadedFiles(prev => prev.filter(f => f.id !== id));
+
+    if (target?.path && target.bucket) {
+      await storageService.removeAttachments([{
+        type: 'image',
+        url: target.url || '',
+        name: target.name,
+        size: target.size,
+        path: target.path,
+        bucket: target.bucket,
+        mime_type: target.mime_type,
+      }]);
+    }
+  };
 
   const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(true); };
   const handleDragLeave = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(false); };
@@ -643,18 +691,24 @@ export function Create() {
             <div className="glass-card rounded-2xl p-4">
               <div className="flex items-center gap-2 mb-3">
                 <Calendar size={16} className="text-[#E81224]" />
-                <span className="text-sm font-medium text-remembra-text-primary">SM-2 Adaptive Schedule</span>
+                <span className="text-sm font-medium text-remembra-text-primary">1-4-7 (+30 optional) Retention Schedule</span>
               </div>
               <div className="flex justify-around">
                 {getReviewDates().map((date, index) => (
                   <div key={index} className="text-center">
                     <div className={`w-11 h-11 rounded-full flex items-center justify-center mb-1.5 ${
-                      index === 0 ? 'bg-remembra-accent-primary/20' : index === 1 ? 'bg-[#FF4500]/20' : 'bg-[#E81224]/20'
+                      index === 0 ? 'bg-remembra-accent-primary/20'
+                        : index === 1 ? 'bg-[#FF4500]/20'
+                          : index === 2 ? 'bg-[#E81224]/20'
+                            : 'bg-[#00B8D9]/20'
                     }`}>
                       <span className={`text-xs font-bold ${
-                        index === 0 ? 'text-remembra-accent-primary' : index === 1 ? 'text-[#FF4500]' : 'text-[#E81224]'
+                        index === 0 ? 'text-remembra-accent-primary'
+                          : index === 1 ? 'text-[#FF4500]'
+                            : index === 2 ? 'text-[#E81224]'
+                              : 'text-[#00B8D9]'
                       }`}>
-                        Day {['1', '6', '15'][index]}
+                        Day {[...REVIEW_INTERVALS_147, OPTIONAL_REVIEW_DAY_30][index]}
                       </span>
                     </div>
                     <span className="text-xs text-remembra-text-muted">{date}</span>

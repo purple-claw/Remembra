@@ -33,6 +33,27 @@ export function Auth() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
 
+  // Handle auth callback state (password recovery / OAuth) from URL.
+  useEffect(() => {
+    const search = new URLSearchParams(window.location.search);
+    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    const action = search.get('auth_action');
+    const type = hash.get('type');
+    const errorDescription = hash.get('error_description');
+
+    if (errorDescription) {
+      toast.error(decodeURIComponent(errorDescription));
+    }
+
+    if (action === 'recovery' || type === 'recovery') {
+      setView('update-password');
+    }
+
+    if (window.location.search || window.location.hash) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
+
   // Redirect to dashboard when authenticated (in useEffect, not during render)
   useEffect(() => {
     if (isAuthenticated && view !== 'update-password') {

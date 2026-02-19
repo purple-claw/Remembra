@@ -1,20 +1,21 @@
-import { useState } from 'react';
-import { mockAITools } from '@/data/mockData';
+import { useMemo, useState } from 'react';
 import { useStore } from '@/store/useStore';
 import { aiService } from '@/services/aiService';
-import { 
-  Sparkles, 
-  FileText, 
-  GitBranch, 
-  HelpCircle, 
-  Home, 
-  MessageCircle,
+import {
   ArrowLeft,
-  Send,
-  Copy,
-  Download,
+  BrainCircuit,
   Check,
-  Wand2
+  Copy,
+  FileText,
+  GitBranch,
+  HelpCircle,
+  Home,
+  Loader2,
+  MessageCircle,
+  Save,
+  Send,
+  Sparkles,
+  Wand2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -23,404 +24,290 @@ import { toast } from 'sonner';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { MermaidDiagram } from '@/components/MermaidDiagram';
 
+type StudioMode = 'home' | 'tools' | 'chat';
+type ToolId = 'summary' | 'bullets' | 'flowchart' | 'quiz' | 'mnemonics' | 'code';
+
+interface ToolDef {
+  id: ToolId;
+  name: string;
+  desc: string;
+  color: string;
+  icon: React.ElementType;
+  placeholder: string;
+}
+
 interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
 }
 
+const TOOL_DEFS: ToolDef[] = [
+  {
+    id: 'summary',
+    name: 'Deep Summary',
+    desc: 'Condense long content into fast revision notes.',
+    color: '#FF8000',
+    icon: FileText,
+    placeholder: 'Paste topic notes to create a concise summary...',
+  },
+  {
+    id: 'bullets',
+    name: 'Key Bullets',
+    desc: 'Generate memory-friendly key points.',
+    color: '#FF5A1F',
+    icon: Sparkles,
+    placeholder: 'Paste a topic to extract key bullet points...',
+  },
+  {
+    id: 'flowchart',
+    name: 'Concept Map',
+    desc: 'Convert content into visual Mermaid flow.',
+    color: '#00B8D9',
+    icon: GitBranch,
+    placeholder: 'Describe process/concepts for flowchart rendering...',
+  },
+  {
+    id: 'quiz',
+    name: 'Recall Quiz',
+    desc: 'Generate Q&A drills for active recall.',
+    color: '#00D26A',
+    icon: HelpCircle,
+    placeholder: 'Paste study content to generate a quiz set...',
+  },
+  {
+    id: 'mnemonics',
+    name: 'Memory Hooks',
+    desc: 'Create mnemonics and analogies.',
+    color: '#FFB800',
+    icon: Home,
+    placeholder: 'Paste facts you want to memorize deeply...',
+  },
+  {
+    id: 'code',
+    name: 'Code Explainer',
+    desc: 'Explain structure, flow, and caveats of code.',
+    color: '#8B5CF6',
+    icon: BrainCircuit,
+    placeholder: 'Paste code and request explanation...',
+  },
+];
+
+function extractMermaid(raw: string): string {
+  const match = raw.match(/```mermaid\n([\s\S]*?)\n```/i);
+  if (match?.[1]) return match[1].trim();
+  return raw.replace(/```mermaid\n?/gi, '').replace(/```\n?/g, '').trim();
+}
+
+function toQuizMarkdown(qa: { question: string; answer: string }[]): string {
+  return qa
+    .map((item, idx) => `### Q${idx + 1}\n${item.question}\n\n**Answer:** ${item.answer}`)
+    .join('\n\n');
+}
+
 export function AIStudio() {
-  const { memoryItems } = useStore();
-  const [activeTool, setActiveTool] = useState<string | null>(null);
+  const { memoryItems, updateMemoryItem } = useStore();
+  const provider = aiService.getProviderStatus();
+
+  const [mode, setMode] = useState<StudioMode>('home');
+  const [toolId, setToolId] = useState<ToolId>('summary');
+  const [selectedItemId, setSelectedItemId] = useState<string>('');
   const [inputText, setInputText] = useState('');
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [result, setResult] = useState<string | null>(null);
+  const [result, setResult] = useState('');
+  const [copied, setCopied] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [lastError, setLastError] = useState<string>('');
+
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
-    { role: 'assistant', content: "Hi! I'm your AI study buddy. I can help explain concepts, create analogies, or answer questions about your learning materials. What would you like to explore?" }
+    { role: 'assistant', content: 'I am ready. Ask any study question and I will answer with recall-first steps.' },
   ]);
   const [chatInput, setChatInput] = useState('');
+  const [isChatting, setIsChatting] = useState(false);
 
-  const handleToolSelect = (toolId: string) => {
-    setActiveTool(toolId);
-    setInputText('');
-    setResult(null);
+  const tool = useMemo(() => TOOL_DEFS.find((t) => t.id === toolId) || TOOL_DEFS[0], [toolId]);
+  const selectedItem = useMemo(
+    () => memoryItems.find((m) => m.id === selectedItemId) || null,
+    [memoryItems, selectedItemId],
+  );
+
+  const effectiveInput = selectedItem ? selectedItem.content : inputText;
+  const effectiveTitle = selectedItem?.title || 'AI Studio Input';
+
+  const goToTools = (nextTool: ToolId) => {
+    setToolId(nextTool);
+    setMode('tools');
+    setResult('');
+    setLastError('');
   };
 
-  const handleProcess = async () => {
-    if (!inputText.trim()) {
-      toast.error('Please enter some text');
+  const handleGenerate = async () => {
+    if (!effectiveInput.trim()) {
+      toast.error('Please provide input text or select a memory item.');
       return;
     }
-    
-    setIsProcessing(true);
-    
+
+    setIsGenerating(true);
+    setLastError('');
     try {
       let output = '';
-      
-      switch (activeTool) {
-        case 'summarizer':
-          output = await aiService.generateSummary(inputText, 'User Input');
-          break;
-        case 'flowchart':
-          output = await aiService.generateFlowchart(inputText, 'User Input');
-          break;
-        case 'quiz':
-          const questions = await aiService.generateQuizQuestions(inputText, 'User Input', 3);
-          output = questions.map((q, i) => `**Q${i+1}:** ${q.question}\n**A:** ${q.answer}`).join('\n\n');
-          break;
-        case 'memory-palace':
-          output = await aiService.generateMnemonics(inputText, 'User Input');
-          break;
+      if (tool.id === 'summary') {
+        output = await aiService.generateSummary(effectiveInput, effectiveTitle);
+      } else if (tool.id === 'bullets') {
+        const bullets = await aiService.generateBulletPoints(effectiveInput, effectiveTitle);
+        output = bullets.map((b) => `- ${b}`).join('\n');
+      } else if (tool.id === 'flowchart') {
+        output = await aiService.generateFlowchart(effectiveInput, effectiveTitle);
+      } else if (tool.id === 'quiz') {
+        const quiz = await aiService.generateQuizQuestions(effectiveInput, effectiveTitle, 5);
+        output = toQuizMarkdown(quiz);
+      } else if (tool.id === 'mnemonics') {
+        output = await aiService.generateMnemonics(effectiveInput, effectiveTitle);
+      } else {
+        output = await aiService.explainCode(effectiveInput);
       }
-      
-      setResult(output);
-      toast.success('Processing complete!');
+
+      setResult(output || 'No output returned');
+      toast.success('AI output generated');
     } catch (error) {
-      console.error('AI processing error:', error);
-      toast.error('Failed to process. Using demo mode.');
-      // Fallback to demo content
-      let output = '';
-      switch (activeTool) {
-        case 'summarizer':
-          output = generateSummary();
-          break;
-        case 'flowchart':
-          output = generateFlowchart();
-          break;
-        case 'quiz':
-          output = generateQuiz();
-          break;
-        case 'memory-palace':
-          output = generateMemoryPalace(inputText);
-          break;
-      }
-      setResult(output);
+      console.error('AI generation failed:', error);
+      const message = error instanceof Error ? error.message : 'AI generation failed';
+      setLastError(message);
+      setResult('Unable to generate live output right now. Check API keys and retry.');
+      toast.error('AI request failed');
+    } finally {
+      setIsGenerating(false);
     }
-    
-    setIsProcessing(false);
   };
 
-  const generateSummary = () => {
-    return `## Key Points
+  const handleSaveToItem = async () => {
+    if (!selectedItem || !result.trim()) {
+      toast.error('Select an item and generate output first.');
+      return;
+    }
 
-• The content covers fundamental concepts essential for understanding
-• Main components include structure, behavior, and relationships
-• Key benefits: improved efficiency, better organization, enhanced learning
-• Common applications in real-world scenarios
-
-## Important Terms
-
-1. **Core Concept** - The foundational principle
-2. **Implementation** - How to apply in practice  
-3. **Optimization** - Improving performance
-
-## Review Questions
-
-• What are the three main components?
-• How would you explain this to a beginner?
-• What are common pitfalls to avoid?`;
+    setIsSaving(true);
+    try {
+      if (tool.id === 'summary') {
+        await updateMemoryItem(selectedItem.id, { ai_summary: result });
+      } else if (tool.id === 'flowchart') {
+        await updateMemoryItem(selectedItem.id, { ai_flowchart: extractMermaid(result) });
+      } else if (tool.id === 'bullets') {
+        const bullets = result
+          .split('\n')
+          .map((line) => line.replace(/^[-*]\s*/, '').trim())
+          .filter(Boolean);
+        await updateMemoryItem(selectedItem.id, { ai_bullet_points: bullets });
+      } else {
+        await updateMemoryItem(selectedItem.id, { notes: result });
+      }
+      toast.success('Saved to selected memory item');
+    } catch (error) {
+      console.error('Failed to save AI output:', error);
+      toast.error('Save failed');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const generateFlowchart = () => {
-    return '```mermaid\ngraph TD\n    A[Start] --> B{Understand Problem}\n    B -->|Yes| C[Break Down]\n    B -->|No| D[Research]\n    D --> B\n    C --> E[Create Plan]\n    E --> F[Execute]\n    F --> G{Test?}\n    G -->|Pass| H[Complete]\n    G -->|Fail| I[Debug]\n    I --> F\n    H --> J[Review & Optimize]\n```';
+  const handleCopy = async () => {
+    if (!result) return;
+    await navigator.clipboard.writeText(result);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+    toast.success('Copied');
   };
 
-  const generateQuiz = () => {
-    return `## Practice Quiz
-
-**Question 1:** What is the primary purpose of this concept?
-- A) To complicate processes
-- B) To simplify and organize
-- C) To increase complexity
-- D) To reduce efficiency
-
-**Question 2:** Which of the following is NOT a key component?
-- A) Structure
-- B) Behavior  
-- C) Randomness
-- D) Relationships
-
-**Question 3:** When should you apply this?
-- A) Never
-- B) Only in theory
-- C) When organizing complex systems
-- D) Only for experts`;
-  };
-
-  const generateMemoryPalace = (text: string) => {
-    const items = text.split(',').map(s => s.trim()).filter(s => s);
-    return `## Your Memory Palace: The Modern House
-
-**Journey Path:**
-
-1. **Front Door** -> "${items[0] || 'First Item'}"
-   - Visualize a giant ${items[0] || 'object'} blocking the entrance
-
-2. **Living Room** -> "${items[1] || 'Second Item'}"
-   - See ${items[1] || 'it'} sitting on the couch watching TV
-
-3. **Kitchen** -> "${items[2] || 'Third Item'}"
-   - Imagine ${items[2] || 'something'} cooking on the stove
-
-4. **Bedroom** -> "${items[3] || 'Fourth Item'}"
-   - Picture ${items[3] || 'an item'} sleeping in your bed
-
-5. **Bathroom** -> "${items[4] || 'Fifth Item'}"
-   - Visualize ${items[4] || 'the last item'} taking a bath
-
-**Tips:**
-• Make images exaggerated and unusual
-• Use all your senses
-• Practice the journey daily`;
-  };
-
-  const handleChatSend = async () => {
+  const handleSendChat = async () => {
     if (!chatInput.trim()) return;
-    
-    const newMessage: ChatMessage = { role: 'user', content: chatInput };
-    const userInput = chatInput;
-    setChatMessages(prev => [...prev, newMessage]);
+    const userMessage = chatInput;
+    const contextTitle = selectedItem?.title || 'General Study Chat';
+    const contextContent = selectedItem?.content || '';
+
+    setChatMessages((prev) => [...prev, { role: 'user', content: userMessage }]);
     setChatInput('');
-    setIsProcessing(true);
-    
+    setIsChatting(true);
     try {
-      const response = await aiService.chat('', 'General Learning', userInput);
-      setChatMessages(prev => [...prev, { role: 'assistant', content: response }]);
+      const reply = await aiService.chat(contextContent, contextTitle, userMessage);
+      setChatMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
     } catch (error) {
-      console.error('Chat error:', error);
-      // Fallback response
-      const responses = [
-        "That's a great question! Let me break this down for you...",
-        "Think of it like this: imagine you're organizing a library...",
-        "The key insight here is understanding the relationship between...",
-        "Here's an analogy that might help: it's like building with LEGO blocks...",
-      ];
-      const randomResponse = responses[Math.floor(Math.random() * responses.length)];
-      setChatMessages(prev => [...prev, { 
-        role: 'assistant', 
-        content: randomResponse + " This concept builds on what you learned earlier. Would you like me to create some practice questions?"
-      }]);
-    }
-    
-    setIsProcessing(false);
-  };
-
-  const copyToClipboard = () => {
-    if (result) {
-      navigator.clipboard.writeText(result);
-      toast.success('Copied to clipboard!');
+      console.error('AI chat failed:', error);
+      setChatMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: 'Live AI failed. Retry after checking provider configuration.' },
+      ]);
+    } finally {
+      setIsChatting(false);
     }
   };
 
-  if (activeTool && activeTool !== 'chat') {
-    const tool = mockAITools.find(t => t.id === activeTool);
-    if (!tool) return null;
-
+  if (mode === 'chat') {
     return (
-      <div className="min-h-screen bg-black lined-bg-subtle flex flex-col">
-        <header className="px-5 pt-6 pb-4">
-          <div className="flex items-center gap-3 mb-4">
-            <button 
-              onClick={() => setActiveTool(null)}
-              className="w-10 h-10 rounded-xl bg-remembra-bg-secondary flex items-center justify-center text-remembra-text-secondary hover:text-remembra-text-primary transition-colors"
+      <div className="min-h-screen bg-black lined-bg-subtle flex flex-col smooth-scroll-content">
+        <header className="px-4 sm:px-5 pt-6 pb-3 border-b border-white/5">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setMode('home')}
+              className="w-10 h-10 rounded-xl bg-remembra-bg-secondary flex items-center justify-center text-remembra-text-secondary"
             >
-              <ArrowLeft size={20} />
+              <ArrowLeft size={18} />
             </button>
-            
-            <div 
-              className="w-10 h-10 rounded-xl flex items-center justify-center"
-              style={{ backgroundColor: `${tool.color}20` }}
-            >
-              {tool.id === 'summarizer' && <FileText size={20} style={{ color: tool.color }} />}
-              {tool.id === 'flowchart' && <GitBranch size={20} style={{ color: tool.color }} />}
-              {tool.id === 'quiz' && <HelpCircle size={20} style={{ color: tool.color }} />}
-              {tool.id === 'memory-palace' && <Home size={20} style={{ color: tool.color }} />}
+            <div className="w-10 h-10 rounded-xl bg-remembra-accent-primary/20 flex items-center justify-center">
+              <MessageCircle size={18} className="text-remembra-accent-primary" />
             </div>
-            
-            <div>
-              <h1 className="text-xl font-bold text-remembra-text-primary">{tool.name}</h1>
-              <p className="text-sm text-remembra-text-muted">{tool.description}</p>
+            <div className="min-w-0">
+              <h1 className="text-lg font-bold text-remembra-text-primary">AI Tutor Chat</h1>
+              <p className="text-xs text-remembra-text-muted truncate">
+                {selectedItem ? `Context: ${selectedItem.title}` : 'No item context selected'}
+              </p>
             </div>
           </div>
         </header>
 
-        <main className="flex-1 px-5 py-4 overflow-y-auto">
-          {!result ? (
-            <div className="space-y-4 animate-slide-up">
-              <div>
-                <label className="block text-sm font-medium text-remembra-text-secondary mb-2">
-                  Input
-                </label>
-                <Textarea
-                  placeholder={
-                    activeTool === 'summarizer' ? 'Paste text to summarize...' :
-                    activeTool === 'flowchart' ? 'Describe a process to visualize...' :
-                    activeTool === 'quiz' ? 'Enter content to generate quiz...' :
-                    'Enter items to remember (comma-separated)...'
-                  }
-                  value={inputText}
-                  onChange={(e) => setInputText(e.target.value)}
-                  className="bg-remembra-bg-secondary border-white/5 rounded-xl text-remembra-text-primary placeholder:text-remembra-text-muted focus:border-remembra-accent-primary/50 min-h-[200px] resize-none"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-remembra-text-secondary mb-2">
-                  Or select from library
-                </label>
-                <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-2">
-                  {memoryItems.slice(0, 4).map(item => (
-                    <button
-                      key={item.id}
-                      onClick={() => setInputText(item.content)}
-                      className="flex-shrink-0 px-3 py-2 bg-remembra-bg-secondary rounded-lg text-xs text-remembra-text-secondary hover:text-remembra-text-primary border border-white/5"
-                    >
-                      {item.title}
-                    </button>
-                  ))}
-                </div>
+        <main className="flex-1 px-4 sm:px-5 py-4 overflow-y-auto space-y-3">
+          {chatMessages.map((message, idx) => (
+            <div key={idx} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div
+                className={`max-w-[84%] rounded-2xl px-4 py-3 text-sm ${
+                  message.role === 'user'
+                    ? 'bg-remembra-accent-primary text-white'
+                    : 'bg-remembra-bg-secondary border border-white/5 text-remembra-text-primary'
+                } smooth-surface`}
+              >
+                {message.content}
               </div>
             </div>
-          ) : (
-            <div className="space-y-4 animate-slide-up">
-              <div className="bg-remembra-bg-secondary rounded-2xl p-5 border border-white/5">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-semibold text-remembra-text-primary">Result</h3>
-                  <div className="flex gap-2">
-                    <button 
-                      onClick={copyToClipboard}
-                      className="p-2 rounded-lg bg-remembra-bg-tertiary text-remembra-text-secondary hover:text-remembra-text-primary"
-                    >
-                      <Copy size={16} />
-                    </button>
-                    <button className="p-2 rounded-lg bg-remembra-bg-tertiary text-remembra-text-secondary hover:text-remembra-text-primary">
-                      <Download size={16} />
-                    </button>
-                  </div>
-                </div>
-                
-                {activeTool === 'flowchart' && result ? (
-                  (() => {
-                    // Extract mermaid code from result
-                    const mermaidMatch = result.match(/```mermaid\n([\s\S]*?)\n```/);
-                    const mermaidCode = mermaidMatch ? mermaidMatch[1].trim() : result.replace(/```mermaid\n?/gi, '').replace(/```\n?/g, '').trim();
-                    return (
-                      <div className="overflow-x-auto">
-                        <MermaidDiagram chart={mermaidCode} className="my-2" />
-                      </div>
-                    );
-                  })()
-                ) : (
-                  <div className="prose prose-invert prose-sm max-w-none">
-                    <MarkdownRenderer content={result} />
-                  </div>
-                )}
-              </div>
-              
-              <div className="flex gap-3">
-                <Button
-                  onClick={() => setResult(null)}
-                  variant="outline"
-                  className="flex-1 border-white/10 text-remembra-text-secondary"
-                >
-                  Start Over
-                </Button>
-                <Button
-                  onClick={() => toast.success('Saved to item!')}
-                  className="flex-1 gradient-primary"
-                >
-                  <Check size={16} className="mr-2" />
-                  Save to Item
-                </Button>
+          ))}
+          {isChatting && (
+            <div className="flex justify-start">
+              <div className="max-w-[84%] rounded-2xl px-4 py-3 text-sm bg-remembra-bg-secondary border border-white/5 text-remembra-text-muted flex items-center gap-2">
+                <Loader2 size={13} className="animate-spin" />
+                Generating...
               </div>
             </div>
           )}
         </main>
 
-        {!result && (
-          <footer className="px-5 pb-8 pt-4">
-            <Button
-              onClick={handleProcess}
-              disabled={isProcessing || !inputText.trim()}
-              className="w-full gradient-primary py-6 rounded-2xl text-white font-semibold disabled:opacity-50"
-            >
-              {isProcessing ? (
-                <>
-                  <Wand2 size={18} className="mr-2 animate-pulse" />
-                  Processing...
-                </>
-              ) : (
-                <>
-                  <Sparkles size={18} className="mr-2" />
-                  Generate
-                </>
-              )}
-            </Button>
-          </footer>
-        )}
-      </div>
-    );
-  }
-
-  if (activeTool === 'chat') {
-    return (
-      <div className="min-h-screen bg-black lined-bg-subtle flex flex-col">
-        <header className="px-5 pt-6 pb-4">
-          <div className="flex items-center gap-3">
-            <button 
-              onClick={() => setActiveTool(null)}
-              className="w-10 h-10 rounded-xl bg-remembra-bg-secondary flex items-center justify-center text-remembra-text-secondary hover:text-remembra-text-primary transition-colors"
-            >
-              <ArrowLeft size={20} />
-            </button>
-            
-            <div className="w-10 h-10 rounded-xl bg-remembra-accent-pink/20 flex items-center justify-center">
-              <MessageCircle size={20} className="text-remembra-accent-pink" />
-            </div>
-            
-            <div>
-              <h1 className="text-xl font-bold text-remembra-text-primary">Study Buddy</h1>
-              <p className="text-sm text-remembra-text-muted">AI tutor for your learning materials</p>
-            </div>
-          </div>
-        </header>
-
-        <main className="flex-1 px-5 py-4 overflow-y-auto">
-          <div className="space-y-4">
-            {chatMessages.map((message, index) => (
-              <div 
-                key={index}
-                className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
-                <div 
-                  className={`max-w-[80%] p-4 rounded-2xl ${
-                    message.role === 'user' 
-                      ? 'bg-remembra-accent-primary text-white' 
-                      : 'bg-remembra-bg-secondary text-remembra-text-primary'
-                  }`}
-                >
-                  <p className="text-sm">{message.content}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </main>
-
-        <footer className="px-5 pb-8 pt-4">
+        <footer className="px-4 sm:px-5 pb-8 pt-3 border-t border-white/5">
           <div className="flex gap-2">
             <Input
               type="text"
-              placeholder="Ask anything..."
+              placeholder="Ask your question..."
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleChatSend()}
-              className="flex-1 bg-remembra-bg-secondary border-white/5 rounded-xl text-remembra-text-primary placeholder:text-remembra-text-muted focus:border-remembra-accent-primary/50 py-6"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleSendChat();
+                }
+              }}
+              className="bg-remembra-bg-secondary border-white/5 rounded-xl text-remembra-text-primary py-6"
             />
             <button
-              onClick={handleChatSend}
-              disabled={!chatInput.trim()}
-              className="w-12 h-12 rounded-xl gradient-primary flex items-center justify-center text-white disabled:opacity-50"
+              onClick={handleSendChat}
+              disabled={!chatInput.trim() || isChatting}
+              className="w-12 h-12 rounded-xl gradient-primary text-white flex items-center justify-center disabled:opacity-50"
             >
-              <Send size={18} />
+              <Send size={16} />
             </button>
           </div>
         </footer>
@@ -428,111 +315,182 @@ export function AIStudio() {
     );
   }
 
-  return (
-    <div className="bg-black lined-bg-subtle px-5 pt-6 pb-8">
-      <header className="mb-8">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-remembra-accent-primary to-remembra-accent-secondary flex items-center justify-center">
-            <Sparkles size={20} className="text-white" />
+  if (mode === 'tools') {
+    const Icon = tool.icon;
+    return (
+      <div className="min-h-screen bg-black lined-bg-subtle flex flex-col smooth-scroll-content">
+        <header className="px-4 sm:px-5 pt-6 pb-4 border-b border-white/5">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setMode('home')}
+              className="w-10 h-10 rounded-xl bg-remembra-bg-secondary flex items-center justify-center text-remembra-text-secondary"
+            >
+              <ArrowLeft size={18} />
+            </button>
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: `${tool.color}20` }}>
+              <Icon size={18} style={{ color: tool.color }} />
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-lg font-bold text-remembra-text-primary">{tool.name}</h1>
+              <p className="text-xs text-remembra-text-muted">{tool.desc}</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-2xl font-bold text-remembra-text-primary">AI Studio</h1>
-            <p className="text-sm text-remembra-text-muted">Supercharge your learning with AI</p>
+        </header>
+
+        <main className="flex-1 px-4 sm:px-5 py-4 overflow-y-auto space-y-4">
+          <div className="glass-card rounded-2xl p-4 border border-white/5 dynamic-container smooth-surface">
+            <p className="text-xs font-semibold uppercase tracking-wider text-remembra-text-muted mb-2">Context Source</p>
+            <select
+              value={selectedItemId}
+              onChange={(e) => setSelectedItemId(e.target.value)}
+              className="w-full bg-remembra-bg-secondary border border-white/10 rounded-xl px-3 py-2 text-sm text-remembra-text-primary"
+            >
+              <option value="">Manual Input</option>
+              {memoryItems.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.title}
+                </option>
+              ))}
+            </select>
+            {!selectedItem && (
+              <Textarea
+                placeholder={tool.placeholder}
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                className="mt-3 bg-remembra-bg-secondary border-white/5 rounded-xl text-remembra-text-primary min-h-[170px] resize-none"
+              />
+            )}
+            {selectedItem && (
+              <div className="mt-3 rounded-xl border border-white/10 bg-remembra-bg-secondary p-3">
+                <p className="text-xs text-remembra-text-muted mb-1">Using selected memory item content</p>
+                <p className="text-sm text-remembra-text-primary line-clamp-4">{selectedItem.content}</p>
+              </div>
+            )}
+          </div>
+
+          <div className="glass-card rounded-2xl p-4 border border-white/5 dynamic-container smooth-surface">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-remembra-text-muted">Generated Output</p>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleCopy}
+                  disabled={!result}
+                  className="px-2.5 py-1 rounded-lg bg-remembra-bg-secondary text-[11px] text-remembra-text-secondary border border-white/5 disabled:opacity-50 flex items-center gap-1"
+                >
+                  {copied ? <Check size={12} /> : <Copy size={12} />}
+                  {copied ? 'Copied' : 'Copy'}
+                </button>
+                <button
+                  onClick={handleSaveToItem}
+                  disabled={!selectedItem || !result || isSaving}
+                  className="px-2.5 py-1 rounded-lg bg-remembra-bg-secondary text-[11px] text-remembra-text-secondary border border-white/5 disabled:opacity-50 flex items-center gap-1"
+                >
+                  {isSaving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                  Save
+                </button>
+              </div>
+            </div>
+
+            {!result ? (
+              <div className="rounded-xl border border-dashed border-white/10 p-8 text-center">
+                <Wand2 size={18} className="mx-auto text-remembra-text-muted mb-2" />
+                <p className="text-sm text-remembra-text-muted">Generate to view AI output here.</p>
+              </div>
+            ) : tool.id === 'flowchart' ? (
+              <MermaidDiagram chart={extractMermaid(result)} className="my-1" />
+            ) : (
+              <MarkdownRenderer content={result} />
+            )}
+
+            {lastError && (
+              <p className="mt-3 text-xs text-red-400">{lastError}</p>
+            )}
+          </div>
+        </main>
+
+        <footer className="px-4 sm:px-5 pb-8 pt-3 border-t border-white/5">
+          <Button
+            onClick={handleGenerate}
+            disabled={isGenerating || !effectiveInput.trim()}
+            className="w-full gradient-primary py-6 rounded-2xl text-white font-semibold disabled:opacity-50"
+          >
+            {isGenerating ? (
+              <>
+                <Loader2 size={16} className="mr-2 animate-spin" />
+                Generating...
+              </>
+            ) : (
+              <>
+                <Sparkles size={16} className="mr-2" />
+                Generate
+              </>
+            )}
+          </Button>
+        </footer>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-black lined-bg-subtle px-4 sm:px-5 pt-6 pb-28 sm:pb-8 smooth-scroll-content">
+      <header className="mb-6">
+        <div
+          className="rounded-2xl p-5 border border-white/10 relative overflow-hidden"
+          style={{ background: 'linear-gradient(140deg, #FF8000 0%, #FF4500 40%, #E81224 100%)' }}
+        >
+          <div className="absolute -top-8 -right-8 w-28 h-28 rounded-full bg-white/20 blur-2xl" />
+          <div className="relative z-10">
+            <h1 className="text-xl font-bold text-white mb-1">AI Studio</h1>
+            <p className="text-sm text-white/80 mb-3">Full AI workbench for summaries, quizzes, flowcharts, and tutor chat.</p>
+            <div className="flex flex-wrap gap-2 text-[11px]">
+              <span className="px-2 py-1 rounded-md bg-black/25 text-white flex items-center gap-1">
+                <BrainCircuit size={12} />
+                {provider.preferredReasoningModel}
+              </span>
+              <span className="px-2 py-1 rounded-md bg-black/25 text-white">
+                {provider.mode === 'live' ? 'Live AI active' : 'Fallback mode'}
+              </span>
+            </div>
           </div>
         </div>
       </header>
 
-      {/* Featured tool - Chat */}
-      <button
-        onClick={() => handleToolSelect('chat')}
-        className="w-full mb-6 relative overflow-hidden rounded-2xl p-6 text-left transition-all hover:scale-[1.01] active:scale-[0.99]"
-        style={{
-          background: 'linear-gradient(135deg, #FF8000 0%, #FF4500 50%, #E81224 100%)',
-        }}
-      >
-        <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
-        <div className="relative z-10 flex items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center flex-shrink-0">
-            <MessageCircle size={28} className="text-white" />
+      <section className="mb-5">
+        <button
+          onClick={() => setMode('chat')}
+          className="w-full rounded-2xl border border-remembra-accent-primary/30 bg-remembra-accent-primary/10 p-4 text-left flex items-center gap-3 hover:bg-remembra-accent-primary/15 transition-colors smooth-surface"
+        >
+          <div className="w-11 h-11 rounded-xl bg-remembra-accent-primary/20 flex items-center justify-center">
+            <MessageCircle size={18} className="text-remembra-accent-primary" />
           </div>
-          <div className="flex-1">
-            <h3 className="text-lg font-bold text-white mb-0.5">Study Buddy</h3>
-            <p className="text-sm text-white/70">Chat with your AI tutor about anything</p>
+          <div>
+            <p className="text-sm font-semibold text-remembra-text-primary">Tutor Chat</p>
+            <p className="text-xs text-remembra-text-muted">Interactive reasoning chat with optional item context.</p>
           </div>
-          <ArrowLeft size={20} className="text-white/50 rotate-180" />
-        </div>
-      </button>
+        </button>
+      </section>
 
-      {/* Tool grid */}
-      <h2 className="text-sm font-semibold text-remembra-text-muted uppercase tracking-wider mb-4">AI Tools</h2>
-      <div className="grid grid-cols-2 gap-3 mb-8">
-        {mockAITools.filter(t => t.id !== 'chat').map((tool, index) => {
-          const icons: Record<string, React.ElementType> = {
-            summarizer: FileText,
-            flowchart: GitBranch,
-            quiz: HelpCircle,
-            'memory-palace': Home,
-          };
-          const Icon = icons[tool.id] || Sparkles;
-          
-          return (
-            <button
-              key={tool.id}
-              onClick={() => handleToolSelect(tool.id)}
-              className="group bg-remembra-bg-secondary/80 backdrop-blur-sm rounded-2xl p-5 border border-white/5 text-left transition-all hover:border-white/10 hover:bg-remembra-bg-secondary active:scale-[0.97] animate-slide-up"
-              style={{ animationDelay: `${index * 60}ms` }}
-            >
-              <div 
-                className="w-11 h-11 rounded-xl flex items-center justify-center mb-3 transition-transform group-hover:scale-110"
-                style={{ backgroundColor: `${tool.color}15` }}
-              >
-                <Icon size={22} style={{ color: tool.color }} />
-              </div>
-              
-              <h3 className="font-semibold text-sm text-remembra-text-primary mb-1">{tool.name}</h3>
-              <p className="text-xs text-remembra-text-muted leading-relaxed">{tool.description}</p>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Quick tips section */}
-      {memoryItems.length > 0 && (
-        <div>
-          <h2 className="text-sm font-semibold text-remembra-text-muted uppercase tracking-wider mb-4">Quick Actions</h2>
-          <div className="space-y-2">
-            {memoryItems.slice(0, 3).map((item) => (
+      <section>
+        <h2 className="text-sm font-semibold text-remembra-text-muted uppercase tracking-wider mb-3">AI Tools</h2>
+        <div className="grid grid-cols-2 gap-3">
+          {TOOL_DEFS.map((def) => {
+            const Icon = def.icon;
+            return (
               <button
-                key={item.id}
-                onClick={() => {
-                  setInputText(item.content);
-                  handleToolSelect('summarizer');
-                }}
-                className="w-full flex items-center gap-3 p-3.5 bg-remembra-bg-secondary/60 rounded-xl border border-white/5 text-left transition-all hover:bg-remembra-bg-secondary"
+                key={def.id}
+                onClick={() => goToTools(def.id)}
+                className="rounded-2xl bg-remembra-bg-secondary/80 border border-white/5 p-4 text-left hover:border-white/15 transition-colors smooth-surface"
               >
-                <div className="w-9 h-9 rounded-lg bg-remembra-accent-primary/10 flex items-center justify-center flex-shrink-0">
-                  <Wand2 size={16} className="text-remembra-accent-primary" />
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-2" style={{ backgroundColor: `${def.color}20` }}>
+                  <Icon size={18} style={{ color: def.color }} />
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-remembra-text-primary truncate">{item.title}</p>
-                  <p className="text-xs text-remembra-text-muted">Tap to summarize</p>
-                </div>
+                <p className="text-sm font-semibold text-remembra-text-primary mb-1">{def.name}</p>
+                <p className="text-xs text-remembra-text-muted leading-relaxed">{def.desc}</p>
               </button>
-            ))}
-          </div>
+            );
+          })}
         </div>
-      )}
-
-      {memoryItems.length === 0 && (
-        <div className="text-center py-8">
-          <div className="w-14 h-14 mx-auto mb-3 rounded-full bg-remembra-bg-secondary flex items-center justify-center">
-            <Sparkles size={24} className="text-remembra-text-muted" />
-          </div>
-          <p className="text-sm text-remembra-text-muted">
-            Add memory items to unlock quick AI actions
-          </p>
-        </div>
-      )}
+      </section>
     </div>
   );
 }

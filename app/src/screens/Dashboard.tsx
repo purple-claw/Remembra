@@ -45,7 +45,7 @@ export function Dashboard() {
 
   return (
     <div className="bg-black lined-bg-subtle">
-      <header className="px-5 pt-6 pb-4">
+      <header className="px-4 sm:px-5 pt-[max(1.5rem,env(safe-area-inset-top))] pb-4">
         <div className="flex items-center justify-between">
           <button 
             onClick={() => setScreen('profile')} 
@@ -78,15 +78,15 @@ export function Dashboard() {
             </div>
           </button>
           
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-1.5 bg-remembra-bg-secondary rounded-full px-3 py-1.5">
-              <Flame size={18} className="text-orange-500 animate-flame" />
-              <span className="text-sm font-semibold text-orange-400">{profile?.streak_count || 0}</span>
+          <div className="flex items-center gap-2 sm:gap-4">
+            <div className="flex items-center gap-1.5 bg-remembra-bg-secondary rounded-full px-2.5 py-1.5">
+              <Flame size={16} className="text-orange-500 animate-flame" />
+              <span className="text-xs sm:text-sm font-semibold text-orange-400">{profile?.streak_count || 0}</span>
             </div>
             
             <ProgressRing 
               percentage={progressPercentage} 
-              size={48} 
+              size={44}
               strokeWidth={4}
               color="#FF8000"
             />
@@ -94,7 +94,7 @@ export function Dashboard() {
         </div>
       </header>
 
-      <div className="px-5 space-y-6 pb-8">
+      <div className="px-4 sm:px-5 space-y-6 pb-28 sm:pb-8">
         <section className="animate-slide-up">
           <div 
             className="relative overflow-hidden rounded-3xl p-6"

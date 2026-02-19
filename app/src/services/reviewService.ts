@@ -52,6 +52,28 @@ export const reviewService = {
     return (data || []).map(transformReview);
   },
 
+  // Get reviews in an inclusive date range
+  async getReviewsInRange(startDate: string, endDate: string): Promise<Review[]> {
+    const supabase = getSupabase();
+    const userId = await requireAuth();
+
+    const { data, error } = await supabase
+      .from('reviews')
+      .select('*')
+      .eq('user_id', userId)
+      .gte('scheduled_date', startDate)
+      .lte('scheduled_date', endDate)
+      .order('scheduled_date', { ascending: true })
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching reviews in range:', error);
+      throw error;
+    }
+
+    return (data || []).map(transformReview);
+  },
+
   // Get pending (incomplete) reviews
   async getPendingReviews(): Promise<Review[]> {
     const supabase = getSupabase();

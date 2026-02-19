@@ -27,6 +27,7 @@ import { Badge } from '@/components/ui/badge';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { MermaidDiagram } from '@/components/MermaidDiagram';
 import { toast } from 'sonner';
+import { getStageDayLabel } from '@/domain/review147';
 
 interface ItemDetailProps {
   item: MemoryItem;
@@ -150,6 +151,9 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
                 </div>
                 <Badge variant="outline" className={`text-[10px] ${getStatusColor(item.status)}`}>
                   {item.status}
+                </Badge>
+                <Badge variant="outline" className="text-[10px] border-remembra-accent-primary/40 text-remembra-accent-primary">
+                  {getStageDayLabel(item.review_stage, item.status)}
                 </Badge>
               </div>
               <h1 className="text-lg font-bold text-white truncate">{item.title}</h1>

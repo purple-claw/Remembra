@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { useStore } from '@/store/useStore';
 import type { Performance } from '@/types';
-import { getPredictedIntervals, formatInterval, formatShortDate, estimateRetention } from '@/types';
+import { estimateRetention } from '@/types';
 import {
   ArrowLeft, Eye, Sparkles, Clock,
   BookmarkPlus, Bookmark, Copy, Check, StickyNote,
@@ -12,6 +12,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { toast } from 'sonner';
+import { getStageDayLabel } from '@/domain/review147';
 
 interface SessionStats {
   startedAt: number;
@@ -51,11 +52,6 @@ export function Review() {
   const currentItem = reviewQueue[currentReviewIndex];
   const progress = reviewQueue.length > 0 ? ((currentReviewIndex) / reviewQueue.length) * 100 : 0;
   const category = currentItem ? getCategoryById(currentItem.category_id) : null;
-
-  const predictions = useMemo(
-    () => (currentItem ? getPredictedIntervals(currentItem) : []),
-    [currentItem],
-  );
 
   const retention = useMemo(
     () => (currentItem ? estimateRetention(currentItem) : 100),
@@ -100,10 +96,10 @@ export function Review() {
     await completeReview(performance, timeSpent);
 
     const messages: Record<Performance, string> = {
-      again: "No worries — you'll see this again tomorrow",
-      hard: 'Keep at it — interval adjusted',
-      good: 'Nice recall! Moving forward',
-      easy: 'Excellent! Big interval boost ⚡',
+      again: 'Revised again. Scheduled from Day 1.',
+      hard: 'Revised again. Scheduled from Day 1.',
+      good: 'Marked done. Moved to next stage.',
+      easy: 'Marked done. Moved to next stage.',
     };
     toast.success(messages[performance]);
   }, [completeReview, currentItem, cardStartTime, session.correctStreak]);
@@ -144,9 +140,10 @@ export function Review() {
   };
 
   const sessionAccuracy = session.cardsReviewed > 0
-    ? Math.round((session.performances.filter(p => p !== 'again').length / session.cardsReviewed) * 100)
+    ? Math.round((session.performances.filter(p => p === 'good' || p === 'easy').length / session.cardsReviewed) * 100)
     : 100;
   const sessionMinutes = Math.max(1, Math.round((Date.now() - session.startedAt) / 60000));
+  const stageLabel = currentItem ? getStageDayLabel(currentItem.review_stage, currentItem.status) : '';
 
   // ─── Session Complete ───
   if (!currentItem) {
@@ -265,6 +262,9 @@ export function Review() {
                 <span className="text-[11px] text-remembra-text-muted">{category.name}</span>
               </div>
             )}
+            <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-remembra-accent-primary/10">
+              <span className="text-[10px] text-remembra-accent-primary font-medium">{stageLabel}</span>
+            </div>
             {currentItem.lapse_count >= 4 && (
               <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-red-500/10">
                 <AlertTriangle size={10} className="text-red-400" />
@@ -406,32 +406,26 @@ export function Review() {
         ) : (
           <div className="animate-slide-up space-y-3">
             <p className="text-center text-[11px] text-remembra-text-muted">
-              How well did you recall this?
+              Mark your recall for this stage
             </p>
 
-            <div className="grid grid-cols-4 gap-2">
-              {predictions.map(pred => (
-                <button
-                  key={pred.performance}
-                  onClick={() => handleRate(pred.performance)}
-                  className="flex flex-col items-center gap-0.5 p-2.5 rounded-xl transition-all duration-200 hover:scale-[1.03] active:scale-95 border"
-                  style={{
-                    backgroundColor: `${pred.color}08`,
-                    borderColor: `${pred.color}25`,
-                  }}
-                >
-                  <span className="text-sm">{pred.emoji}</span>
-                  <span className="text-xs font-bold" style={{ color: pred.color }}>
-                    {pred.label}
-                  </span>
-                  <span className="text-[10px] font-medium" style={{ color: pred.color, opacity: 0.7 }}>
-                    {formatInterval(pred.interval)}
-                  </span>
-                  <span className="text-[9px] text-remembra-text-muted/60">
-                    {formatShortDate(pred.nextDate)}
-                  </span>
-                </button>
-              ))}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => handleRate('again')}
+                className="flex flex-col items-center gap-1 p-3 rounded-xl transition-all duration-200 hover:scale-[1.02] active:scale-95 border bg-red-500/10 border-red-500/30"
+              >
+                <span className="text-sm">🔁</span>
+                <span className="text-xs font-bold text-red-400">Revise Again</span>
+                <span className="text-[10px] text-red-300/80">Back to Day 1</span>
+              </button>
+              <button
+                onClick={() => handleRate('good')}
+                className="flex flex-col items-center gap-1 p-3 rounded-xl transition-all duration-200 hover:scale-[1.02] active:scale-95 border bg-green-500/10 border-green-500/30"
+              >
+                <span className="text-sm">✅</span>
+                <span className="text-xs font-bold text-green-400">Done</span>
+                <span className="text-[10px] text-green-300/80">Move to next stage</span>
+              </button>
             </div>
           </div>
         )}

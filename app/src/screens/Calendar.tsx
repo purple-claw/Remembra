@@ -1,124 +1,174 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useStore } from '@/store/useStore';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, List, Grid3X3, CheckCircle2, Clock, AlertCircle, Play } from 'lucide-react';
+import { reviewService } from '@/services';
+import {
+  ChevronLeft,
+  ChevronRight,
+  Calendar as CalendarIcon,
+  List,
+  Grid3X3,
+  CheckCircle2,
+  Clock,
+  AlertCircle,
+  Play,
+  Check,
+} from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
-import type { Performance, MemoryItem } from '@/types';
+import type { MemoryItem, Performance, Review } from '@/types';
+import { getStageDayLabel } from '@/domain/review147';
+
+interface DayData {
+  date: string;
+  dueCount: number;
+  completedCount: number;
+}
+
+const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const monthNames = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+const toDateStr = (d: Date): string =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+const toMonthRange = (date: Date): { start: string; end: string } => {
+  const start = new Date(date.getFullYear(), date.getMonth(), 1);
+  const end = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+  return { start: toDateStr(start), end: toDateStr(end) };
+};
+
+function buildReviewMap(reviews: Review[]): Record<string, Review[]> {
+  const map: Record<string, Review[]> = {};
+  for (const review of reviews) {
+    if (!map[review.scheduled_date]) {
+      map[review.scheduled_date] = [];
+    }
+    map[review.scheduled_date].push(review);
+  }
+  return map;
+}
 
 export function Calendar() {
   const { memoryItems, categories, markReviewComplete } = useStore();
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [selectedDate, setSelectedDate] = useState<Date | null>(new Date());
-  const [reviewingItem, setReviewingItem] = useState<MemoryItem | null>(null);
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [reviewingItemId, setReviewingItemId] = useState<string | null>(null);
+  const [reviewMapByDate, setReviewMapByDate] = useState<Record<string, Review[]>>({});
+  const [isLoadingLogs, setIsLoadingLogs] = useState(false);
 
-  const monthNames = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'
-  ];
+  const todayStr = toDateStr(new Date());
+  const memoryItemMap = useMemo(
+    () => new Map(memoryItems.map((item) => [item.id, item])),
+    [memoryItems],
+  );
+
+  const refreshReviewLogs = useCallback(async () => {
+    const { start, end } = toMonthRange(currentDate);
+    setIsLoadingLogs(true);
+    try {
+      const reviews = await reviewService.getReviewsInRange(start, end);
+      setReviewMapByDate(buildReviewMap(reviews));
+    } catch (error) {
+      console.warn('Failed to load calendar review logs:', error);
+    } finally {
+      setIsLoadingLogs(false);
+    }
+  }, [currentDate]);
+
+  useEffect(() => {
+    refreshReviewLogs();
+  }, [refreshReviewLogs]);
 
   const navigateMonth = (direction: 'prev' | 'next') => {
-    setCurrentDate(prev => {
-      const newDate = new Date(prev);
-      newDate.setMonth(prev.getMonth() + (direction === 'next' ? 1 : -1));
-      return newDate;
+    setCurrentDate((prev) => {
+      const next = new Date(prev);
+      next.setMonth(prev.getMonth() + (direction === 'next' ? 1 : -1));
+      return next;
     });
   };
 
   const generateCalendarDays = () => {
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
-    
     const firstDay = new Date(year, month, 1);
     const lastDay = new Date(year, month + 1, 0);
     const daysInMonth = lastDay.getDate();
     const startingDayOfWeek = firstDay.getDay();
-    
+
     const days: (number | null)[] = [];
-    
     for (let i = 0; i < startingDayOfWeek; i++) {
       days.push(null);
     }
-    
     for (let i = 1; i <= daysInMonth; i++) {
       days.push(i);
     }
-    
     return days;
   };
 
-  const todayStr = new Date().toISOString().split('T')[0];
-
-  // Get items for a specific date - overdue items appear on today
-  const getItemsForDateStr = (dateStr: string) => {
-    return memoryItems.filter(item => {
-      if (item.status === 'archived') return false;
-      if (item.next_review_date === dateStr) return true;
-      // Show overdue items on today
-      if (dateStr === todayStr && item.next_review_date < todayStr) return true;
-      return false;
-    });
+  const getDueItemsForDateStr = (dateStr: string): MemoryItem[] => {
+    return memoryItems
+      .filter((item) => {
+        if (item.status !== 'active') return false;
+        if (!item.next_review_date) return false;
+        if (item.next_review_date === dateStr) return true;
+        if (dateStr === todayStr && item.next_review_date < todayStr) return true; // overdue bucket on today
+        return false;
+      })
+      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
   };
 
-  const getDayData = (day: number) => {
+  const getCompletedReviewsForDateStr = (dateStr: string): Review[] =>
+    (reviewMapByDate[dateStr] || []).filter((r) => !!r.completed_date);
+
+  const getDayData = (day: number): DayData => {
     const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    const itemsForDay = getItemsForDateStr(dateStr);
-    if (itemsForDay.length === 0) return null;
-    return {
-      date: dateStr,
-      reviewCount: itemsForDay.length,
-      items: itemsForDay.map(i => ({ id: i.id, title: i.title }))
-    };
+    const dueCount = getDueItemsForDateStr(dateStr).length;
+    const completedCount = getCompletedReviewsForDateStr(dateStr).length;
+    return { date: dateStr, dueCount, completedCount };
   };
 
   const isToday = (day: number) => {
-    const today = new Date();
-    return (
-      day === today.getDate() &&
-      currentDate.getMonth() === today.getMonth() &&
-      currentDate.getFullYear() === today.getFullYear()
-    );
+    const now = new Date();
+    return day === now.getDate()
+      && currentDate.getMonth() === now.getMonth()
+      && currentDate.getFullYear() === now.getFullYear();
   };
 
   const isSelected = (day: number) => {
-    if (!selectedDate) return false;
-    return (
-      day === selectedDate.getDate() &&
-      currentDate.getMonth() === selectedDate.getMonth() &&
-      currentDate.getFullYear() === selectedDate.getFullYear()
-    );
+    return day === selectedDate.getDate()
+      && currentDate.getMonth() === selectedDate.getMonth()
+      && currentDate.getFullYear() === selectedDate.getFullYear();
   };
 
-  const calendarDays = generateCalendarDays();
-  const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const selectedDateStr = toDateStr(selectedDate);
+  const selectedDueItems = getDueItemsForDateStr(selectedDateStr);
+  const selectedCompletedLogs = getCompletedReviewsForDateStr(selectedDateStr);
+  const completedItemIds = new Set(selectedCompletedLogs.map((r) => r.memory_item_id));
 
-  const getItemsForDate = (date: Date) => {
-    const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-    return getItemsForDateStr(dateStr);
-  };
-
-  const getReviewStatus = (item: MemoryItem, dateStr: string) => {
-    const hasReviewed = item.review_history.some(r => r.date === dateStr);
-    
-    if (hasReviewed) return 'completed';
+  const getReviewStatus = (item: MemoryItem, dateStr: string): 'completed' | 'overdue' | 'pending' | 'scheduled' => {
+    if (completedItemIds.has(item.id) && dateStr === selectedDateStr) return 'completed';
+    if (!item.next_review_date) return 'scheduled';
     if (item.next_review_date < todayStr) return 'overdue';
     if (item.next_review_date === todayStr || dateStr === todayStr) return 'pending';
     return 'scheduled';
   };
 
   const handleQuickReview = async (item: MemoryItem, performance: Performance) => {
-    if (!selectedDate) return;
-    const dateStr = `${selectedDate.getFullYear()}-${String(selectedDate.getMonth() + 1).padStart(2, '0')}-${String(selectedDate.getDate()).padStart(2, '0')}`;
-    
-    await markReviewComplete(item.id, dateStr, performance);
-    toast.success(`Review marked as ${performance}!`);
-    setReviewingItem(null);
+    await markReviewComplete(item.id, selectedDateStr, performance);
+    toast.success(performance === 'good' ? 'Marked done' : 'Marked revise again');
+    setReviewingItemId(null);
+    await refreshReviewLogs();
   };
 
+  const calendarDays = generateCalendarDays();
+
   return (
-    <div className="bg-black lined-bg-subtle px-5 pt-6 pb-8">
+    <div className="bg-black lined-bg-subtle px-4 sm:px-5 pt-6 pb-8 min-h-full animate-fade-in smooth-scroll-content">
       <header className="mb-6">
         <h1 className="text-2xl font-bold text-remembra-text-primary mb-1">Calendar</h1>
-        <p className="text-remembra-text-muted">Plan your learning schedule</p>
+        <p className="text-remembra-text-muted">Dynamic schedule with due + completed review tracking</p>
       </header>
 
       <Tabs defaultValue="month" className="w-full">
@@ -138,26 +188,26 @@ export function Calendar() {
         </TabsList>
 
         <TabsContent value="month" className="mt-0">
-          <div className="flex items-center justify-between mb-6">
-            <button 
+          <div className="flex items-center justify-between mb-5">
+            <button
               onClick={() => navigateMonth('prev')}
-              className="w-10 h-10 rounded-xl bg-remembra-bg-secondary flex items-center justify-center text-remembra-text-secondary hover:text-remembra-text-primary transition-colors"
+              className="w-10 h-10 rounded-xl bg-remembra-bg-secondary flex items-center justify-center text-remembra-text-secondary hover:text-remembra-text-primary transition-smooth"
             >
               <ChevronLeft size={20} />
             </button>
             <h2 className="text-lg font-semibold text-remembra-text-primary">
               {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
             </h2>
-            <button 
+            <button
               onClick={() => navigateMonth('next')}
-              className="w-10 h-10 rounded-xl bg-remembra-bg-secondary flex items-center justify-center text-remembra-text-secondary hover:text-remembra-text-primary transition-colors"
+              className="w-10 h-10 rounded-xl bg-remembra-bg-secondary flex items-center justify-center text-remembra-text-secondary hover:text-remembra-text-primary transition-smooth"
             >
               <ChevronRight size={20} />
             </button>
           </div>
 
           <div className="grid grid-cols-7 gap-1 mb-2">
-            {weekDays.map(day => (
+            {weekDays.map((day) => (
               <div key={day} className="text-center text-xs font-medium text-remembra-text-muted py-2">
                 {day}
               </div>
@@ -171,7 +221,8 @@ export function Calendar() {
               }
 
               const dayData = getDayData(day);
-              const hasReviews = dayData && dayData.reviewCount > 0;
+              const hasDue = dayData.dueCount > 0;
+              const hasCompleted = dayData.completedCount > 0;
               const today = isToday(day);
               const selected = isSelected(day);
 
@@ -181,67 +232,75 @@ export function Calendar() {
                   onClick={() => setSelectedDate(new Date(currentDate.getFullYear(), currentDate.getMonth(), day))}
                   className={`
                     aspect-square rounded-xl flex flex-col items-center justify-center relative
-                    transition-all duration-200
-                    ${selected 
-                      ? 'bg-remembra-accent-primary text-white' 
+                    transition-smooth
+                    ${selected
+                      ? 'bg-remembra-accent-primary text-white'
                       : today
                         ? 'bg-remembra-accent-primary/20 text-remembra-accent-primary'
-                        : 'bg-remembra-bg-secondary text-remembra-text-primary hover:bg-remembra-bg-tertiary'
-                    }
+                        : 'bg-remembra-bg-secondary text-remembra-text-primary hover:bg-remembra-bg-tertiary'}
                   `}
                 >
-                  <span className={`text-sm font-medium ${selected ? 'text-white' : ''}`}>
-                    {day}
-                  </span>
-                  
-                  {hasReviews && (
-                    <div className="flex gap-0.5 mt-1">
-                      {Array.from({ length: Math.min(dayData.reviewCount, 3) }).map((_, i) => (
-                        <div
-                          key={i}
-                          className={`w-1.5 h-1.5 rounded-full ${
-                            selected ? 'bg-white/70' : 'bg-remembra-accent-primary'
-                          }`}
-                        />
-                      ))}
-                    </div>
-                  )}
+                  <span className={`text-sm font-medium ${selected ? 'text-white' : ''}`}>{day}</span>
+
+                  <div className="mt-1 flex items-center gap-1">
+                    {hasDue && (
+                      <span className={`w-1.5 h-1.5 rounded-full ${selected ? 'bg-white/90' : 'bg-remembra-accent-primary'}`} />
+                    )}
+                    {hasCompleted && (
+                      <span className={`w-1.5 h-1.5 rounded-full ${selected ? 'bg-white/55' : 'bg-remembra-success'}`} />
+                    )}
+                  </div>
                 </button>
               );
             })}
           </div>
 
-          {selectedDate && (
-            <div className="mt-6 animate-slide-up">
-              <h3 className="text-sm font-medium text-remembra-text-secondary mb-3">
-                {selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-              </h3>
-              
-              <div className="space-y-3">
-                {getItemsForDate(selectedDate).length > 0 ? (
-                  getItemsForDate(selectedDate).map(item => {
-                    const dateStr = `${selectedDate.getFullYear()}-${String(selectedDate.getMonth() + 1).padStart(2, '0')}-${String(selectedDate.getDate()).padStart(2, '0')}`;
-                    const status = getReviewStatus(item, dateStr);
-                    const isReviewing = reviewingItem?.id === item.id;
-                    
+          <div className="mt-4 flex items-center gap-4 text-[11px] text-remembra-text-muted">
+            <div className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-remembra-accent-primary" />
+              Due reviews
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-remembra-success" />
+              Completed reviews
+            </div>
+            {isLoadingLogs && <span className="text-remembra-accent-primary">Updating logs...</span>}
+          </div>
+
+          <div className="mt-6 animate-slide-up space-y-4">
+            <h3 className="text-sm font-medium text-remembra-text-secondary">
+              {selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+            </h3>
+
+            <div className="glass-card rounded-2xl p-4">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm font-semibold text-remembra-text-primary">Due Reviews</p>
+                <p className="text-xs text-remembra-text-muted">{selectedDueItems.length}</p>
+              </div>
+
+              {selectedDueItems.length === 0 ? (
+                <p className="text-xs text-remembra-text-muted py-2">No due reviews on this day.</p>
+              ) : (
+                <div className="space-y-3">
+                  {selectedDueItems.map((item) => {
+                    const status = getReviewStatus(item, selectedDateStr);
+                    const isReviewing = reviewingItemId === item.id;
+
                     return (
-                      <div 
-                        key={item.id}
-                        className="glass-card rounded-2xl overflow-hidden"
-                      >
-                        <div className="p-4 flex items-center gap-4">
-                          <div 
-                            className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-                            style={{ backgroundColor: `${categories.find(c => c.id === item.category_id)?.color || '#FF8000'}20` }}
+                      <div key={item.id} className="rounded-xl border border-white/5 bg-remembra-bg-tertiary/40 overflow-hidden">
+                        <div className="p-3 flex items-center gap-3">
+                          <div
+                            className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+                            style={{ backgroundColor: `${categories.find((c) => c.id === item.category_id)?.color || '#FF8000'}20` }}
                           >
-                            <span className="text-lg">
+                            <span className="text-sm">
                               {item.content_type === 'code' ? '</>' : item.content_type === 'text' ? 'T' : '?'}
                             </span>
                           </div>
                           <div className="flex-1 min-w-0">
-                            <h4 className="text-sm font-medium text-remembra-text-primary truncate">{item.title}</h4>
+                            <p className="text-sm text-remembra-text-primary truncate">{item.title}</p>
                             <p className="text-xs text-remembra-text-muted">
-                              Stage {item.review_stage + 1} • {item.difficulty}
+                              {getStageDayLabel(item.review_stage, item.status)} • {item.difficulty}
                             </p>
                           </div>
                           <div className="flex items-center gap-2">
@@ -259,7 +318,7 @@ export function Calendar() {
                             )}
                             {status === 'pending' && !isReviewing && (
                               <button
-                                onClick={() => setReviewingItem(item)}
+                                onClick={() => setReviewingItemId(item.id)}
                                 className="px-3 py-1.5 rounded-lg gradient-primary text-white text-xs font-medium flex items-center gap-1"
                               >
                                 <Play size={12} />
@@ -274,29 +333,26 @@ export function Calendar() {
                             )}
                           </div>
                         </div>
-                        
-                        {/* Quick review actions */}
+
                         {isReviewing && status !== 'completed' && (
-                          <div className="px-4 pb-4 pt-2 border-t border-white/5 bg-remembra-bg-tertiary/50">
-                            <p className="text-xs text-remembra-text-muted mb-3">How well did you recall this?</p>
-                            <div className="grid grid-cols-4 gap-2">
-                              {[
-                                { label: 'Again', value: 'again' as Performance, color: 'bg-red-500' },
-                                { label: 'Hard', value: 'hard' as Performance, color: 'bg-orange-500' },
-                                { label: 'Good', value: 'good' as Performance, color: 'bg-blue-500' },
-                                { label: 'Easy', value: 'easy' as Performance, color: 'bg-green-500' },
-                              ].map(btn => (
-                                <button
-                                  key={btn.value}
-                                  onClick={() => handleQuickReview(item, btn.value)}
-                                  className={`${btn.color} text-white px-3 py-2 rounded-lg text-xs font-medium hover:opacity-90 transition-opacity`}
-                                >
-                                  {btn.label}
-                                </button>
-                              ))}
+                          <div className="px-3 pb-3 pt-2 border-t border-white/5 bg-remembra-bg-tertiary/60">
+                            <p className="text-xs text-remembra-text-muted mb-2">Mark this review</p>
+                            <div className="grid grid-cols-2 gap-2">
+                              <button
+                                onClick={() => handleQuickReview(item, 'again')}
+                                className="bg-red-500 text-white px-3 py-2 rounded-lg text-xs font-medium hover:opacity-90 transition-opacity"
+                              >
+                                Revise Again
+                              </button>
+                              <button
+                                onClick={() => handleQuickReview(item, 'good')}
+                                className="bg-green-500 text-white px-3 py-2 rounded-lg text-xs font-medium hover:opacity-90 transition-opacity"
+                              >
+                                Done
+                              </button>
                             </div>
                             <button
-                              onClick={() => setReviewingItem(null)}
+                              onClick={() => setReviewingItemId(null)}
                               className="mt-2 text-xs text-remembra-text-muted hover:text-white w-full text-center py-1"
                             >
                               Cancel
@@ -305,99 +361,108 @@ export function Calendar() {
                         )}
                       </div>
                     );
-                  })
-                ) : (
-                  <div className="p-8 text-center bg-remembra-bg-secondary rounded-2xl border border-white/5">
-                    <p className="text-remembra-text-muted text-sm">No reviews scheduled</p>
-                  </div>
-                )}
-              </div>
+                  })}
+                </div>
+              )}
             </div>
-          )}
+
+            <div className="glass-card rounded-2xl p-4">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm font-semibold text-remembra-text-primary">Completed Reviews</p>
+                <p className="text-xs text-remembra-text-muted">{selectedCompletedLogs.length}</p>
+              </div>
+
+              {selectedCompletedLogs.length === 0 ? (
+                <p className="text-xs text-remembra-text-muted py-2">No completed reviews logged on this day.</p>
+              ) : (
+                <div className="space-y-2">
+                  {selectedCompletedLogs.map((review) => {
+                    const item = memoryItemMap.get(review.memory_item_id);
+                    return (
+                      <div key={review.id} className="p-3 rounded-xl bg-remembra-bg-tertiary border border-white/5 flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-sm text-remembra-text-primary truncate">{item?.title || 'Unknown item'}</p>
+                          <p className="text-xs text-remembra-text-muted">
+                            {item ? getStageDayLabel(item.review_stage, item.status) : 'Stage unavailable'}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="px-2 py-1 rounded-md bg-remembra-success/20 text-remembra-success flex items-center gap-1">
+                            <Check size={12} />
+                            {review.performance || 'done'}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
         </TabsContent>
 
         <TabsContent value="week" className="mt-0">
-          <div className="space-y-4">
-            {(() => {
-              // Generate the upcoming 7 days starting from today (with weekday names)
-              const today = new Date();
-              const weekDayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-              const weekDays = Array.from({ length: 7 }, (_, i) => {
-                const d = new Date(today);
-                d.setDate(today.getDate() + i);
-                return d;
-              });
+          <div className="space-y-3">
+            {Array.from({ length: 7 }, (_, i) => {
+              const d = new Date();
+              d.setDate(d.getDate() + i);
+              const dateStr = toDateStr(d);
+              const dueItems = getDueItemsForDateStr(dateStr);
+              const completed = getCompletedReviewsForDateStr(dateStr).length;
+              const isTodayWeek = dateStr === todayStr;
 
-              return weekDays.map((day) => {
-                const dateStr = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
-                const dayItems = getItemsForDateStr(dateStr);
-                const dayName = weekDayNames[day.getDay()];
-                const isToday = dateStr === todayStr;
-
-                return (
-                  <div key={dateStr} className="bg-remembra-bg-secondary rounded-2xl p-4 border border-white/5">
-                    <div className="flex items-center justify-between mb-3">
-                      <h3 className="text-sm font-medium text-remembra-text-primary">
-                        {dayName}{isToday ? ' (Today)' : ''}
-                      </h3>
-                      <span className="text-xs text-remembra-text-muted">
-                        {dayItems.length} review{dayItems.length !== 1 ? 's' : ''}
-                      </span>
+              return (
+              <div key={dateStr} className="bg-remembra-bg-secondary rounded-2xl p-4 border border-white/5 smooth-surface dynamic-container">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-medium text-remembra-text-primary">
+                      {weekDays[d.getDay()]}{isTodayWeek ? ' (Today)' : ''}
+                    </h3>
+                    <div className="flex items-center gap-3 text-xs">
+                      <span className="text-remembra-accent-primary">{dueItems.length} due</span>
+                      <span className="text-remembra-success">{completed} done</span>
                     </div>
-                    
-                    {dayItems.length > 0 ? (
-                      <div className="space-y-2">
-                        {dayItems.map(item => {
-                          const status = getReviewStatus(item, dateStr);
-                          return (
-                            <div key={item.id} className="p-3 bg-remembra-bg-tertiary rounded-xl flex items-center justify-between gap-2">
-                              <span className="text-sm text-remembra-text-secondary truncate flex-1">{item.title}</span>
-                              {status === 'completed' && (
-                                <CheckCircle2 size={14} className="text-remembra-success flex-shrink-0" />
-                              )}
-                              {status === 'overdue' && (
-                                <AlertCircle size={14} className="text-red-400 flex-shrink-0" />
-                              )}
-                              {status === 'pending' && (
-                                <Clock size={14} className="text-remembra-accent-primary flex-shrink-0" />
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <p className="text-xs text-remembra-text-muted py-1">No reviews scheduled</p>
-                    )}
                   </div>
-                );
-              });
-            })()}
+                  {dueItems.length > 0 ? (
+                    <div className="space-y-2">
+                      {dueItems.map((item) => (
+                        <div key={item.id} className="p-2.5 bg-remembra-bg-tertiary rounded-xl flex items-center justify-between gap-2">
+                          <span className="text-sm text-remembra-text-secondary truncate">{item.title}</span>
+                          <span className="text-[10px] text-remembra-text-muted">{getStageDayLabel(item.review_stage, item.status)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-remembra-text-muted py-1">No due reviews.</p>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </TabsContent>
 
         <TabsContent value="list" className="mt-0">
           <div className="space-y-3">
             {memoryItems
-              .filter(item => item.status !== 'archived')
-              .sort((a, b) => new Date(a.next_review_date).getTime() - new Date(b.next_review_date).getTime())
-              .map(item => (
-                <div 
-                  key={item.id}
-                  className="p-4 glass-card rounded-2xl flex items-center gap-4"
-                >
-                  <div className="flex-1 min-w-0">
-                    <h4 className="text-sm font-medium text-remembra-text-primary truncate">{item.title}</h4>
+              .filter((item) => item.status !== 'archived')
+              .sort((a, b) => {
+                const ad = a.next_review_date ? new Date(`${a.next_review_date}T00:00:00`).getTime() : Number.MAX_SAFE_INTEGER;
+                const bd = b.next_review_date ? new Date(`${b.next_review_date}T00:00:00`).getTime() : Number.MAX_SAFE_INTEGER;
+                if (ad !== bd) return ad - bd;
+                return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+              })
+              .map((item) => (
+                <div key={item.id} className="p-4 glass-card rounded-2xl flex items-center justify-between gap-3 smooth-surface dynamic-container">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-remembra-text-primary truncate">{item.title}</p>
                     <p className="text-xs text-remembra-text-muted mt-0.5">
-                      Next review: {new Date(item.next_review_date).toLocaleDateString()}
+                      {item.next_review_date
+                        ? `Next review: ${new Date(`${item.next_review_date}T00:00:00`).toLocaleDateString()}`
+                        : 'No pending date'}
                     </p>
                   </div>
-                  <div className={`
-                    px-3 py-1 rounded-full text-xs font-medium
-                    ${item.status === 'completed' ? 'bg-remembra-success/20 text-remembra-success' : ''}
-                    ${item.status === 'active' ? 'bg-remembra-accent-primary/20 text-remembra-accent-primary' : ''}
-                    ${item.status === 'archived' ? 'bg-remembra-warning/20 text-remembra-warning' : ''}
-                  `}>
-                    {item.status}
+                  <div className="text-right">
+                    <p className="text-xs text-remembra-accent-primary">{getStageDayLabel(item.review_stage, item.status)}</p>
+                    <p className="text-[10px] text-remembra-text-muted">{item.status}</p>
                   </div>
                 </div>
               ))}

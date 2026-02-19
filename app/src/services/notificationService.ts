@@ -1,26 +1,38 @@
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
+import { PushNotifications } from '@capacitor/push-notifications';
 import type { MemoryItem } from '@/types';
+import { aiService } from '@/services/aiService';
+import { getSupabase } from '@/lib/supabase';
 
-/**
- * Notification service for scheduling review reminders on Android.
- * With SM-2 adaptive scheduling, we can only schedule the NEXT review
- * (future intervals are computed dynamically after each review).
- */
+const REVIEW_CHANNEL_ID = 'review-reminders';
+const DAILY_CHANNEL_ID = 'daily-review-summary';
+const DAILY_SUMMARY_NOTIFICATION_ID = 147000;
+
 class NotificationService {
   private isNative = Capacitor.isNativePlatform();
+  private initialized = false;
 
   async initialize(): Promise<boolean> {
     if (!this.isNative) return false;
+    if (this.initialized) return true;
+
     try {
-      const permResult = await LocalNotifications.requestPermissions();
-      if (permResult.display !== 'granted') {
-        console.warn('Notification permissions not granted');
+      const localPermResult = await LocalNotifications.requestPermissions();
+      if (localPermResult.display !== 'granted') {
+        console.warn('Local notification permissions not granted');
         return false;
       }
+
+      await this.createChannel();
+
       await LocalNotifications.addListener('localNotificationActionPerformed', (notification) => {
-        console.log('Notification action:', notification);
+        console.log('Local notification action:', notification);
       });
+
+      await this.setupPushRegistration();
+
+      this.initialized = true;
       return true;
     } catch (error) {
       console.error('Failed to initialize notifications:', error);
@@ -28,39 +40,32 @@ class NotificationService {
     }
   }
 
-  /**
-   * Schedule notification for the next review of an item.
-   * Called on item creation and after each review completion.
-   */
   async scheduleReviewNotifications(item: MemoryItem): Promise<void> {
     await this.scheduleNextReview(item);
   }
 
-  /**
-   * Schedule a single notification for the next review of an item
-   * (called after completing a review)
-   */
   async scheduleNextReview(item: MemoryItem): Promise<void> {
     if (!this.isNative || item.status !== 'active' || !item.next_review_date) return;
 
     try {
       await this.cancelItemNotifications(item.id);
 
-      const reviewDate = new Date(item.next_review_date + 'T09:00:00');
+      const reviewDate = new Date(`${item.next_review_date}T09:00:00`);
       if (reviewDate <= new Date()) return;
 
-      const notifId = this.generateNotificationId(item.id, item.repetition);
+      const notifId = this.generateNotificationId(item.id, item.review_stage);
+      const body = await aiService.generateReviewReminderMessage(item.title, item.review_stage);
 
       await LocalNotifications.schedule({
         notifications: [{
           id: notifId,
-          title: '📚 Review Due!',
-          body: `"${item.title}" is ready for review`,
+          title: 'Review Reminder',
+          body,
           schedule: { at: reviewDate, allowWhileIdle: true },
-          extra: { itemId: item.id },
+          extra: { itemId: item.id, stage: item.review_stage },
           smallIcon: 'ic_stat_icon_config_sample',
           largeIcon: 'ic_launcher',
-          channelId: 'review-reminders',
+          channelId: REVIEW_CHANNEL_ID,
         }],
       });
     } catch (error) {
@@ -68,9 +73,55 @@ class NotificationService {
     }
   }
 
-  /**
-   * Cancel all notifications for a specific item
-   */
+  async scheduleDailySummary(items: MemoryItem[], reminderTime: string = '09:00'): Promise<void> {
+    if (!this.isNative) return;
+
+    try {
+      const [hourStr, minuteStr] = reminderTime.split(':');
+      const hour = Number(hourStr || '9');
+      const minute = Number(minuteStr || '0');
+
+      const now = new Date();
+      const triggerAt = new Date(now);
+      triggerAt.setHours(hour, minute, 0, 0);
+      if (triggerAt <= now) {
+        triggerAt.setDate(triggerAt.getDate() + 1);
+      }
+
+      const targetDayIso = triggerAt.toISOString().split('T')[0];
+      const dueForReminderDay = items
+        .filter((item) =>
+          item.status === 'active' &&
+          !!item.next_review_date &&
+          item.next_review_date <= targetDayIso,
+        )
+        .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+      const body = await aiService.generateDailyReminderSummary(
+        dueForReminderDay.map(i => i.title),
+        dueForReminderDay.length,
+      );
+
+      await LocalNotifications.cancel({ notifications: [{ id: DAILY_SUMMARY_NOTIFICATION_ID }] });
+
+      await LocalNotifications.schedule({
+        notifications: [{
+          id: DAILY_SUMMARY_NOTIFICATION_ID,
+          title: dueForReminderDay.length > 0
+            ? `${dueForReminderDay.length} review${dueForReminderDay.length === 1 ? '' : 's'} due`
+            : 'No reviews due',
+          body,
+          schedule: { at: triggerAt, allowWhileIdle: true },
+          channelId: DAILY_CHANNEL_ID,
+          smallIcon: 'ic_stat_icon_config_sample',
+          largeIcon: 'ic_launcher',
+        }],
+      });
+    } catch (error) {
+      console.error('Failed to schedule daily summary notification:', error);
+    }
+  }
+
   async cancelItemNotifications(itemId: string): Promise<void> {
     if (!this.isNative) return;
 
@@ -88,9 +139,6 @@ class NotificationService {
     }
   }
 
-  /**
-   * Cancel all scheduled notifications
-   */
   async cancelAll(): Promise<void> {
     if (!this.isNative) return;
 
@@ -104,40 +152,101 @@ class NotificationService {
     }
   }
 
-  /**
-   * Create a notification channel for Android (required for Android 8+)
-   */
   async createChannel(): Promise<void> {
     if (!this.isNative) return;
 
     try {
       await LocalNotifications.createChannel({
-        id: 'review-reminders',
+        id: REVIEW_CHANNEL_ID,
         name: 'Review Reminders',
-        description: 'Notifications for scheduled spaced repetition reviews',
-        importance: 4, // High
-        visibility: 1, // Public
+        description: 'Notifications for 1-4-7 retention reviews',
+        importance: 4,
+        visibility: 1,
         vibration: true,
-        sound: 'beep.wav',
         lights: true,
         lightColor: '#FF8000',
       });
+
+      await LocalNotifications.createChannel({
+        id: DAILY_CHANNEL_ID,
+        name: 'Daily Study Plan',
+        description: 'AI-powered daily summary reminders',
+        importance: 3,
+        visibility: 1,
+        vibration: true,
+        lights: true,
+        lightColor: '#FF4500',
+      });
     } catch (error) {
-      console.error('Failed to create notification channel:', error);
+      console.error('Failed to create notification channels:', error);
     }
   }
 
-  /**
-   * Generate a deterministic numeric ID for a notification
-   * based on item ID and stage index
-   */
+  private async setupPushRegistration(): Promise<void> {
+    try {
+      const permStatus = await PushNotifications.requestPermissions();
+      if (permStatus.receive !== 'granted') {
+        console.warn('Push permission not granted');
+        return;
+      }
+
+      await PushNotifications.addListener('registration', async (token) => {
+        await this.persistPushToken(token.value);
+      });
+
+      await PushNotifications.addListener('registrationError', (error) => {
+        console.warn('Push registration error:', error);
+      });
+
+      await PushNotifications.addListener('pushNotificationReceived', (notification) => {
+        console.log('Push notification received:', notification);
+      });
+
+      await PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
+        console.log('Push notification action performed:', notification);
+      });
+
+      await PushNotifications.register();
+    } catch (error) {
+      console.warn('Push setup skipped (likely missing FCM config):', error);
+    }
+  }
+
+  private async persistPushToken(token: string): Promise<void> {
+    try {
+      const supabase = getSupabase();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const payload = {
+        user_id: user.id,
+        token,
+        platform: Capacitor.getPlatform(),
+        device_info: {
+          appId: 'com.remembra.app',
+          source: 'capacitor-push',
+        },
+      };
+
+      const { error } = await supabase
+        .from('device_push_tokens')
+        .upsert(payload as any, { onConflict: 'token' });
+
+      if (error) {
+        console.warn('Failed to persist push token:', error);
+      }
+    } catch (error) {
+      console.warn('Unable to persist push token:', error);
+    }
+  }
+
   private generateNotificationId(itemId: string, stageIndex: number): number {
     let hash = 0;
     const str = `${itemId}-${stageIndex}`;
     for (let i = 0; i < str.length; i++) {
       const char = str.charCodeAt(i);
       hash = ((hash << 5) - hash) + char;
-      hash = hash & hash; // Convert to 32bit integer
+      hash |= 0;
     }
     return Math.abs(hash);
   }

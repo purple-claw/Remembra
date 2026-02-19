@@ -7,6 +7,11 @@ export interface AuthState {
   loading: boolean;
 }
 
+const getRedirectUrl = (params?: string): string => {
+  const base = window.location.origin + window.location.pathname;
+  return params ? `${base}${params}` : base;
+};
+
 export const authService = {
   // Get current session
   async getSession(): Promise<Session | null> {
@@ -32,8 +37,7 @@ export const authService = {
         data: {
           username,
         },
-        // Disable email confirmation for faster development (can be re-enabled in Supabase dashboard)
-        emailRedirectTo: `${window.location.origin}`,
+        emailRedirectTo: getRedirectUrl('?auth_action=signup'),
       },
     });
 
@@ -129,6 +133,14 @@ export const authService = {
       return { user: null, error };
     }
 
+    // Ensure session is fully hydrated before returning success.
+    if (!data.session) {
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData.session) {
+        return { user: null, error: new Error('Sign-in succeeded but session was not established') };
+      }
+    }
+
     return { user: data.user, error: null };
   },
 
@@ -138,7 +150,7 @@ export const authService = {
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        emailRedirectTo: getRedirectUrl('?auth_action=magic'),
       },
     });
 
@@ -151,7 +163,7 @@ export const authService = {
     const { error } = await supabase.auth.signInWithOAuth({
       provider,
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: getRedirectUrl('?auth_action=oauth'),
       },
     });
 
@@ -169,7 +181,7 @@ export const authService = {
   async resetPassword(email: string): Promise<{ error: Error | null }> {
     const supabase = getSupabase();
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/auth/reset-password`,
+      redirectTo: getRedirectUrl('?auth_action=recovery'),
     });
 
     return { error };

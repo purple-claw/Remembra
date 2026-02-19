@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useStore } from '@/store/useStore';
 import type { ReviewStatus, MemoryItem } from '@/types';
+import { getStageDayLabel } from '@/domain/review147';
 import { 
   Search, 
   Grid3X3, 
@@ -242,7 +243,7 @@ export function Library() {
               
               <div className="flex items-center justify-between">
                 <span className="text-[10px] text-remembra-text-muted">
-                  Stage {item.review_stage + 1}
+                  {getStageDayLabel(item.review_stage, item.status)}
                 </span>
                 
                 {item.ai_summary && (

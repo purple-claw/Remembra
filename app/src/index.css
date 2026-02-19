@@ -59,6 +59,8 @@
     @apply bg-background text-foreground antialiased;
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     overscroll-behavior-y: contain;
+    min-height: 100dvh;
+    text-rendering: optimizeLegibility;
   }
 }
 
@@ -322,6 +324,42 @@
     width: 1px;
     background: linear-gradient(180deg, transparent, rgba(255,128,0,0.3), rgba(232,18,36,0.3), transparent);
   }
+
+  /* App shell / viewport fit */
+  .app-shell {
+    min-height: 100dvh;
+    height: 100dvh;
+  }
+  .app-scroll {
+    scroll-behavior: smooth;
+    scrollbar-gutter: stable both-edges;
+    -webkit-overflow-scrolling: touch;
+  }
+  .screen-shell {
+    min-height: 100%;
+    width: 100%;
+    height: auto;
+  }
+
+  /* Dynamic containers */
+  .dynamic-container {
+    height: auto;
+    min-height: fit-content;
+    max-height: none;
+  }
+
+  /* Smooth interaction helpers */
+  .smooth-surface {
+    transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
+      opacity 220ms ease,
+      box-shadow 260ms ease,
+      background-color 220ms ease,
+      border-color 220ms ease;
+    will-change: transform, opacity;
+  }
+  .smooth-scroll-content {
+    contain: layout paint style;
+  }
 }
 
 @keyframes animateIn {
@@ -370,6 +408,22 @@
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+@keyframes screenEnter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.995);
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+.animate-screen-enter {
+  animation: screenEnter 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
 
 .card-press {
   transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1);
@@ -397,4 +451,13 @@
 .page-transition-exit-active {
   opacity: 0;
   transition: opacity 0.2s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

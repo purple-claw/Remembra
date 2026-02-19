@@ -4,12 +4,16 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { MermaidDiagram } from './MermaidDiagram';
 import { Copy, Check, Code2 } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 
 interface MarkdownRendererProps {
   content: string;
   className?: string;
 }
+
+const LARGE_MARKDOWN_THRESHOLD = 120_000;
+const LARGE_CODE_BLOCK_LINES = 700;
+const LARGE_CODE_BLOCK_CHARS = 30_000;
 
 // VS Code-like syntax theme with McLaren orange accents
 const vscodeTheme = {
@@ -128,6 +132,7 @@ function CodeBlock({ language, value }: { language: string; value: string }) {
 
   const displayLanguage = languageLabels[language?.toLowerCase()] || language?.toUpperCase() || 'TEXT';
   const lineCount = value.split('\n').length;
+  const isLargeBlock = lineCount > LARGE_CODE_BLOCK_LINES || value.length > LARGE_CODE_BLOCK_CHARS;
 
   return (
     <div className="relative group my-4 rounded-lg overflow-hidden">
@@ -154,35 +159,53 @@ function CodeBlock({ language, value }: { language: string; value: string }) {
       </div>
       
       {/* Code content */}
-      <SyntaxHighlighter
-        language={language || 'text'}
-        style={vscodeTheme}
-        showLineNumbers={lineCount > 3}
-        wrapLines
-        wrapLongLines
-        lineNumberStyle={{
-          color: '#858585',
-          minWidth: '3em',
-          paddingRight: '1.5em',
-          userSelect: 'none',
-          borderRight: '1px solid #404040',
-          marginRight: '1em',
-        }}
-        customStyle={{
-          margin: 0,
-          borderRadius: 0,
-          background: '#1E1E1E',
-        }}
-      >
-        {value}
-      </SyntaxHighlighter>
+      {isLargeBlock ? (
+        <pre className="m-0 p-4 overflow-x-auto text-xs leading-6 font-mono bg-[#1E1E1E] text-remembra-text-secondary">
+          {value}
+        </pre>
+      ) : (
+        <SyntaxHighlighter
+          language={language || 'text'}
+          style={vscodeTheme}
+          showLineNumbers={lineCount > 3}
+          wrapLines
+          wrapLongLines
+          lineNumberStyle={{
+            color: '#858585',
+            minWidth: '3em',
+            paddingRight: '1.5em',
+            userSelect: 'none',
+            borderRight: '1px solid #404040',
+            marginRight: '1em',
+          }}
+          customStyle={{
+            margin: 0,
+            borderRadius: 0,
+            background: '#1E1E1E',
+          }}
+        >
+          {value}
+        </SyntaxHighlighter>
+      )}
     </div>
   );
 }
 
 export function MarkdownRenderer({ content, className = '' }: MarkdownRendererProps) {
+  const isLargeContent = content.length > LARGE_MARKDOWN_THRESHOLD;
+  const safeContent = useMemo(() => {
+    if (!isLargeContent) return content;
+    const truncated = content.slice(0, LARGE_MARKDOWN_THRESHOLD);
+    return `${truncated}\n\n---\n\n> Large file mode: preview truncated for performance.`;
+  }, [content, isLargeContent]);
+
   return (
     <div className={`markdown-content ${className}`}>
+      {isLargeContent && (
+        <div className="mb-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+          Rendering preview mode for large content to keep scrolling smooth.
+        </div>
+      )}
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
@@ -349,7 +372,7 @@ export function MarkdownRenderer({ content, className = '' }: MarkdownRendererPr
           ),
         }}
       >
-        {content}
+        {safeContent}
       </ReactMarkdown>
     </div>
   );

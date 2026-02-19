@@ -59,7 +59,7 @@ export function DatabaseTest() {
     setTests([...results]);
 
     // Test 3: Check tables exist
-    const tablesToCheck = ['profiles', 'categories', 'memory_items', 'reviews', 'streak_entries', 'achievements'];
+    const tablesToCheck = ['profiles', 'categories', 'memory_items', 'reviews', 'streak_entries', 'achievements', 'device_push_tokens'];
     for (const table of tablesToCheck) {
       try {
         const { error } = await supabase.from(table).select('*').limit(0);

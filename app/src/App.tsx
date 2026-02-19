@@ -18,6 +18,7 @@ function AppContent() {
   const currentScreen = useStore(state => state.currentScreen);
   const isAuthenticated = useStore(state => state.isAuthenticated);
   const [navVisible, setNavVisible] = useState(true);
+  const mainRef = useRef<HTMLElement | null>(null);
   const lastScrollY = useRef(0);
   const scrollThreshold = 8;
 
@@ -28,6 +29,9 @@ function AppContent() {
   useEffect(() => {
     setNavVisible(true);
     lastScrollY.current = 0;
+    if (mainRef.current) {
+      mainRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   }, [activeScreen]);
 
   const handleScroll = useCallback((e: React.UIEvent<HTMLElement>) => {
@@ -77,13 +81,16 @@ function AppContent() {
   const showNav = isAuthenticated && activeScreen !== 'review' && activeScreen !== 'create' && activeScreen !== 'auth';
 
   return (
-    <div className="h-screen bg-black text-remembra-text-primary font-sans flex flex-col overflow-hidden">
+    <div className="app-shell bg-black text-remembra-text-primary font-sans flex flex-col overflow-hidden">
       <main 
-        className="flex-1 overflow-y-auto overflow-x-hidden overscroll-contain" 
+        ref={mainRef}
+        className="app-scroll flex-1 overflow-y-auto overflow-x-hidden overscroll-contain" 
         id="main-scroll"
         onScroll={handleScroll}
       >
-        {renderScreen()}
+        <div key={activeScreen} className="screen-shell animate-screen-enter">
+          {renderScreen()}
+        </div>
       </main>
       
       {showNav && <BottomNav visible={navVisible} />}

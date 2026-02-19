@@ -9,6 +9,7 @@ export { statsService } from './statsService';
 export { streakService } from './streakService';
 export { aiService } from './aiService';
 export { notificationService } from './notificationService';
+export { storageService, MEMORY_IMAGE_BUCKET } from './storageService';
 
 // Re-export Supabase client and utilities
 export { supabase, getSupabase, getCurrentUserId, requireAuth, isSupabaseConfigured } from '@/lib/supabase';

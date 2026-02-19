@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import type { MemoryItem, Category, Profile, Achievement, DaySchedule, Performance, ReviewStatus, NotificationPreferences, DailyReview } from '@/types';
-import { processReviewCompletion, calculatePriority } from '@/types';
 import type { User, Session } from '@supabase/supabase-js';
+import { DECISION_STAGE } from '@/domain/review147';
 import { 
   authService,
   profileService,
@@ -19,6 +19,20 @@ import { supabase } from '@/lib/supabase';
 // Track if already initialized to prevent double data loads
 let _initialized = false;
 let _authSubscription: { unsubscribe: () => void } | null = null;
+
+const getSortDateOrMax = (dateIso?: string) => (dateIso ? new Date(`${dateIso}T00:00:00`).getTime() : Number.MAX_SAFE_INTEGER);
+
+const sortByCreatedAtAsc = (a: MemoryItem, b: MemoryItem) =>
+  new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+
+const sortByDueThenCreated = (a: MemoryItem, b: MemoryItem) => {
+  const dueDiff = getSortDateOrMax(a.next_review_date) - getSortDateOrMax(b.next_review_date);
+  if (dueDiff !== 0) return dueDiff;
+  return sortByCreatedAtAsc(a, b);
+};
+
+const isAwaitingSevenDayDecision = (item: MemoryItem) =>
+  item.status === 'active' && item.review_stage === DECISION_STAGE && !item.next_review_date;
 
 export type Screen = 'dashboard' | 'calendar' | 'review' | 'library' | 'create' | 'ai-tools' | 'stats' | 'profile' | 'test' | 'auth';
 
@@ -140,6 +154,9 @@ export const useStore = create<AppState>()(persist((set, get) => ({
           await get().loadUserData();
           await notificationService.createChannel();
           await notificationService.initialize();
+          const state = get();
+          const reminderTime = state.profile?.notification_preferences?.reminder_time || '09:00';
+          await notificationService.scheduleDailySummary(state.memoryItems, reminderTime);
         } catch (e) {
           console.warn('Failed to load user data during init:', e);
         }
@@ -172,6 +189,10 @@ export const useStore = create<AppState>()(persist((set, get) => ({
         if (event === 'SIGNED_IN' && user) {
           set({ currentScreen: 'dashboard' });
           await get().loadUserData();
+          await notificationService.initialize();
+          const state = get();
+          const reminderTime = state.profile?.notification_preferences?.reminder_time || '09:00';
+          await notificationService.scheduleDailySummary(state.memoryItems, reminderTime);
         } else if (event === 'SIGNED_OUT') {
           set({
             currentScreen: 'auth',
@@ -209,6 +230,7 @@ export const useStore = create<AppState>()(persist((set, get) => ({
   // Sign out
   signOut: async () => {
     await authService.signOut();
+    notificationService.cancelAll().catch(console.warn);
     set({
       user: null,
       session: null,
@@ -232,6 +254,11 @@ export const useStore = create<AppState>()(persist((set, get) => ({
       if (user) {
         const username = user.user_metadata?.username || user.email?.split('@')[0] || 'User';
         await authService.ensureUserSetup(user.id, username);
+        try {
+          await memoryItemService.processLifecycle();
+        } catch (e) {
+          console.warn('Lifecycle processing during load failed:', e);
+        }
       }
       
       // Use allSettled so partial failures don't block everything
@@ -311,8 +338,8 @@ export const useStore = create<AppState>()(persist((set, get) => ({
   // Review Session (smart priority sorting)
   startReviewSession: (items) => {
     const itemsToReview = items || get().getItemsDueToday();
-    // Sort by priority: most urgent first
-    const sorted = [...itemsToReview].sort((a, b) => calculatePriority(b) - calculatePriority(a));
+    // Review due topics in deterministic order: due date first, then creation time.
+    const sorted = [...itemsToReview].sort(sortByDueThenCreated);
     set({ 
       reviewQueue: sorted, 
       currentReviewIndex: 0,
@@ -340,20 +367,39 @@ export const useStore = create<AppState>()(persist((set, get) => ({
     if (!currentItem) return;
     
     try {
-      // Update item in Supabase using SM-2 engine
-      const updatedItem = await memoryItemService.completeReview(currentItem.id, performance, timeSpentSeconds);
+      // Update item in Supabase using strict 1-4-7 engine
+      let updatedItem = await memoryItemService.completeReview(currentItem.id, performance, timeSpentSeconds);
       
       // Update local state
       if (updatedItem) {
+        const initialUpdatedItem = updatedItem;
         set(state => ({
           memoryItems: state.memoryItems.map(item =>
-            item.id === currentItem.id ? updatedItem : item
+            item.id === currentItem.id ? initialUpdatedItem : item
           ),
         }));
       } else {
         // Item was auto-deleted
         set(state => ({
           memoryItems: state.memoryItems.filter(item => item.id !== currentItem.id),
+        }));
+      }
+
+      // After finishing Day 7, user chooses Day 30 reinforcement or completion.
+      if (updatedItem && isAwaitingSevenDayDecision(updatedItem)) {
+        const schedule30 = window.confirm(
+          `"${updatedItem.title}" completed Day 7.\n\nOK = Add Day 30 review\nCancel = Complete topic`,
+        );
+
+        updatedItem = schedule30
+          ? await memoryItemService.scheduleThirtyDayReview(updatedItem.id)
+          : await memoryItemService.completeTopic(updatedItem.id);
+
+        const resolvedItem = updatedItem;
+        set(state => ({
+          memoryItems: state.memoryItems.map(item =>
+            item.id === resolvedItem.id ? resolvedItem : item
+          ),
         }));
       }
       
@@ -370,18 +416,22 @@ export const useStore = create<AppState>()(persist((set, get) => ({
         console.warn('Failed to update streak/profile:', e);
       }
       
-      // Run lifecycle processing (archive/delete old items)
+      // Run legacy lifecycle cleanup
       try {
         await memoryItemService.processLifecycle();
       } catch (e) {
         console.warn('Lifecycle processing failed:', e);
       }
       
-      // Schedule next review notification
-      const refreshedItem = get().memoryItems.find(i => i.id === currentItem.id);
-      if (refreshedItem) {
-        notificationService.scheduleNextReview(refreshedItem).catch(console.warn);
+      // Keep notifications in sync with current item state
+      if (updatedItem?.status === 'active') {
+        notificationService.scheduleNextReview(updatedItem).catch(console.warn);
+      } else if (updatedItem) {
+        notificationService.cancelItemNotifications(updatedItem.id).catch(console.warn);
       }
+
+      const reminderTime = get().profile?.notification_preferences?.reminder_time || '09:00';
+      notificationService.scheduleDailySummary(get().memoryItems, reminderTime).catch(console.warn);
       
       // Advance to next item only on success
       get().nextReviewItem();
@@ -398,6 +448,8 @@ export const useStore = create<AppState>()(persist((set, get) => ({
     set(state => ({ memoryItems: [newItem, ...state.memoryItems] }));
     // Schedule review notifications for this item
     notificationService.scheduleReviewNotifications(newItem).catch(console.warn);
+    const reminderTime = get().profile?.notification_preferences?.reminder_time || '09:00';
+    notificationService.scheduleDailySummary(get().memoryItems, reminderTime).catch(console.warn);
     return newItem;
   },
   
@@ -408,6 +460,13 @@ export const useStore = create<AppState>()(persist((set, get) => ({
         item.id === id ? updatedItem : item
       ),
     }));
+    if (updatedItem.status === 'active') {
+      notificationService.scheduleNextReview(updatedItem).catch(console.warn);
+    } else {
+      notificationService.cancelItemNotifications(updatedItem.id).catch(console.warn);
+    }
+    const reminderTime = get().profile?.notification_preferences?.reminder_time || '09:00';
+    notificationService.scheduleDailySummary(get().memoryItems, reminderTime).catch(console.warn);
   },
   
   deleteMemoryItem: async (id) => {
@@ -415,6 +474,9 @@ export const useStore = create<AppState>()(persist((set, get) => ({
     set(state => ({
       memoryItems: state.memoryItems.filter(item => item.id !== id),
     }));
+    notificationService.cancelItemNotifications(id).catch(console.warn);
+    const reminderTime = get().profile?.notification_preferences?.reminder_time || '09:00';
+    notificationService.scheduleDailySummary(get().memoryItems, reminderTime).catch(console.warn);
   },
   
   // Category CRUD
@@ -449,14 +511,15 @@ export const useStore = create<AppState>()(persist((set, get) => ({
   updateNotificationPreferences: async (prefs) => {
     const updatedProfile = await profileService.updateNotificationPreferences(prefs);
     set({ profile: updatedProfile });
+    notificationService.scheduleDailySummary(get().memoryItems, prefs.reminder_time).catch(console.warn);
   },
   
   // Helper functions
   getItemsDueToday: () => {
     const today = new Date().toISOString().split('T')[0];
-    return get().memoryItems.filter(item => 
-      item.next_review_date <= today && item.status === 'active'
-    );
+    return get().memoryItems
+      .filter(item => item.next_review_date && item.next_review_date <= today && item.status === 'active')
+      .sort(sortByDueThenCreated);
   },
   
   getItemsByCategory: (categoryId) => {
@@ -471,45 +534,16 @@ export const useStore = create<AppState>()(persist((set, get) => ({
     return get().categories.find(c => c.id === id);
   },
   
-  // Mark a review as complete from calendar (uses SM-2) — persists to Supabase
+  // Mark a review as complete from calendar (uses strict 1-4-7) — persists to Supabase
   markReviewComplete: async (itemId, date, performance) => {
-    const item = get().memoryItems.find(i => i.id === itemId);
-    if (!item) return;
-    
-    const result = processReviewCompletion(item, performance);
-    
-    const updates: Partial<MemoryItem> = {
-      review_history: [
-        ...item.review_history,
-        {
-          date: date,
-          performance,
-          time_spent_seconds: 0,
-          interval: result.interval,
-          easiness_factor: result.easinessFactor,
-        },
-      ],
-      easiness_factor: result.easinessFactor,
-      interval: result.interval,
-      repetition: result.repetition,
-      lapse_count: result.newLapseCount,
-      current_stage_index: result.repetition,
-      review_stage: result.repetition,
-      next_review_date: result.nextReviewDate,
-      status: result.nextStatus,
-      last_reviewed_at: new Date().toISOString(),
-      completed_at: result.completedAt,
-      archive_at: result.archiveAt,
-      delete_at: result.deleteAt,
-    };
-    
     try {
-      // Persist to Supabase
-      const updatedItem = await memoryItemService.updateMemoryItem(itemId, updates);
+      let updatedItem = await memoryItemService.completeReview(itemId, performance, 0, date);
+      if (!updatedItem) return;
       
+      const initialUpdatedItem = updatedItem;
       set(state => ({
         memoryItems: state.memoryItems.map(i =>
-          i.id === itemId ? updatedItem : i
+          i.id === itemId ? initialUpdatedItem : i
         ),
         dailyReviews: state.dailyReviews.map(r =>
           r.memory_item_id === itemId && r.scheduled_date === date
@@ -517,19 +551,45 @@ export const useStore = create<AppState>()(persist((set, get) => ({
             : r
         ),
       }));
+
+      try {
+        await streakService.recordReviewCompletion();
+        await profileService.incrementTotalReviews();
+        const updatedProfile = await profileService.getProfile();
+        if (updatedProfile) {
+          set({ profile: updatedProfile });
+        }
+      } catch (e) {
+        console.warn('Failed to update streak/profile from calendar review:', e);
+      }
+
+      if (isAwaitingSevenDayDecision(updatedItem)) {
+        const schedule30 = window.confirm(
+          `"${updatedItem.title}" completed Day 7.\n\nOK = Add Day 30 review\nCancel = Complete topic`,
+        );
+
+        updatedItem = schedule30
+          ? await memoryItemService.scheduleThirtyDayReview(updatedItem.id)
+          : await memoryItemService.completeTopic(updatedItem.id);
+
+        const resolvedItem = updatedItem;
+        set(state => ({
+          memoryItems: state.memoryItems.map(item =>
+            item.id === resolvedItem.id ? resolvedItem : item
+          ),
+        }));
+      }
+
+      if (updatedItem.status === 'completed') {
+        await notificationService.cancelItemNotifications(updatedItem.id);
+      } else {
+        notificationService.scheduleNextReview(updatedItem).catch(console.warn);
+      }
+
+      const reminderTime = get().profile?.notification_preferences?.reminder_time || '09:00';
+      notificationService.scheduleDailySummary(get().memoryItems, reminderTime).catch(console.warn);
     } catch (error) {
       console.error('Error persisting review to Supabase:', error);
-      // Still update local state so UI isn't broken
-      set(state => ({
-        memoryItems: state.memoryItems.map(i =>
-          i.id === itemId ? { ...i, ...updates, updated_at: new Date().toISOString() } as MemoryItem : i
-        ),
-        dailyReviews: state.dailyReviews.map(r =>
-          r.memory_item_id === itemId && r.scheduled_date === date
-            ? { ...r, status: 'completed' as const, completed_at: new Date().toISOString(), performance }
-            : r
-        ),
-      }));
     }
   },
   

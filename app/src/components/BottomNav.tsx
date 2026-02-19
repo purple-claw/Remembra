@@ -26,10 +26,10 @@ export function BottomNav({ visible = true }: { visible?: boolean }) {
         visible ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0'
       }`}
     >
-      <div className="relative mx-auto max-w-lg px-4 pb-4 pt-2 bg-black/95 backdrop-blur-sm">
+      <div className="relative mx-auto max-w-lg px-3 sm:px-4 pb-[calc(env(safe-area-inset-bottom)+8px)] pt-2 bg-black/95 backdrop-blur-sm">
         <div className="glass-strong rounded-2xl shadow-lg shadow-black/40 overflow-hidden">
           <div className="absolute inset-0 opacity-50" />
-          <div className="relative flex items-center justify-around py-2.5">
+          <div className="relative flex items-center justify-between py-2 px-1.5">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = currentScreen === item.id;
@@ -39,7 +39,7 @@ export function BottomNav({ visible = true }: { visible?: boolean }) {
                   key={item.id}
                   onClick={() => setScreen(item.id)}
                   className={`
-                    relative flex flex-col items-center gap-1 px-4 py-2 rounded-xl
+                    relative flex flex-col items-center gap-1 px-2 py-2 rounded-xl min-w-[44px]
                     transition-all duration-300 ease-out
                     ${isActive 
                       ? 'text-remembra-accent-primary' 
@@ -55,11 +55,11 @@ export function BottomNav({ visible = true }: { visible?: boolean }) {
                   )}
                   
                   <Icon 
-                    size={22} 
+                    size={20} 
                     strokeWidth={isActive ? 2.5 : 1.5}
                     className={`relative z-10 transition-all duration-300 ${isActive ? 'scale-110' : ''}`}
                   />
-                  <span className={`text-[10px] font-medium relative z-10 transition-opacity duration-200 ${isActive ? 'opacity-100' : 'opacity-60'}`}>
+                  <span className={`text-[10px] font-medium relative z-10 transition-opacity duration-200 hidden sm:block ${isActive ? 'opacity-100' : 'opacity-60'}`}>
                     {item.label}
                   </span>
                 </button>

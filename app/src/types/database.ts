@@ -1,5 +1,5 @@
 // Database Types for Supabase
-// These types are auto-generated based on the database schema
+// These types are manually aligned with app/supabase/schema.sql
 
 export type Json =
   | string
@@ -36,7 +36,6 @@ export interface Database {
           updated_at?: string;
         };
         Update: {
-          id?: string;
           username?: string;
           avatar_url?: string | null;
           timezone?: string;
@@ -61,7 +60,7 @@ export interface Database {
           id?: string;
           user_id: string;
           name: string;
-          color: string;
+          color?: string;
           icon?: string;
           order_index?: number;
           is_default?: boolean;
@@ -86,11 +85,26 @@ export interface Database {
           attachments: Json;
           difficulty: string;
           status: string;
-          next_review_date: string;
+          cycle_started_at: string;
+          next_review_date: string | null;
           review_stage: number;
+          current_stage_index: number;
+          review_template: string;
+          easiness_factor: number;
+          interval: number;
+          repetition: number;
+          lapse_count: number;
+          last_reviewed_at: string | null;
           review_history: Json;
           ai_summary: string | null;
           ai_flowchart: string | null;
+          ai_bullet_points: Json;
+          notes: string | null;
+          is_bookmarked: boolean;
+          completed_at: string | null;
+          mastered_at: string | null;
+          archive_at: string | null;
+          delete_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -104,11 +118,26 @@ export interface Database {
           attachments?: Json;
           difficulty?: string;
           status?: string;
-          next_review_date?: string;
+          cycle_started_at?: string;
+          next_review_date?: string | null;
           review_stage?: number;
+          current_stage_index?: number;
+          review_template?: string;
+          easiness_factor?: number;
+          interval?: number;
+          repetition?: number;
+          lapse_count?: number;
+          last_reviewed_at?: string | null;
           review_history?: Json;
           ai_summary?: string | null;
           ai_flowchart?: string | null;
+          ai_bullet_points?: Json;
+          notes?: string | null;
+          is_bookmarked?: boolean;
+          completed_at?: string | null;
+          mastered_at?: string | null;
+          archive_at?: string | null;
+          delete_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -120,11 +149,26 @@ export interface Database {
           attachments?: Json;
           difficulty?: string;
           status?: string;
-          next_review_date?: string;
+          cycle_started_at?: string;
+          next_review_date?: string | null;
           review_stage?: number;
+          current_stage_index?: number;
+          review_template?: string;
+          easiness_factor?: number;
+          interval?: number;
+          repetition?: number;
+          lapse_count?: number;
+          last_reviewed_at?: string | null;
           review_history?: Json;
           ai_summary?: string | null;
           ai_flowchart?: string | null;
+          ai_bullet_points?: Json;
+          notes?: string | null;
+          is_bookmarked?: boolean;
+          completed_at?: string | null;
+          mastered_at?: string | null;
+          archive_at?: string | null;
+          delete_at?: string | null;
           updated_at?: string;
         };
       };
@@ -209,6 +253,35 @@ export interface Database {
           progress?: number;
         };
       };
+      device_push_tokens: {
+        Row: {
+          id: string;
+          user_id: string;
+          token: string;
+          platform: string;
+          device_info: Json;
+          created_at: string;
+          updated_at: string;
+          last_seen_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          token: string;
+          platform: string;
+          device_info?: Json;
+          created_at?: string;
+          updated_at?: string;
+          last_seen_at?: string;
+        };
+        Update: {
+          token?: string;
+          platform?: string;
+          device_info?: Json;
+          updated_at?: string;
+          last_seen_at?: string;
+        };
+      };
     };
     Views: {
       [_ in never]: never;
@@ -226,12 +299,6 @@ export interface Database {
           reviews_completed: number;
         }[];
       };
-      get_stats_data: {
-        Args: {
-          p_user_id: string;
-        };
-        Returns: Json;
-      };
       update_streak: {
         Args: {
           p_user_id: string;
@@ -240,15 +307,11 @@ export interface Database {
       };
     };
     Enums: {
-      content_type: 'text' | 'code' | 'image' | 'document' | 'mixed';
-      review_status: 'learning' | 'reviewing' | 'mastered' | 'archived';
-      difficulty: 'easy' | 'medium' | 'hard';
-      performance: 'again' | 'hard' | 'medium' | 'easy';
+      [_ in never]: never;
     };
   };
 }
 
-// Type helpers
 export type Tables<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Row'];
 export type Insertable<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Insert'];
 export type Updatable<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Update'];
