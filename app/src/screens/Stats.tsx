@@ -196,20 +196,29 @@ export function Stats() {
   };
 
   return (
-    <div className="bg-black lined-bg-subtle screen-page px-4 sm:px-5 safe-top safe-bottom-nav sm:pb-8">
-      <header className="mb-6 flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-remembra-text-primary mb-1">Insights</h1>
-          <p className="text-remembra-text-muted">Track your learning progress</p>
+    <div className="fixed inset-0 bg-black flex flex-col" style={{ height: '100vh', maxHeight: '100vh' }}>
+      {/* Fixed Header */}
+      <header className="flex-shrink-0 px-4 sm:px-5 safe-top pb-4 bg-black border-b border-white/5">
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-remembra-text-primary mb-1">Insights</h1>
+            <p className="text-sm text-remembra-text-muted">Track your learning progress</p>
+          </div>
+          <button
+            onClick={() => setScreen('profile')}
+            className="w-10 h-10 rounded-xl bg-remembra-bg-secondary border border-white/5 flex items-center justify-center active:bg-white/10 transition-colors"
+            style={{ WebkitTapHighlightColor: 'transparent' }}
+          >
+            <Settings size={20} className="text-remembra-text-muted" />
+          </button>
         </div>
-        <button
-          onClick={() => setScreen('profile')}
-          className="w-10 h-10 rounded-xl bg-remembra-bg-secondary border border-white/5 flex items-center justify-center hover:bg-white/10 transition-colors"
-        >
-          <Settings size={20} className="text-remembra-text-muted" />
-        </button>
       </header>
 
+      {/* Scrollable Content */}
+      <div 
+        className="flex-1 overflow-y-auto overscroll-contain px-4 sm:px-5 py-4"
+        style={{ WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}
+      >
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="w-full grid grid-cols-3 bg-remembra-bg-secondary mb-6">
           <TabsTrigger 
@@ -611,6 +620,7 @@ export function Stats() {
           })}
         </TabsContent>
       </Tabs>
+      </div>
     </div>
   );
 }

@@ -49,12 +49,14 @@ export function Dashboard() {
   };
 
   return (
-    <div className="bg-black lined-bg-subtle screen-page">
-      <header className="px-4 sm:px-5 safe-top pb-4">
+    <div className="fixed inset-0 bg-black flex flex-col" style={{ height: '100vh', maxHeight: '100vh' }}>
+      {/* Fixed Header */}
+      <header className="flex-shrink-0 px-4 sm:px-5 safe-top pb-4 bg-black">
         <div className="flex items-center justify-between">
           <button 
             onClick={() => setScreen('profile')} 
-            className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+            className="flex items-center gap-3 active:scale-95 transition-transform"
+            style={{ WebkitTapHighlightColor: 'transparent' }}
           >
             <div className="relative">
               <div className="w-12 h-12 rounded-full bg-gradient-to-br from-remembra-accent-primary to-remembra-accent-secondary p-[2px]">
@@ -100,7 +102,12 @@ export function Dashboard() {
         </div>
       </header>
 
-      <div className="px-4 sm:px-5 space-y-6 safe-bottom-nav sm:pb-8">
+      {/* Scrollable Content */}
+      <div 
+        className="flex-1 overflow-y-auto overscroll-contain px-4 sm:px-5 pb-6"
+        style={{ WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}
+      >
+        <div className="space-y-6 safe-bottom-nav">
         <section className="animate-slide-up">
           <div 
             className="relative overflow-hidden rounded-3xl p-6"
@@ -131,7 +138,8 @@ export function Dashboard() {
               <Button
                 onClick={handleStartReview}
                 disabled={itemsDueToday.length === 0}
-                className="w-full bg-white text-remembra-accent-primary hover:bg-white/90 font-semibold py-6 rounded-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full bg-white text-remembra-accent-primary hover:bg-white/90 font-semibold py-6 rounded-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
+                style={{ WebkitTapHighlightColor: 'transparent' }}
               >
                 {itemsDueToday.length > 0 ? (
                   <>
@@ -155,7 +163,8 @@ export function Dashboard() {
             <h3 className="text-lg font-semibold text-remembra-text-primary">Your Categories</h3>
             <button 
               onClick={() => setScreen('library')}
-              className="text-sm text-remembra-accent-primary hover:text-remembra-accent-secondary transition-colors"
+              className="text-sm text-remembra-accent-primary active:text-remembra-accent-secondary transition-colors"
+              style={{ WebkitTapHighlightColor: 'transparent' }}
             >
               See all
             </button>
@@ -254,7 +263,8 @@ export function Dashboard() {
               </Button>
             </div>
           </section>
-        )}
+        )}  
+        </div>
       </div>
     </div>
   );

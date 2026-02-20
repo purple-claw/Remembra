@@ -462,28 +462,32 @@ export function AIStudio() {
   }
 
   return (
-    <div className="bg-black lined-bg-subtle screen-page px-4 sm:px-5 safe-top safe-bottom-nav sm:pb-8 smooth-scroll-content">
-      <header className="mb-6">
-        <div
-          className="rounded-2xl p-5 border border-white/10 relative overflow-hidden"
-          style={{ background: 'linear-gradient(140deg, #FF8000 0%, #FF4500 40%, #E81224 100%)' }}
-        >
-          <div className="absolute -top-8 -right-8 w-28 h-28 rounded-full bg-white/20 blur-2xl" />
-          <div className="relative z-10">
-            <h1 className="text-xl font-bold text-white mb-1">AI Studio</h1>
-            <p className="text-sm text-white/80 mb-3">Full AI workbench for summaries, quizzes, flowcharts, and tutor chat.</p>
-            <div className="flex flex-wrap gap-2 text-[11px]">
-              <span className="px-2 py-1 rounded-md bg-black/25 text-white flex items-center gap-1">
-                <BrainCircuit size={12} />
-                {provider.preferredReasoningModel}
-              </span>
-              <span className="px-2 py-1 rounded-md bg-black/25 text-white">
-                {provider.mode === 'live' ? 'Live AI active' : 'Fallback mode'}
-              </span>
+    <div className="fixed inset-0 bg-black flex flex-col" style={{ height: '100vh', maxHeight: '100vh' }}>
+      <div 
+        className="flex-1 overflow-y-auto overscroll-contain px-4 sm:px-5 safe-top safe-bottom-nav sm:pb-8"
+        style={{ WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}
+      >
+        <header className="mb-6 mt-4">
+          <div
+            className="rounded-2xl p-5 border border-white/10 relative overflow-hidden"
+            style={{ background: 'linear-gradient(140deg, #FF8000 0%, #FF4500 40%, #E81224 100%)' }}
+          >
+            <div className="absolute -top-8 -right-8 w-28 h-28 rounded-full bg-white/20 blur-2xl" />
+            <div className="relative z-10">
+              <h1 className="text-xl font-bold text-white mb-1">AI Studio</h1>
+              <p className="text-sm text-white/80 mb-3">Full AI workbench for summaries, quizzes, flowcharts, and tutor chat.</p>
+              <div className="flex flex-wrap gap-2 text-[11px]">
+                <span className="px-2 py-1 rounded-md bg-black/25 text-white flex items-center gap-1">
+                  <BrainCircuit size={12} />
+                  {provider.preferredReasoningModel}
+                </span>
+                <span className="px-2 py-1 rounded-md bg-black/25 text-white">
+                  {provider.mode === 'live' ? 'Live AI active' : 'Fallback mode'}
+                </span>
+              </div>
             </div>
           </div>
-        </div>
-      </header>
+        </header>
 
       <section className="mb-5">
         <button
@@ -521,6 +525,7 @@ export function AIStudio() {
           })}
         </div>
       </section>
+      </div>
     </div>
   );
 }

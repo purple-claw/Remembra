@@ -248,11 +248,11 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
                 </div>
                 
                 {item.content_type === 'code' ? (
-                  <div className="bg-black/50 rounded-xl overflow-hidden border border-white/5 max-h-[58dvh] overflow-y-auto custom-scrollbar">
+                  <div className="bg-black/50 rounded-xl overflow-x-auto border border-white/5">
                     <MarkdownRenderer content={`\`\`\`\n${item.content}\n\`\`\``} />
                   </div>
                 ) : (
-                  <div className="prose prose-invert prose-sm max-w-none max-h-[58dvh] overflow-y-auto custom-scrollbar pr-1">
+                  <div className="prose prose-invert prose-sm max-w-none prose-headings:text-white prose-headings:font-bold prose-p:text-remembra-text-secondary prose-p:leading-relaxed prose-a:text-remembra-accent-primary prose-strong:text-white prose-code:text-remembra-accent-secondary prose-code:bg-black/50 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded">
                     <MarkdownRenderer content={item.content} />
                   </div>
                 )}
@@ -297,7 +297,7 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
                 </div>
                 
                 {aiSummary ? (
-                  <div className="prose prose-invert prose-sm max-w-none max-h-[50dvh] overflow-y-auto custom-scrollbar pr-1">
+                  <div className="prose prose-invert prose-sm max-w-none prose-headings:text-white prose-p:text-remembra-text-secondary prose-p:leading-relaxed">
                     <MarkdownRenderer content={aiSummary} />
                   </div>
                 ) : (
@@ -430,7 +430,7 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
                     autoFocus
                   />
                 ) : notes ? (
-                  <p className="text-remembra-text-secondary text-sm leading-relaxed whitespace-pre-wrap max-h-[36dvh] overflow-y-auto custom-scrollbar pr-1">
+                  <p className="text-remembra-text-secondary text-sm leading-relaxed whitespace-pre-wrap">
                     {notes}
                   </p>
                 ) : (

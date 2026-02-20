@@ -6,8 +6,6 @@ import {
   Search, 
   Grid3X3, 
   List, 
-  LayoutGrid, 
-  MoreVertical,
   Brain,
   CheckCircle2,
   BookOpen,
@@ -110,244 +108,269 @@ export function Library() {
   };
 
   return (
-    <div className="bg-black lined-bg-subtle screen-page px-4 sm:px-5 safe-top safe-bottom-nav-extended sm:pb-8">
+    <div className="fixed inset-0 bg-black flex flex-col" style={{ height: '100vh', maxHeight: '100vh' }}>
       {/* Item Detail Modal */}
       {selectedItem && (
         <ItemDetail item={selectedItem} onClose={() => setSelectedItem(null)} />
       )}
       
-      <header className="mb-6">
+      {/* Fixed Header */}
+      <header className="flex-shrink-0 px-4 sm:px-5 safe-top pb-4 bg-black border-b border-white/5">
         <h1 className="text-2xl font-bold text-remembra-text-primary mb-1">Library</h1>
-        <p className="text-remembra-text-muted">Manage your learning materials</p>
+        <p className="text-sm text-remembra-text-muted mb-4">Your learning materials</p>
+
+        {/* Search Bar */}
+        <div className="relative">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-remembra-text-muted" size={18} />
+          <Input
+            type="text"
+            placeholder="Search items..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-11 pr-4 py-3 bg-remembra-bg-secondary border-white/10 rounded-xl text-remembra-text-primary placeholder:text-remembra-text-muted focus:border-remembra-accent-primary/50"
+            style={{ WebkitTapHighlightColor: 'transparent' }}
+          />
+        </div>
       </header>
 
-      <div className="relative mb-4">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-remembra-text-muted" size={18} />
-        <Input
-          type="text"
-          placeholder="Search items..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="pl-11 pr-4 py-6 bg-remembra-bg-secondary border-white/5 rounded-2xl text-remembra-text-primary placeholder:text-remembra-text-muted focus:border-remembra-accent-primary/50"
-        />
-      </div>
-
-      <div className="flex gap-2 overflow-x-auto scrollbar-hide mb-4 -mx-4 px-4 sm:-mx-5 sm:px-5">
-        {statusTabs.map(tab => (
-          <button
-            key={tab.value}
-            onClick={() => setStatusFilter(tab.value)}
-            className={`
-              flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap
-              transition-all duration-200
-              ${statusFilter === tab.value 
-                ? 'bg-remembra-accent-primary text-white' 
-                : 'bg-remembra-bg-secondary text-remembra-text-secondary hover:text-remembra-text-primary'
-              }
-            `}
-          >
-            {tab.label}
-            <span className={`
-              px-2 py-0.5 rounded-full text-xs
-              ${statusFilter === tab.value ? 'bg-white/20' : 'bg-remembra-bg-tertiary'}
-            `}>
-              {tab.count}
-            </span>
-          </button>
-        ))}
-      </div>
-
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex gap-2 overflow-x-auto scrollbar-hide">
-          <button
-            onClick={() => setSelectedCategory('all')}
-            className={`
-              px-3 py-1.5 rounded-full text-xs font-medium transition-colors
-              ${selectedCategory === 'all' 
-                ? 'bg-remembra-bg-tertiary text-remembra-text-primary' 
-                : 'bg-remembra-bg-secondary text-remembra-text-muted'
-              }
-            `}
-          >
-            All
-          </button>
-          {categories.map(cat => (
+      {/* Filters - Horizontally scrollable */}
+      <div className="flex-shrink-0 px-4 sm:px-5 py-3 bg-black border-b border-white/5">
+        {/* Status tabs */}
+        <div className="flex gap-2 overflow-x-auto scrollbar-hide mb-3 -mx-1 px-1">
+          {statusTabs.map(tab => (
             <button
-              key={cat.id}
-              onClick={() => setSelectedCategory(cat.id)}
+              key={tab.value}
+              onClick={() => setStatusFilter(tab.value)}
               className={`
-                px-3 py-1.5 rounded-full text-xs font-medium transition-colors
-                ${selectedCategory === cat.id 
-                  ? 'text-white' 
-                  : 'bg-remembra-bg-secondary text-remembra-text-muted'
+                flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all active:scale-95
+                ${statusFilter === tab.value 
+                  ? 'bg-remembra-accent-primary text-white shadow-lg' 
+                  : 'bg-remembra-bg-secondary text-remembra-text-secondary border border-white/5'
                 }
               `}
-              style={selectedCategory === cat.id ? { backgroundColor: cat.color } : {}}
+              style={{ WebkitTapHighlightColor: 'transparent' }}
             >
-              {cat.name}
+              {tab.label}
+              <span className={`
+                px-2 py-0.5 rounded-lg text-xs font-semibold
+                ${statusFilter === tab.value ? 'bg-white/20 text-white' : 'bg-remembra-bg-tertiary text-remembra-text-muted'}
+              `}>
+                {tab.count}
+              </span>
             </button>
           ))}
         </div>
 
-        <div className="flex bg-remembra-bg-secondary rounded-lg p-1">
-          <button
-            onClick={() => setViewMode('grid')}
-            className={`p-1.5 rounded ${viewMode === 'grid' ? 'bg-remembra-bg-tertiary text-remembra-text-primary' : 'text-remembra-text-muted'}`}
-          >
-            <Grid3X3 size={16} />
-          </button>
-          <button
-            onClick={() => setViewMode('list')}
-            className={`p-1.5 rounded ${viewMode === 'list' ? 'bg-remembra-bg-tertiary text-remembra-text-primary' : 'text-remembra-text-muted'}`}
-          >
-            <List size={16} />
-          </button>
-          <button
-            onClick={() => setViewMode('masonry')}
-            className={`p-1.5 rounded ${viewMode === 'masonry' ? 'bg-remembra-bg-tertiary text-remembra-text-primary' : 'text-remembra-text-muted'}`}
-          >
-            <LayoutGrid size={16} />
-          </button>
+        {/* Category filters & view mode */}
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex gap-2 overflow-x-auto scrollbar-hide flex-1 -mx-1 px-1">
+            <button
+              onClick={() => setSelectedCategory('all')}
+              className={`
+                px-3 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap
+                ${selectedCategory === 'all' 
+                  ? 'bg-remembra-bg-tertiary text-remembra-text-primary border border-white/10' 
+                  : 'bg-remembra-bg-secondary text-remembra-text-muted'
+                }
+              `}
+              style={{ WebkitTapHighlightColor: 'transparent' }}
+            >
+              All
+            </button>
+            {categories.map(cat => (
+              <button
+                key={cat.id}
+                onClick={() => setSelectedCategory(cat.id)}
+                className={`
+                  px-3 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap
+                  ${selectedCategory === cat.id 
+                    ? 'text-white border border-white/20' 
+                    : 'bg-remembra-bg-secondary text-remembra-text-muted'
+                  }
+                `}
+                style={selectedCategory === cat.id ? { backgroundColor: cat.color, WebkitTapHighlightColor: 'transparent' } : { WebkitTapHighlightColor: 'transparent' }}
+              >
+                {cat.name}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex bg-remembra-bg-secondary rounded-lg p-1 border border-white/5">
+            <button
+              onClick={() => setViewMode('grid')}
+              className={`p-2 rounded ${viewMode === 'grid' ? 'bg-remembra-bg-tertiary text-remembra-text-primary' : 'text-remembra-text-muted'}`}
+              style={{ WebkitTapHighlightColor: 'transparent' }}
+            >
+              <Grid3X3 size={16} />
+            </button>
+            <button
+              onClick={() => setViewMode('list')}
+              className={`p-2 rounded ${viewMode === 'list' ? 'bg-remembra-bg-tertiary text-remembra-text-primary' : 'text-remembra-text-muted'}`}
+              style={{ WebkitTapHighlightColor: 'transparent' }}
+            >
+              <List size={16} />
+            </button>
+          </div>
         </div>
       </div>
 
-      <div className={`
-        ${viewMode === 'grid' ? 'grid grid-cols-2 gap-3' : ''}
-        ${viewMode === 'list' ? 'space-y-3' : ''}
-        ${viewMode === 'masonry' ? 'columns-2 gap-3 space-y-3' : ''}
-      `}>
-        {visibleItems.map((item, index) => {
-          const category = getCategoryById(item.category_id);
-          const StatusIcon = getStatusIcon(item.status);
-          
-          if (viewMode === 'list') {
+      {/* Scrollable Content */}
+      <div 
+        className="flex-1 overflow-y-auto overscroll-contain px-4 sm:px-5 py-4"
+        style={{ 
+          WebkitOverflowScrolling: 'touch',
+          overscrollBehavior: 'contain'
+        }}
+      >
+        {/* Items Grid/List */}
+        <div className={`
+          ${viewMode === 'grid' ? 'grid grid-cols-2 gap-3' : 'space-y-3'}
+        `}>
+          {visibleItems.map((item, index) => {
+            const category = getCategoryById(item.category_id);
+            const StatusIcon = getStatusIcon(item.status);
+            
+            if (viewMode === 'list') {
+              return (
+                <div 
+                  key={item.id}
+                  onClick={() => setSelectedItem(item)}
+                  className="bg-remembra-bg-secondary/95 rounded-2xl p-4 border border-white/10 flex items-center gap-4 active:scale-[0.98] transition-transform cursor-pointer"
+                  style={{ animationDelay: `${index * 18}ms`, WebkitTapHighlightColor: 'transparent' }}
+                >
+                  <div 
+                    className="w-14 h-14 rounded-xl flex items-center justify-center flex-shrink-0 border border-white/10"
+                    style={{ backgroundColor: `${category?.color}15` }}
+                  >
+                    <span className="text-xl font-semibold" style={{ color: category?.color }}>
+                      {item.content_type === 'code' ? '</>' : item.content_type.charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                  
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-sm font-semibold text-remembra-text-primary truncate mb-1">
+                      {item.title}
+                    </h3>
+                    <p className="text-xs text-remembra-text-muted line-clamp-1 mb-2">
+                      {item.content.slice(0, 80)}...
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium ${getStatusColor(item.status)}`}>
+                        <StatusIcon size={10} />
+                        {item.status}
+                      </div>
+                      <span className="text-[10px] text-remembra-text-muted">
+                        {getStageDayLabel(item.review_stage, item.status)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+            
             return (
               <div 
                 key={item.id}
                 onClick={() => setSelectedItem(item)}
-                className="bg-remembra-bg-secondary/95 rounded-2xl p-4 border border-white/10 flex items-center gap-4 card-press cursor-pointer transition-colors hover:border-white/20"
-                style={{ animationDelay: `${index * 18}ms` }}
+                className="bg-remembra-bg-secondary/95 rounded-2xl p-4 border border-white/10 active:scale-[0.95] transition-transform cursor-pointer"
+                style={{ animationDelay: `${index * 18}ms`, WebkitTapHighlightColor: 'transparent' }}
               >
-                <div 
-                  className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
-                  style={{ backgroundColor: `${category?.color}20` }}
-                >
-                  <span className="text-lg font-medium" style={{ color: category?.color }}>
-                    {item.content_type === 'code' ? '</>' : item.content_type.charAt(0).toUpperCase()}
+                <div className="flex items-start justify-between mb-3">
+                  <div 
+                    className="w-10 h-10 rounded-xl flex items-center justify-center border border-white/10"
+                    style={{ backgroundColor: `${category?.color}15` }}
+                  >
+                    <span className="text-base font-semibold" style={{ color: category?.color }}>
+                      {item.content_type === 'code' ? '</>' : item.content_type.charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                  
+                  <div className={`px-2 py-1 rounded-lg text-[10px] font-medium ${getStatusColor(item.status)}`}>
+                    {item.status}
+                  </div>
+                </div>
+                
+                <h3 className="text-sm font-semibold text-remembra-text-primary mb-2 line-clamp-2 leading-tight">
+                  {item.title}
+                </h3>
+                
+                <p className="text-xs text-remembra-text-muted line-clamp-2 mb-3 leading-relaxed">
+                  {item.content.slice(0, 90)}...
+                </p>
+                
+                <div className="flex items-center justify-between text-[10px]">
+                  <span className="text-remembra-text-muted font-medium">
+                    {getStageDayLabel(item.review_stage, item.status)}
                   </span>
+                  
+                  {item.ai_summary && (
+                    <Badge variant="secondary" className="text-[9px] px-1.5 py-0.5 bg-remembra-accent-primary/10 text-remembra-accent-primary border-0">
+                      <Sparkles size={9} className="mr-0.5" />
+                      AI
+                    </Badge>
+                  )}
                 </div>
-                
-                <div className="flex-1 min-w-0">
-                  <h3 className="text-sm font-semibold text-remembra-text-primary truncate">
-                    {item.title}
-                  </h3>
-                  <p className="text-xs text-remembra-text-muted mt-0.5 line-clamp-1">
-                    {item.content.slice(0, 60)}...
-                  </p>
-                </div>
-                
-                <div className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(item.status)}`}>
-                  <StatusIcon size={12} className="inline mr-1" />
-                  {item.status}
-                </div>
-                
-                <button className="p-2 text-remembra-text-muted hover:text-remembra-text-primary">
-                  <MoreVertical size={16} />
-                </button>
               </div>
             );
-          }
-          
-          return (
-            <div 
-              key={item.id}
-              onClick={() => setSelectedItem(item)}
-              className={`
-                bg-remembra-bg-secondary/95 rounded-2xl p-4 border border-white/10 card-press cursor-pointer transition-colors hover:border-white/20
-                ${viewMode === 'masonry' ? 'break-inside-avoid' : ''}
-              `}
-              style={{ animationDelay: `${index * 18}ms` }}
+          })}  
+        </div>
+
+        {/* Load More Button */}
+        {hasMoreItems && (
+          <div className="flex justify-center mt-6">
+            <Button
+              variant="outline"
+              onClick={() => setVisibleCount((prev) => prev + RENDER_INCREMENT)}
+              className="px-6 py-3 bg-remembra-bg-secondary border-white/10 text-remembra-text-secondary hover:text-remembra-text-primary hover:bg-remembra-bg-tertiary rounded-xl active:scale-95 transition-transform"
+              style={{ WebkitTapHighlightColor: 'transparent' }}
             >
-              <div className="flex items-start justify-between mb-3">
-                <div 
-                  className="w-8 h-8 rounded-lg flex items-center justify-center"
-                  style={{ backgroundColor: `${category?.color}20` }}
-                >
-                  <span className="text-sm" style={{ color: category?.color }}>
-                    {item.content_type === 'code' ? '</>' : item.content_type.charAt(0).toUpperCase()}
-                  </span>
-                </div>
-                
-                <div className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${getStatusColor(item.status)}`}>
-                  {item.status}
-                </div>
-              </div>
-              
-              <h3 className="text-sm font-semibold text-remembra-text-primary mb-2 line-clamp-2">
-                {item.title}
-              </h3>
-              
-              <p className="text-xs text-remembra-text-muted line-clamp-3 mb-3">
-                {item.content.slice(0, 100)}...
-              </p>
-              
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] text-remembra-text-muted">
-                  {getStageDayLabel(item.review_stage, item.status)}
-                </span>
-                
-                {item.ai_summary && (
-                  <Badge variant="secondary" className="text-[10px] bg-remembra-accent-primary/20 text-remembra-accent-primary border-0">
-                    <Sparkles size={10} className="mr-1" />
-                    AI
-                  </Badge>
-                )}
-              </div>
+              Load More ({filteredItems.length - visibleCount} remaining)
+            </Button>
+          </div>
+        )}
+
+        {/* Item count */}
+        {filteredItems.length > 0 && (
+          <p className="mt-4 text-center text-xs text-remembra-text-muted">
+            Showing {Math.min(visibleCount, filteredItems.length)} of {filteredItems.length} items
+          </p>
+        )}
+
+        {/* Empty State */}
+        {filteredItems.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-20 px-6">
+            <div className="w-24 h-24 rounded-full bg-remembra-bg-secondary flex items-center justify-center mb-6 border border-white/5">
+              <Search size={40} className="text-remembra-text-muted" />
             </div>
-          );
-        })}
+            <h3 className="text-lg font-semibold text-remembra-text-primary mb-2">No items found</h3>
+            <p className="text-sm text-remembra-text-muted text-center max-w-xs">
+              Try adjusting your filters or search query
+            </p>
+          </div>
+        )}
+
+        {/* Bottom padding for floating button */}
+        <div className="h-24" />
       </div>
 
-      {hasMoreItems && (
-        <div className="flex justify-center mt-4">
-          <Button
-            variant="outline"
-            onClick={() => setVisibleCount((prev) => prev + RENDER_INCREMENT)}
-            className="bg-remembra-bg-secondary border-white/10 text-remembra-text-secondary hover:text-remembra-text-primary hover:bg-remembra-bg-tertiary"
-          >
-            Load More ({filteredItems.length - visibleCount} remaining)
-          </Button>
-        </div>
-      )}
-
-      {filteredItems.length > 0 && (
-        <p className="mt-3 text-center text-xs text-remembra-text-muted">
-          Showing {Math.min(visibleCount, filteredItems.length)} of {filteredItems.length} items
-        </p>
-      )}
-
-      {filteredItems.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-16">
-          <div className="w-20 h-20 rounded-full bg-remembra-bg-secondary flex items-center justify-center mb-4">
-            <Search size={32} className="text-remembra-text-muted" />
-          </div>
-          <h3 className="text-lg font-semibold text-remembra-text-primary mb-2">No items found</h3>
-          <p className="text-sm text-remembra-text-muted text-center max-w-xs">
-            Try adjusting your filters or search query
-          </p>
-        </div>
-      )}
-
+      {/* Floating Quick Review Button */}
       {activeFilteredCount > 0 && (
-        <div className="fixed safe-bottom-floating-nav left-4 right-4 sm:left-5 sm:right-5 z-40">
+        <div 
+          className="fixed left-4 right-4 sm:left-5 sm:right-5 z-40"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 5rem)' }}
+        >
           <Button
             onClick={() => {
               const itemsToReview = filteredItems.filter(item => item.status === 'active');
               startReviewSession(itemsToReview);
             }}
-            className="w-full gradient-primary py-6 rounded-2xl text-white font-semibold shadow-lg shadow-remembra-accent-primary/30"
+            className="w-full py-4 rounded-2xl text-white font-semibold shadow-2xl active:scale-[0.98] transition-transform text-base"
+            style={{ 
+              background: 'linear-gradient(135deg, #FF8000 0%, #FF6B00 100%)',
+              WebkitTapHighlightColor: 'transparent'
+            }}
           >
-            <Brain size={20} className="mr-2" />
+            <Brain size={22} className="mr-2" />
             Quick Review ({activeFilteredCount})
           </Button>
         </div>

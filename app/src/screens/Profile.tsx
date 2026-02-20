@@ -139,12 +139,18 @@ export function Profile() {
   ];
 
   return (
-    <div className="bg-black lined-bg-subtle screen-page px-4 sm:px-5 safe-top safe-bottom-nav sm:pb-8 smooth-scroll-content">
-      <header className="mb-6">
+    <div className="fixed inset-0 bg-black flex flex-col" style={{ height: '100vh', maxHeight: '100vh' }}>
+      {/* Fixed Header */}
+      <header className="flex-shrink-0 px-4 sm:px-5 safe-top pb-4 bg-black border-b border-white/5">
         <h1 className="text-2xl font-bold text-remembra-text-primary mb-1">Profile</h1>
-        <p className="text-remembra-text-muted">Manage your account</p>
+        <p className="text-sm text-remembra-text-muted">Manage your account</p>
       </header>
 
+      {/* Scrollable Content */}
+      <div 
+        className="flex-1 overflow-y-auto overscroll-contain px-4 sm:px-5 py-4"
+        style={{ WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}
+      >
       {/* User Info Card */}
       <div className="bg-remembra-bg-secondary rounded-2xl p-5 border border-white/5 mb-6 dynamic-container smooth-surface">
         <div className="flex items-center gap-4">
@@ -297,6 +303,7 @@ export function Profile() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      </div>
     </div>
   );
 }

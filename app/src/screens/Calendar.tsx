@@ -165,12 +165,18 @@ export function Calendar() {
   const calendarDays = generateCalendarDays();
 
   return (
-    <div className="bg-black lined-bg-subtle screen-page px-4 sm:px-5 safe-top safe-bottom-nav sm:pb-8 animate-fade-in smooth-scroll-content">
-      <header className="mb-6">
+    <div className="fixed inset-0 bg-black flex flex-col" style={{ height: '100vh', maxHeight: '100vh' }}>
+      {/* Fixed Header */}
+      <header className="flex-shrink-0 px-4 sm:px-5 safe-top pb-4 bg-black border-b border-white/5">
         <h1 className="text-2xl font-bold text-remembra-text-primary mb-1">Calendar</h1>
-        <p className="text-remembra-text-muted">Dynamic schedule with due + completed review tracking</p>
+        <p className="text-sm text-remembra-text-muted">Dynamic schedule with due + completed review tracking</p>
       </header>
 
+      {/* Scrollable Content */}
+      <div 
+        className="flex-1 overflow-y-auto overscroll-contain px-4 sm:px-5 py-4"
+        style={{ WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}
+      >
       <Tabs defaultValue="month" className="w-full">
         <TabsList className="w-full grid grid-cols-3 bg-remembra-bg-secondary mb-6">
           <TabsTrigger value="month" className="data-[state=active]:bg-remembra-accent-primary data-[state=active]:text-white">
@@ -469,6 +475,7 @@ export function Calendar() {
           </div>
         </TabsContent>
       </Tabs>
+      </div>
     </div>
   );
 }
