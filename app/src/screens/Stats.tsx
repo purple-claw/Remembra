@@ -196,7 +196,7 @@ export function Stats() {
   };
 
   return (
-    <div className="bg-black lined-bg-subtle px-5 pt-6 pb-8">
+    <div className="bg-black lined-bg-subtle screen-page px-4 sm:px-5 safe-top safe-bottom-nav sm:pb-8">
       <header className="mb-6 flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold text-remembra-text-primary mb-1">Insights</h1>

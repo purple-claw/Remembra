@@ -210,8 +210,8 @@ export function Auth() {
   // Forgot Password View
   if (view === 'forgot-password') {
     return (
-      <div className="min-h-screen bg-remembra-bg-primary flex flex-col">
-        <div className="flex-1 flex items-center justify-center p-5">
+      <div className="min-h-[100dvh] bg-remembra-bg-primary flex flex-col">
+        <div className="flex-1 flex items-center justify-center px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-[calc(env(safe-area-inset-bottom)+1.25rem)]">
           <Card className="w-full max-w-md bg-remembra-bg-secondary border-white/5">
             <CardContent className="pt-8 pb-8 px-6">
               <button
@@ -267,8 +267,8 @@ export function Auth() {
   // Update Password View
   if (view === 'update-password') {
     return (
-      <div className="min-h-screen bg-remembra-bg-primary flex flex-col">
-        <div className="flex-1 flex items-center justify-center p-5">
+      <div className="min-h-[100dvh] bg-remembra-bg-primary flex flex-col">
+        <div className="flex-1 flex items-center justify-center px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-[calc(env(safe-area-inset-bottom)+1.25rem)]">
           <Card className="w-full max-w-md bg-remembra-bg-secondary border-white/5">
             <CardContent className="pt-8 pb-8 px-6">
               <div className="text-center mb-8">
@@ -312,8 +312,8 @@ export function Auth() {
 
   // Main Auth View
   return (
-    <div className="min-h-screen bg-remembra-bg-primary flex flex-col">
-      <div className="flex-1 flex items-center justify-center p-5">
+    <div className="min-h-[100dvh] bg-remembra-bg-primary flex flex-col">
+      <div className="flex-1 flex items-center justify-center px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-[calc(env(safe-area-inset-bottom)+1.25rem)]">
         <div className="w-full max-w-md space-y-6">
           <div className="text-center">
             <div className="mx-auto w-20 h-20 rounded-3xl bg-gradient-to-br from-remembra-accent-primary to-remembra-accent-secondary flex items-center justify-center mb-5 shadow-lg shadow-remembra-accent-primary/20">

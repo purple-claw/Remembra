@@ -262,9 +262,9 @@ export function Create() {
   };
 
   return (
-    <div className="fixed inset-0 bg-black lined-bg-subtle flex flex-col z-50">
+    <div className="fixed inset-0 min-h-[100dvh] bg-black lined-bg-subtle flex flex-col z-50">
       {/* HEADER - fixed at top */}
-      <header className="flex-shrink-0 px-5 pt-6 pb-3">
+      <header className="flex-shrink-0 px-4 sm:px-5 safe-top pb-3">
         <div className="flex items-center justify-between mb-3">
           <button
             onClick={handleBack}
@@ -317,7 +317,7 @@ export function Create() {
       </header>
 
       {/* SCROLLABLE CONTENT */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto overscroll-contain px-5 py-4 scrollbar-hide">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto overscroll-contain px-4 sm:px-5 py-4 scrollbar-hide">
         {/* STEP 1 */}
         {step === 1 && (
           <div className="space-y-3 animate-slide-up pb-24">
@@ -721,7 +721,7 @@ export function Create() {
       </div>
 
       {/* FOOTER - fixed at bottom */}
-      <div className="flex-shrink-0 px-5 pb-6 pt-3 bg-gradient-to-t from-black via-black/95 to-transparent">
+      <div className="flex-shrink-0 px-4 sm:px-5 safe-footer pt-3 bg-gradient-to-t from-black via-black/95 to-transparent">
         <div className="line-accent mb-3" />
         {step < 4 ? (
           <Button

@@ -444,18 +444,36 @@ export const aiService = {
 
   async generateFlowchart(content: string, title: string): Promise<string> {
     const systemPrompt = [
-      'Create valid Mermaid syntax only.',
-      'Output must start with graph TD or graph LR.',
-      'Use 5-12 nodes, concise labels, no markdown fences.',
+      'You are a Mermaid diagram generation expert.',
+      'Generate ONLY valid Mermaid flowchart syntax.',
+      'Rules:',
+      '1. Start with exactly "graph TD" or "graph LR"',
+      '2. Use square brackets for nodes: A[Label Text]',
+      '3. Use arrows: --> or ---',
+      '4. Keep labels under 20 characters',
+      '5. Use 5-12 nodes total',
+      '6. NO markdown fences, NO explanations, ONLY the diagram code',
+      '7. Test all node IDs are unique (A, B, C, etc.)',
+      '8. Ensure all arrows point to defined nodes',
+      'Example: graph TD\\nA[Start] --> B[Process]\\nB --> C[End]',
     ].join(' ');
-    const prompt = `Title: ${title}\n\nContent:\n${clampText(content)}\n\nCreate Mermaid flowchart.`;
+    const prompt = `Topic: ${title}\n\nContent:\n${clampText(content, 3000)}\n\nGenerate Mermaid flowchart code only (no markdown fences).`;
     const result = await callAI(prompt, systemPrompt, {
-      maxTokens: 700,
-      temperature: 0.2,
-      topP: 0.85,
-      minLength: 20,
+      maxTokens: 850,
+      temperature: 0.15,
+      topP: 0.8,
+      minLength: 40,
     });
-    return normalizeMermaid(result);
+    
+    const normalized = normalizeMermaid(result);
+    
+    // Validate the generated chart
+    if (!normalized.trim().toLowerCase().startsWith('graph')) {
+      console.warn('[AI] Flowchart missing graph header, adding fallback');
+      return `graph TD\nA[${title}] --> B[Core Concept]\nB --> C[Application]\nC --> D[Review]\nD --> E[Mastery]`;
+    }
+    
+    return normalized;
   },
 
   async explainCode(code: string, language?: string): Promise<string> {

@@ -165,7 +165,7 @@ export function Calendar() {
   const calendarDays = generateCalendarDays();
 
   return (
-    <div className="bg-black lined-bg-subtle px-4 sm:px-5 pt-6 pb-8 min-h-full animate-fade-in smooth-scroll-content">
+    <div className="bg-black lined-bg-subtle screen-page px-4 sm:px-5 safe-top safe-bottom-nav sm:pb-8 animate-fade-in smooth-scroll-content">
       <header className="mb-6">
         <h1 className="text-2xl font-bold text-remembra-text-primary mb-1">Calendar</h1>
         <p className="text-remembra-text-muted">Dynamic schedule with due + completed review tracking</p>

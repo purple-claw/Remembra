@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { useStore } from '@/store/useStore';
 import type { ReviewStatus, MemoryItem } from '@/types';
 import { getStageDayLabel } from '@/domain/review147';
@@ -19,28 +19,78 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ItemDetail } from '@/components/ItemDetail';
 
+const INITIAL_RENDER_COUNT = 36;
+const RENDER_INCREMENT = 24;
+const SEARCH_CONTENT_WINDOW = 2800;
+
 export function Library() {
-  const { memoryItems, categories, getCategoryById, startReviewSession } = useStore();
+  const memoryItems = useStore((state) => state.memoryItems);
+  const categories = useStore((state) => state.categories);
+  const getCategoryById = useStore((state) => state.getCategoryById);
+  const startReviewSession = useStore((state) => state.startReviewSession);
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list' | 'masonry'>('grid');
   const [statusFilter, setStatusFilter] = useState<ReviewStatus | 'all'>('all');
   const [selectedCategory, setSelectedCategory] = useState<string | 'all'>('all');
   const [selectedItem, setSelectedItem] = useState<MemoryItem | null>(null);
+  const [visibleCount, setVisibleCount] = useState(INITIAL_RENDER_COUNT);
 
-  const filteredItems = memoryItems.filter(item => {
-    const matchesSearch = item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         item.content.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || item.status === statusFilter;
-    const matchesCategory = selectedCategory === 'all' || item.category_id === selectedCategory;
-    
-    return matchesSearch && matchesStatus && matchesCategory;
-  });
+  const deferredSearch = useDeferredValue(searchQuery);
+  const normalizedSearch = deferredSearch.trim().toLowerCase();
+  const searchTerms = useMemo(
+    () => normalizedSearch.split(/\s+/).filter(Boolean),
+    [normalizedSearch],
+  );
+
+  const statusCounts = useMemo(() => {
+    const counts = {
+      all: memoryItems.length,
+      active: 0,
+      completed: 0,
+      archived: 0,
+    };
+    for (const item of memoryItems) {
+      counts[item.status] += 1;
+    }
+    return counts;
+  }, [memoryItems]);
+
+  const filteredItems = useMemo(() => {
+    return memoryItems.filter((item) => {
+      const matchesStatus = statusFilter === 'all' || item.status === statusFilter;
+      if (!matchesStatus) return false;
+
+      const matchesCategory = selectedCategory === 'all' || item.category_id === selectedCategory;
+      if (!matchesCategory) return false;
+
+      if (searchTerms.length === 0) return true;
+
+      const searchable = `${item.title}\n${item.content.slice(0, SEARCH_CONTENT_WINDOW)}`.toLowerCase();
+      return searchTerms.every((term) => searchable.includes(term));
+    });
+  }, [memoryItems, searchTerms, selectedCategory, statusFilter]);
+
+  const visibleItems = useMemo(
+    () => filteredItems.slice(0, visibleCount),
+    [filteredItems, visibleCount],
+  );
+
+  const activeFilteredCount = useMemo(
+    () => filteredItems.reduce((count, item) => count + (item.status === 'active' ? 1 : 0), 0),
+    [filteredItems],
+  );
+
+  const hasMoreItems = visibleCount < filteredItems.length;
+
+  useEffect(() => {
+    setVisibleCount(INITIAL_RENDER_COUNT);
+  }, [statusFilter, selectedCategory, normalizedSearch, viewMode]);
 
   const statusTabs: { value: ReviewStatus | 'all'; label: string; count: number }[] = [
-    { value: 'all', label: 'All', count: memoryItems.length },
-    { value: 'active', label: 'Active', count: memoryItems.filter(i => i.status === 'active').length },
-    { value: 'completed', label: 'Completed', count: memoryItems.filter(i => i.status === 'completed').length },
-    { value: 'archived', label: 'Archived', count: memoryItems.filter(i => i.status === 'archived').length },
+    { value: 'all', label: 'All', count: statusCounts.all },
+    { value: 'active', label: 'Active', count: statusCounts.active },
+    { value: 'completed', label: 'Completed', count: statusCounts.completed },
+    { value: 'archived', label: 'Archived', count: statusCounts.archived },
   ];
 
   const getStatusIcon = (status: ReviewStatus) => {
@@ -60,7 +110,7 @@ export function Library() {
   };
 
   return (
-    <div className="bg-black lined-bg-subtle px-5 pt-6 pb-8">
+    <div className="bg-black lined-bg-subtle screen-page px-4 sm:px-5 safe-top safe-bottom-nav-extended sm:pb-8">
       {/* Item Detail Modal */}
       {selectedItem && (
         <ItemDetail item={selectedItem} onClose={() => setSelectedItem(null)} />
@@ -82,7 +132,7 @@ export function Library() {
         />
       </div>
 
-      <div className="flex gap-2 overflow-x-auto scrollbar-hide mb-4 -mx-5 px-5">
+      <div className="flex gap-2 overflow-x-auto scrollbar-hide mb-4 -mx-4 px-4 sm:-mx-5 sm:px-5">
         {statusTabs.map(tab => (
           <button
             key={tab.value}
@@ -166,7 +216,7 @@ export function Library() {
         ${viewMode === 'list' ? 'space-y-3' : ''}
         ${viewMode === 'masonry' ? 'columns-2 gap-3 space-y-3' : ''}
       `}>
-        {filteredItems.map((item, index) => {
+        {visibleItems.map((item, index) => {
           const category = getCategoryById(item.category_id);
           const StatusIcon = getStatusIcon(item.status);
           
@@ -175,8 +225,8 @@ export function Library() {
               <div 
                 key={item.id}
                 onClick={() => setSelectedItem(item)}
-                className="bg-remembra-bg-secondary rounded-2xl p-4 border border-white/5 flex items-center gap-4 card-press glass-card hover-lift cursor-pointer transition-smooth"
-                style={{ animationDelay: `${index * 30}ms` }}
+                className="bg-remembra-bg-secondary/95 rounded-2xl p-4 border border-white/10 flex items-center gap-4 card-press cursor-pointer transition-colors hover:border-white/20"
+                style={{ animationDelay: `${index * 18}ms` }}
               >
                 <div 
                   className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
@@ -213,10 +263,10 @@ export function Library() {
               key={item.id}
               onClick={() => setSelectedItem(item)}
               className={`
-                bg-remembra-bg-secondary rounded-2xl p-4 border border-white/5 card-press glass-card hover-lift cursor-pointer transition-smooth
+                bg-remembra-bg-secondary/95 rounded-2xl p-4 border border-white/10 card-press cursor-pointer transition-colors hover:border-white/20
                 ${viewMode === 'masonry' ? 'break-inside-avoid' : ''}
               `}
-              style={{ animationDelay: `${index * 30}ms` }}
+              style={{ animationDelay: `${index * 18}ms` }}
             >
               <div className="flex items-start justify-between mb-3">
                 <div 
@@ -258,6 +308,24 @@ export function Library() {
         })}
       </div>
 
+      {hasMoreItems && (
+        <div className="flex justify-center mt-4">
+          <Button
+            variant="outline"
+            onClick={() => setVisibleCount((prev) => prev + RENDER_INCREMENT)}
+            className="bg-remembra-bg-secondary border-white/10 text-remembra-text-secondary hover:text-remembra-text-primary hover:bg-remembra-bg-tertiary"
+          >
+            Load More ({filteredItems.length - visibleCount} remaining)
+          </Button>
+        </div>
+      )}
+
+      {filteredItems.length > 0 && (
+        <p className="mt-3 text-center text-xs text-remembra-text-muted">
+          Showing {Math.min(visibleCount, filteredItems.length)} of {filteredItems.length} items
+        </p>
+      )}
+
       {filteredItems.length === 0 && (
         <div className="flex flex-col items-center justify-center py-16">
           <div className="w-20 h-20 rounded-full bg-remembra-bg-secondary flex items-center justify-center mb-4">
@@ -270,8 +338,8 @@ export function Library() {
         </div>
       )}
 
-      {filteredItems.some(item => item.status === 'active') && (
-        <div className="fixed bottom-24 left-5 right-5 z-40">
+      {activeFilteredCount > 0 && (
+        <div className="fixed safe-bottom-floating-nav left-4 right-4 sm:left-5 sm:right-5 z-40">
           <Button
             onClick={() => {
               const itemsToReview = filteredItems.filter(item => item.status === 'active');
@@ -280,7 +348,7 @@ export function Library() {
             className="w-full gradient-primary py-6 rounded-2xl text-white font-semibold shadow-lg shadow-remembra-accent-primary/30"
           >
             <Brain size={20} className="mr-2" />
-            Quick Review ({filteredItems.filter(i => i.status === 'active').length})
+            Quick Review ({activeFilteredCount})
           </Button>
         </div>
       )}

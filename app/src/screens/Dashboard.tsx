@@ -49,8 +49,8 @@ export function Dashboard() {
   };
 
   return (
-    <div className="bg-black lined-bg-subtle">
-      <header className="px-4 sm:px-5 pt-[max(1.5rem,env(safe-area-inset-top))] pb-4">
+    <div className="bg-black lined-bg-subtle screen-page">
+      <header className="px-4 sm:px-5 safe-top pb-4">
         <div className="flex items-center justify-between">
           <button 
             onClick={() => setScreen('profile')} 
@@ -100,7 +100,7 @@ export function Dashboard() {
         </div>
       </header>
 
-      <div className="px-4 sm:px-5 space-y-6 pb-28 sm:pb-8">
+      <div className="px-4 sm:px-5 space-y-6 safe-bottom-nav sm:pb-8">
         <section className="animate-slide-up">
           <div 
             className="relative overflow-hidden rounded-3xl p-6"
@@ -161,7 +161,7 @@ export function Dashboard() {
             </button>
           </div>
           
-          <div className="flex gap-3 overflow-x-auto scrollbar-hide pb-2 -mx-5 px-5">
+          <div className="flex gap-3 overflow-x-auto scrollbar-hide pb-2 -mx-4 px-4 sm:-mx-5 sm:px-5">
             {categories.length > 0 ? (
               categories.map((category, index) => (
                 <CategoryCard 

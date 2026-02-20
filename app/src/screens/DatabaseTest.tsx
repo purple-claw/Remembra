@@ -126,7 +126,7 @@ export function DatabaseTest() {
   }, []);
 
   return (
-    <div className="bg-remembra-bg-primary p-6 pb-8">
+    <div className="bg-remembra-bg-primary screen-page px-4 sm:px-6 safe-top safe-bottom-nav sm:pb-8">
       <div className="max-w-md mx-auto">
         <h1 className="text-2xl font-bold text-remembra-text-primary mb-2">
           Database Connection Test

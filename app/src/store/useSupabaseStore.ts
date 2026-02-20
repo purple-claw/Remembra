@@ -153,14 +153,20 @@ export const useStore = create<AppState>()(persist((set, get) => ({
         // Load user data before dismissing loading screen
         try {
           await get().loadUserData();
-          await notificationService.createChannel();
-          await notificationService.initialize();
-          const state = get();
-          const reminderTime = state.profile?.notification_preferences?.reminder_time || '09:00';
-          await notificationService.scheduleDailySummary(state.memoryItems, reminderTime);
         } catch (e) {
           console.warn('Failed to load user data during init:', e);
         }
+        
+        // Initialize notifications in background (non-blocking)
+        notificationService.createChannel().then(() => {
+          return notificationService.initialize();
+        }).then(() => {
+          const state = get();
+          const reminderTime = state.profile?.notification_preferences?.reminder_time || '09:00';
+          return notificationService.scheduleDailySummary(state.memoryItems, reminderTime);
+        }).catch(e => {
+          console.warn('[Store] Background notification setup failed:', e);
+        });
         
         set({ isLoading: false });
       } else {
@@ -189,11 +195,19 @@ export const useStore = create<AppState>()(persist((set, get) => ({
         
         if (event === 'SIGNED_IN' && user) {
           set({ currentScreen: 'dashboard' });
-          await get().loadUserData();
-          await notificationService.initialize();
-          const state = get();
-          const reminderTime = state.profile?.notification_preferences?.reminder_time || '09:00';
-          await notificationService.scheduleDailySummary(state.memoryItems, reminderTime);
+          try {
+            await get().loadUserData();
+          } catch (e) {
+            console.warn('[Store] loadUserData after sign-in failed:', e);
+          }
+          // Non-blocking notification setup
+          notificationService.initialize().then(() => {
+            const state = get();
+            const reminderTime = state.profile?.notification_preferences?.reminder_time || '09:00';
+            return notificationService.scheduleDailySummary(state.memoryItems, reminderTime);
+          }).catch(e => {
+            console.warn('[Store] Notification setup after sign-in failed:', e);
+          });
         } else if (event === 'SIGNED_OUT') {
           set({
             currentScreen: 'auth',

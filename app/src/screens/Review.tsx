@@ -148,7 +148,7 @@ export function Review() {
   // ─── Session Complete ───
   if (!currentItem) {
     return (
-      <div className="h-screen bg-black flex items-center justify-center px-5">
+      <div className="min-h-[100dvh] bg-black flex items-center justify-center px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-[calc(env(safe-area-inset-bottom)+1.25rem)]">
         <div className="text-center max-w-sm w-full">
           <div className="relative mb-8">
             <div className="w-24 h-24 rounded-full bg-gradient-to-br from-remembra-accent-primary/30 to-remembra-success/30 flex items-center justify-center mx-auto animate-pulse-slow">
@@ -222,9 +222,9 @@ export function Review() {
   }
 
   return (
-    <div className="h-screen bg-black flex flex-col overflow-hidden">
+    <div className="min-h-[100dvh] bg-black flex flex-col overflow-hidden">
       {/* ─── Header ─── */}
-      <header className="px-4 pt-5 pb-2 flex-shrink-0">
+      <header className="px-4 safe-top-compact pb-2 flex-shrink-0">
         <div className="flex items-center justify-between mb-3">
           <button onClick={handleExit} className="w-9 h-9 rounded-xl bg-remembra-bg-secondary flex items-center justify-center text-remembra-text-secondary hover:text-white transition-colors">
             <ArrowLeft size={18} />
@@ -394,7 +394,7 @@ export function Review() {
       </div>
 
       {/* ─── Bottom Action Area ─── */}
-      <div className="flex-shrink-0 px-4 pb-5 pt-2 bg-gradient-to-t from-black via-black/95 to-transparent">
+      <div className="flex-shrink-0 px-4 safe-footer pt-2 bg-gradient-to-t from-black via-black/95 to-transparent">
         {phase === 'thinking' ? (
           <Button
             onClick={handleReveal}

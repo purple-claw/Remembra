@@ -255,8 +255,8 @@ export function AIStudio() {
 
   if (mode === 'chat') {
     return (
-      <div className="min-h-screen bg-black lined-bg-subtle flex flex-col smooth-scroll-content">
-        <header className="px-4 sm:px-5 pt-6 pb-3 border-b border-white/5">
+      <div className="min-h-[100dvh] bg-black lined-bg-subtle flex flex-col smooth-scroll-content">
+        <header className="px-4 sm:px-5 safe-top-compact pb-3 border-b border-white/5">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setMode('home')}
@@ -300,7 +300,7 @@ export function AIStudio() {
           )}
         </main>
 
-        <footer className="px-4 sm:px-5 pb-8 pt-3 border-t border-white/5">
+        <footer className="px-4 sm:px-5 pb-[calc(env(safe-area-inset-bottom)+6.75rem)] pt-3 border-t border-white/5 sm:pb-8">
           <div className="flex gap-2">
             <Input
               type="text"
@@ -331,8 +331,8 @@ export function AIStudio() {
   if (mode === 'tools') {
     const Icon = tool.icon;
     return (
-      <div className="min-h-screen bg-black lined-bg-subtle flex flex-col smooth-scroll-content">
-        <header className="px-4 sm:px-5 pt-6 pb-4 border-b border-white/5">
+      <div className="min-h-[100dvh] bg-black lined-bg-subtle flex flex-col smooth-scroll-content">
+        <header className="px-4 sm:px-5 safe-top-compact pb-4 border-b border-white/5">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setMode('home')}
@@ -438,7 +438,7 @@ export function AIStudio() {
           </div>
         </main>
 
-        <footer className="px-4 sm:px-5 pb-8 pt-3 border-t border-white/5">
+        <footer className="px-4 sm:px-5 pb-[calc(env(safe-area-inset-bottom)+6.75rem)] pt-3 border-t border-white/5 sm:pb-8">
           <Button
             onClick={handleGenerate}
             disabled={isGenerating || !effectiveInput.trim()}
@@ -462,7 +462,7 @@ export function AIStudio() {
   }
 
   return (
-    <div className="bg-black lined-bg-subtle px-4 sm:px-5 pt-6 pb-28 sm:pb-8 smooth-scroll-content">
+    <div className="bg-black lined-bg-subtle screen-page px-4 sm:px-5 safe-top safe-bottom-nav sm:pb-8 smooth-scroll-content">
       <header className="mb-6">
         <div
           className="rounded-2xl p-5 border border-white/10 relative overflow-hidden"

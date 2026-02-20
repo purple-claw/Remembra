@@ -50,6 +50,7 @@ export function MermaidDiagram({ chart, className = '' }: MermaidDiagramProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [retryCount, setRetryCount] = useState(0);
 
   const renderDiagram = useCallback(async () => {
     if (!chart || !containerRef.current) return;
@@ -64,38 +65,53 @@ export function MermaidDiagram({ chart, className = '' }: MermaidDiagramProps) {
       let cleanChart = chart
         .replace(/```mermaid\s*/gi, '')
         .replace(/```\s*/g, '')
+        .replace(/^[\s\n]+|[\s\n]+$/g, '')
         .trim();
       
       if (!cleanChart) {
-        setError('No valid Mermaid code provided');
-        setIsLoading(false);
-        return;
+        throw new Error('Empty diagram code');
       }
 
-      // Ensure the chart starts with a valid diagram type
+      // Validate and fix common AI output issues
       const validStarts = ['graph', 'flowchart', 'sequenceDiagram', 'classDiagram', 'stateDiagram', 'erDiagram', 'gantt', 'pie', 'gitGraph', 'mindmap', 'timeline'];
-      const firstWord = cleanChart.split(/[\s\n]/)[0].toLowerCase();
-      if (!validStarts.some(s => firstWord.startsWith(s.toLowerCase()))) {
-        // Try prepending "graph TD" if it looks like node definitions
-        if (cleanChart.includes('-->') || cleanChart.includes('---')) {
+      const firstWord = cleanChart.split(/[\s\n]/)[0];
+      const hasValidStart = validStarts.some(s => firstWord && firstWord.toLowerCase().startsWith(s.toLowerCase()));
+      
+      if (!hasValidStart) {
+        // Check if it looks like node definitions
+        if (cleanChart.includes('-->') || cleanChart.includes('---') || cleanChart.includes('-.->')) {
           cleanChart = 'graph TD\n' + cleanChart;
+        } else if (cleanChart.includes(':') && cleanChart.includes('|')) {
+          // Might be a gantt chart without header
+          cleanChart = 'gantt\n' + cleanChart;
+        } else {
+          throw new Error('Invalid diagram type. Must start with: ' + validStarts.slice(0, 5).join(', ') + ', etc.');
         }
       }
 
       // Generate truly unique ID
       renderCounter++;
-      const id = `mermaid-diagram-${renderCounter}`;
+      const id = `mermaid-diagram-${renderCounter}-${Date.now()}`;
       
-      // Remove any leftover elements from previous renders
-      const oldElements = document.querySelectorAll(`[id^="mermaid-diagram-"]`);
+      // Clean up any old render artifacts
+      const oldElements = document.querySelectorAll('[id^="mermaid-diagram-"]');
       oldElements.forEach(el => {
         if (el.parentNode && el.parentNode !== containerRef.current) {
-          el.parentNode.removeChild(el);
+          try {
+            el.parentNode.removeChild(el);
+          } catch (e) {
+            console.warn('[Mermaid] Failed to remove old element:', e);
+          }
         }
       });
 
-      // Render into a temporary detached container to avoid DOM conflicts
-      const { svg } = await mermaid.render(id, cleanChart);
+      // Render with timeout protection
+      const renderPromise = mermaid.render(id, cleanChart);
+      const timeoutPromise = new Promise<never>((_, reject) => 
+        setTimeout(() => reject(new Error('Mermaid render timeout')), 8000)
+      );
+      
+      const { svg } = await Promise.race([renderPromise, timeoutPromise]);
       
       if (containerRef.current) {
         containerRef.current.innerHTML = svg;
@@ -109,17 +125,34 @@ export function MermaidDiagram({ chart, className = '' }: MermaidDiagramProps) {
         }
       }
     } catch (err) {
-      console.error('Mermaid rendering error:', err);
+      console.error('[Mermaid] Rendering error:', err);
       
       // Clean up any failed render elements
-      const failedEl = document.getElementById(`dmermaid-diagram-${renderCounter}`);
-      if (failedEl) failedEl.remove();
+      const failedEl = document.getElementById(`mermaid-diagram-${renderCounter}`);
+      if (failedEl) {
+        try {
+          failedEl.remove();
+        } catch (e) {
+          console.warn('[Mermaid] Failed to cleanup error element:', e);
+        }
+      }
       
-      setError(err instanceof Error ? err.message : 'Failed to render diagram');
+      const errorMsg = err instanceof Error ? err.message : 'Unknown rendering error';
+      
+      // Auto-retry once if this is the first failure
+      if (retryCount === 0 && errorMsg.includes('Parse error')) {
+        console.log('[Mermaid] Retrying with simplified chart...');
+        setRetryCount(1);
+        // Try again after short delay
+        setTimeout(renderDiagram, 300);
+        return;
+      }
+      
+      setError(errorMsg);
     }
     
     setIsLoading(false);
-  }, [chart]);
+  }, [chart, retryCount]);
 
   useEffect(() => {
     // Small delay to ensure DOM is ready
