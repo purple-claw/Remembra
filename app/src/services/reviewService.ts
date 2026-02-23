@@ -133,6 +133,7 @@ export const reviewService = {
     notes?: string
   ): Promise<Review> {
     const supabase = getSupabase();
+    const userId = await requireAuth();
     
     const updateData = {
       completed_date: new Date().toISOString(),
@@ -145,6 +146,7 @@ export const reviewService = {
       .from('reviews')
       .update(updateData as any)
       .eq('id', id)
+      .eq('user_id', userId)
       .select()
       .single();
     
@@ -193,11 +195,13 @@ export const reviewService = {
   // Delete a review
   async deleteReview(id: string): Promise<void> {
     const supabase = getSupabase();
+    const userId = await requireAuth();
     
     const { error } = await supabase
       .from('reviews')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .eq('user_id', userId);
     
     if (error) {
       console.error('Error deleting review:', error);

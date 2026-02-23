@@ -155,16 +155,33 @@ export const achievementService = {
 
   // Check and update streak-related achievements
   async checkStreakAchievements(streakCount: number): Promise<void> {
-    if (streakCount >= 7) {
-      await this.incrementProgress('7 Day Streak', 7);
-    }
-    if (streakCount >= 30) {
-      await this.incrementProgress('30 Day Streak', 30);
+    // Set progress directly to streak count (not increment)
+    try {
+      const achievements = await this.getAchievements();
+      const streak7 = achievements.find(a => a.name === '7 Day Streak');
+      if (streak7) {
+        await this.updateProgress(streak7.id, Math.min(streakCount, streak7.max_progress));
+      }
+      const streak30 = achievements.find(a => a.name === '30 Day Streak');
+      if (streak30) {
+        await this.updateProgress(streak30.id, Math.min(streakCount, streak30.max_progress));
+      }
+    } catch (e) {
+      console.warn('Failed to update streak achievements:', e);
     }
   },
 
   // Check and update review count achievements
   async checkReviewAchievements(totalReviews: number): Promise<void> {
-    await this.incrementProgress('100 Reviews', totalReviews);
+    // Set progress directly to totalReviews (not increment — was causing inflation)
+    try {
+      const achievements = await this.getAchievements();
+      const target = achievements.find(a => a.name === '100 Reviews');
+      if (target) {
+        await this.updateProgress(target.id, Math.min(totalReviews, target.max_progress));
+      }
+    } catch (e) {
+      console.warn('Failed to update review achievements:', e);
+    }
   },
 };

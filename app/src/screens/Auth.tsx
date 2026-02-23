@@ -42,7 +42,11 @@ export function Auth() {
     const errorDescription = hash.get('error_description');
 
     if (errorDescription) {
-      toast.error(decodeURIComponent(errorDescription));
+      // Sanitize: don't display raw attacker-controlled text; use generic message
+      const safeMsg = typeof errorDescription === 'string' && errorDescription.length < 200
+        ? errorDescription.replace(/[<>]/g, '')
+        : 'Authentication error occurred';
+      toast.error(safeMsg);
     }
 
     if (action === 'recovery' || type === 'recovery') {

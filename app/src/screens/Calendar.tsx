@@ -156,10 +156,15 @@ export function Calendar() {
   };
 
   const handleQuickReview = async (item: MemoryItem, performance: Performance) => {
-    await markReviewComplete(item.id, selectedDateStr, performance);
-    toast.success(performance === 'good' ? 'Marked done' : 'Marked revise again');
-    setReviewingItemId(null);
-    await refreshReviewLogs();
+    try {
+      await markReviewComplete(item.id, selectedDateStr, performance);
+      toast.success(performance === 'good' ? 'Marked done' : 'Marked revise again');
+      setReviewingItemId(null);
+      await refreshReviewLogs();
+    } catch (error) {
+      console.error('Quick review failed:', error);
+      toast.error('Review failed. Please try again.');
+    }
   };
 
   const calendarDays = generateCalendarDays();
