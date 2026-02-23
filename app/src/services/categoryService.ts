@@ -56,14 +56,20 @@ export const categoryService = {
   async createCategory(category: Omit<Category, 'id' | 'user_id' | 'created_at'>): Promise<Category> {
     const supabase = getSupabase();
     const userId = await requireAuth();
+
+    // Validate input
+    const name = (category.name || '').trim();
+    if (!name || name.length > 100) {
+      throw new Error('Category name must be 1-100 characters');
+    }
     
     const insertData = {
       user_id: userId,
-      name: category.name,
-      color: category.color,
-      icon: category.icon,
-      order_index: category.order_index,
-      is_default: category.is_default,
+      name,
+      color: (category.color || '#6366F1').slice(0, 7),
+      icon: (category.icon || 'folder').slice(0, 50),
+      order_index: Math.max(0, category.order_index || 0),
+      is_default: category.is_default ?? false,
     };
     
     const { data, error } = await supabase

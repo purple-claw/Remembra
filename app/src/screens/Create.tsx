@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useStore } from '@/store/useStore';
 import type { ContentType, Difficulty } from '@/types';
 import {
@@ -47,14 +47,22 @@ export function Create() {
   const [contentType, setContentType] = useState<ContentType>('text');
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
-  const [categoryId, setCategoryId] = useState(categories[0]?.id || '');
+  const [categoryId, setCategoryId] = useState('');
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [isPreviewMode, setIsPreviewMode] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [showNewCategory, setShowNewCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
+
+  // Auto-select first category when categories load (fixes async Supabase load)
+  useEffect(() => {
+    if (!categoryId && categories.length > 0) {
+      setCategoryId(categories[0].id);
+    }
+  }, [categories, categoryId]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -83,10 +91,20 @@ export function Create() {
   };
 
   const handleCreate = async () => {
+    if (isCreating) return;
+    if (!title.trim() || !content.trim()) {
+      toast.error('Title and content are required');
+      return;
+    }
+    if (!categoryId) {
+      toast.error('Please select a category');
+      return;
+    }
+    setIsCreating(true);
     const cycleStartedAt = toIsoDate(new Date());
     const newItem = {
       category_id: categoryId,
-      title,
+      title: title.trim(),
       content,
       content_type: contentType,
       attachments: uploadedFiles.map(f => ({
@@ -119,6 +137,8 @@ export function Create() {
     } catch (error) {
       console.error('Error creating item:', error);
       toast.error('Failed to create item. Please try again.');
+    } finally {
+      setIsCreating(false);
     }
   };
 
@@ -538,6 +558,9 @@ export function Create() {
                             setNewCategoryName('');
                             setShowNewCategory(false);
                             toast.success('Category created!');
+                          }).catch((err) => {
+                            console.error('Category creation failed:', err);
+                            toast.error('Failed to create category. Try again.');
                           });
                         }
                         if (e.key === 'Escape') {
@@ -565,6 +588,9 @@ export function Create() {
                             setNewCategoryName('');
                             setShowNewCategory(false);
                             toast.success('Category created!');
+                          }).catch((err) => {
+                            console.error('Category creation failed:', err);
+                            toast.error('Failed to create category. Try again.');
                           });
                         }
                       }}
@@ -733,9 +759,14 @@ export function Create() {
         ) : (
           <Button
             onClick={handleCreate}
-            className="w-full gradient-primary py-6 rounded-2xl text-white font-semibold text-base shadow-lg shadow-[#E81224]/20"
+            disabled={isCreating}
+            className="w-full gradient-primary py-6 rounded-2xl text-white font-semibold text-base shadow-lg shadow-[#E81224]/20 disabled:opacity-60"
           >
-            <Check size={18} className="mr-2" /> Create Item
+            {isCreating ? (
+              <><span className="mr-2 inline-block w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Creating...</>
+            ) : (
+              <><Check size={18} className="mr-2" /> Create Item</>
+            )}
           </Button>
         )}
       </div>

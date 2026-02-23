@@ -183,6 +183,13 @@ export const memoryItemService = {
     const supabase = getSupabase();
     const userId = await requireAuth();
 
+    // Validate required fields
+    const title = (item.title || '').trim();
+    const content = (item.content || '').trim();
+    if (!title) throw new Error('Title is required');
+    if (!content) throw new Error('Content is required');
+    if (title.length > 500) throw new Error('Title must be under 500 characters');
+
     const cycleStartedAt = toIsoDate(item.cycle_started_at || new Date());
     const reviewStage = 0;
     const nextReviewDate = getScheduledDateForStage(cycleStartedAt, reviewStage);
@@ -461,12 +468,16 @@ export const memoryItemService = {
     const supabase = getSupabase();
     const userId = await requireAuth();
 
+    // Sanitize search query to prevent injection via .or() filter
+    const sanitized = query.replace(/[%_\\]/g, c => `\\${c}`).replace(/'/g, "''");
+
     const { data, error } = await supabase
       .from('memory_items')
       .select('*')
       .eq('user_id', userId)
-      .or(`title.ilike.%${query}%,content.ilike.%${query}%`)
-      .order('created_at', { ascending: false });
+      .or(`title.ilike.%${sanitized}%,content.ilike.%${sanitized}%`)
+      .order('created_at', { ascending: false })
+      .limit(100);
 
     if (error) {
       console.error('Error searching memory items:', error);

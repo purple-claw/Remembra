@@ -3,13 +3,13 @@
 const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY;
 const OPENROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY;
 
-const MAX_PROMPT_CHARS = 24000;
-const DEFAULT_MAX_TOKENS = 1024;
-const DEFAULT_TEMPERATURE = 0.4;
-const DEFAULT_TOP_P = 0.9;
+const MAX_PROMPT_CHARS = 48000;
+const DEFAULT_MAX_TOKENS = 2048;
+const DEFAULT_TEMPERATURE = 0.35;
+const DEFAULT_TOP_P = 0.92;
 const DEFAULT_PRESENCE_PENALTY = 0.05;
 const DEFAULT_FREQUENCY_PENALTY = 0.1;
-const AI_TIMEOUT_MS = 20000;
+const AI_TIMEOUT_MS = 45000;
 const CACHE_LIMIT = 100;
 
 const GROQ_MODELS = [
@@ -255,45 +255,99 @@ function generateDemoResponse(prompt: string, systemPrompt: string): string {
     return 'Quick reminder: this card is due in your 1-4-7 schedule. A short review now keeps it durable.';
   }
 
-  if (systemPrompt.includes('summary')) {
-    const summary = firstSentences(prompt, 2);
+  if (systemPrompt.includes('summary') || systemPrompt.includes('Core Idea')) {
+    const summary = firstSentences(prompt, 3);
+    const keywords = pickKeywords(prompt, 4);
+    const keywordBullets = keywords.length > 0
+      ? keywords.map(k => `- **${k}**: Understand its role and how it connects to the topic`).join('\n')
+      : '- Identify the central concepts\n- Understand the relationships between ideas';
     return [
       '### Core Idea',
-      `This topic focuses on ${summary}.`,
+      `${summary}`,
       '',
-      '### Why It Matters',
-      'Use active recall and connect each concept to one real example.',
+      '### Key Concepts',
+      keywordBullets,
+      '',
+      '### How It Connects',
+      'Each concept builds on the previous one. Understanding the relationships between these elements is key to lasting retention.',
       '',
       '### Recall Cues',
-      '- Explain it in your own words',
-      '- Test one practical scenario',
-      '- Revisit weak points in the next review',
+      '- Can you explain each key concept in your own words?',
+      '- What are the relationships between the main ideas?',
+      '- Give one practical example for the most important concept',
+      '- What would change if a key assumption were different?',
     ].join('\n');
   }
 
-  if (systemPrompt.includes('bullet')) {
-    const keywords = pickKeywords(prompt, 5);
+  if (systemPrompt.includes('bullet') || systemPrompt.includes('JSON array')) {
+    const keywords = pickKeywords(prompt, 6);
     return JSON.stringify([
-      ...keywords.map((k) => `Define and explain ${k} in one sentence`),
-      'Connect each point with a practical example',
-      'Review using short active recall prompts',
+      ...keywords.map((k) => `Understand and define ${k} with a concrete example`),
+      'Identify the relationships between the main concepts',
+      'Test each concept with an active recall question',
     ]);
   }
 
-  if (systemPrompt.includes('flowchart') || systemPrompt.includes('mermaid')) {
-    return `graph TD
-A[Read Topic] --> B[Extract Core Ideas]
-B --> C[Create Recall Prompts]
-C --> D[Review Day 1]
-D --> E[Review Day 4]
-E --> F[Review Day 7]
-F --> G{Stable Recall?}
-G -->|Yes| H[Mastered]
-G -->|No| I[Reset to Day 1]
-I --> D`;
+  if (systemPrompt.includes('Mermaid') || systemPrompt.includes('flowchart') || systemPrompt.includes('mermaid')) {
+    const keywords = pickKeywords(prompt, 5);
+    const nodes = keywords.length >= 3
+      ? keywords.slice(0, 5)
+      : ['Concept', 'Analysis', 'Application', 'Practice', 'Mastery'];
+    const ids = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
+    const lines = ['graph TD'];
+    for (let i = 0; i < nodes.length; i++) {
+      const label = nodes[i].charAt(0).toUpperCase() + nodes[i].slice(1);
+      if (i === 0) {
+        lines.push(`${ids[i]}[${label}] --> ${ids[i + 1]}[${nodes[i + 1] ? nodes[i + 1].charAt(0).toUpperCase() + nodes[i + 1].slice(1) : 'Next'}]`);
+      } else if (i < nodes.length - 1) {
+        lines.push(`${ids[i]} --> ${ids[i + 1]}[${nodes[i + 1] ? nodes[i + 1].charAt(0).toUpperCase() + nodes[i + 1].slice(1) : 'End'}]`);
+      }
+    }
+    lines.push(`${ids[nodes.length - 1]} --> ${ids[nodes.length]}{Understood?}`);
+    lines.push(`${ids[nodes.length]} -->|Yes| ${ids[nodes.length + 1]}[Mastered]`);
+    lines.push(`${ids[nodes.length]} -->|No| ${ids[0]}`);
+    return lines.join('\n');
   }
 
-  return `Key takeaway: ${firstSentences(prompt, 1)}`;
+  if (systemPrompt.includes('mnemonic') || systemPrompt.includes('memory')) {
+    const keywords = pickKeywords(prompt, 4);
+    const kwList = keywords.length > 0
+      ? keywords.map(k => `**${k}**`).join(', ')
+      : 'the main concepts';
+    return [
+      '### Mnemonic Hooks',
+      `Create a vivid mental image connecting ${kwList} in a chain.`,
+      `- Visualize each concept as a distinct object in a familiar room`,
+      `- Associate each with a strong sensory detail (color, sound, texture)`,
+      '',
+      '### Story Link',
+      `Imagine walking through a building where each room contains one of these concepts: ${kwList}. In each room, the concept comes alive as a character that teaches you something.`,
+      '',
+      '### Analogy Bridge',
+      'Connect each concept to something you already know well from daily life.',
+      '',
+      '### 10-Second Recall Script',
+      `Rapid-fire: ${keywords.join(' → ')} → Understanding → Application`,
+    ].join('\n');
+  }
+
+  if (systemPrompt.includes('quiz') || systemPrompt.includes('question')) {
+    const keywords = pickKeywords(prompt, 4);
+    const qa = keywords.map(k => ({
+      question: `Explain the concept of ${k} and why it matters in this context.`,
+      answer: `${k} is a key concept that relates to the core ideas. Understanding it helps build a complete picture of the topic.`,
+    }));
+    if (qa.length === 0) {
+      qa.push({
+        question: 'What is the core concept in this topic?',
+        answer: 'Explain the main idea, why it matters, and one practical example.',
+      });
+    }
+    return JSON.stringify(qa);
+  }
+
+  const summary = firstSentences(prompt, 2);
+  return `### Key Takeaway\n${summary}\n\n### Recall Check\n- Can you explain this concept in your own words?\n- What is one practical application?`;
 }
 
 async function callAI(prompt: string, systemPrompt: string, options: AIRequestOptions = {}): Promise<string> {
@@ -409,68 +463,113 @@ export const aiService = {
 
   async generateSummary(content: string, title: string): Promise<string> {
     const systemPrompt = [
-      'You are Remembra AI, a memory-retention coach.',
-      'Return concise markdown with sections:',
+      'You are Remembra AI, an expert memory-retention and learning coach.',
+      'You MUST read and deeply analyze the FULL content provided below.',
+      'Your summary must be SPECIFIC to the actual material — reference exact concepts, terms, definitions, code patterns, or facts from the content.',
+      'DO NOT produce generic study advice. Every sentence must directly relate to the provided content.',
+      '',
+      'Return well-structured markdown with these sections:',
+      '',
       '### Core Idea',
-      '### Why It Matters',
+      'Explain the central concept or thesis from the content in 2-4 sentences. Name specific terms.',
+      '',
+      '### Key Concepts',
+      'List 3-6 specific concepts, definitions, or patterns found in the material. Use bullet points.',
+      '',
+      '### How It Connects',
+      'Explain how the concepts relate to each other and to broader knowledge. Be specific.',
+      '',
       '### Recall Cues',
-      'No fluff. Use practical wording. Avoid mentioning you are an AI.',
-    ].join(' ');
-    const prompt = `Title: ${title}\n\nContent:\n${clampText(content)}\n\nCreate a concise study summary.`;
+      'Create 3-5 targeted recall prompts derived from the actual content that test understanding.',
+      '',
+      'Rules: No fluff. No generic advice. Every point must reference actual content. Do not mention you are an AI.',
+    ].join('\n');
+    const prompt = `Title: ${title}\n\n--- FULL CONTENT START ---\n${clampText(content)}\n--- FULL CONTENT END ---\n\nAnalyze the above content thoroughly and produce a detailed, content-specific study summary.`;
     return callAI(prompt, systemPrompt, {
-      maxTokens: 520,
+      maxTokens: 1400,
       temperature: 0.3,
       topP: 0.9,
-      minLength: 140,
+      minLength: 200,
     });
   },
 
   async generateBulletPoints(content: string, title: string): Promise<string[]> {
     const systemPrompt = [
-      'You are a learning assistant.',
-      'Return ONLY a valid JSON array with 4-8 concise bullet strings.',
-      'Each bullet must be actionable for recall and at most 14 words.',
-      'No markdown fences.',
-    ].join(' ');
-    const prompt = `Title: ${title}\n\nContent:\n${clampText(content)}\n\nReturn JSON array only.`;
+      'You are an expert learning assistant specialized in extracting key points for memory retention.',
+      'Read the FULL content below carefully. Extract the most important and specific facts, concepts, and takeaways.',
+      'Each bullet point MUST reference specific information from the content — not generic study tips.',
+      '',
+      'Return ONLY a valid JSON array with 5-10 concise bullet strings.',
+      'Each bullet should capture a distinct fact, definition, pattern, or insight from the material.',
+      'Each bullet should be 8-20 words and specific enough to serve as a recall trigger.',
+      'No markdown fences. No explanations outside the JSON array.',
+    ].join('\n');
+    const prompt = `Title: ${title}\n\n--- FULL CONTENT ---\n${clampText(content)}\n--- END ---\n\nExtract the most important factual points from the above content as a JSON array of strings.`;
     const response = await callAI(prompt, systemPrompt, {
-      maxTokens: 420,
+      maxTokens: 800,
       temperature: 0.2,
       topP: 0.85,
-      minLength: 24,
+      minLength: 40,
     });
-    return parseJsonArraySafely(response).slice(0, 8);
+    return parseJsonArraySafely(response).slice(0, 10);
   },
 
   async generateFlowchart(content: string, title: string): Promise<string> {
     const systemPrompt = [
-      'You are a Mermaid diagram generation expert.',
-      'Generate ONLY valid Mermaid flowchart syntax.',
-      'Rules:',
-      '1. Start with exactly "graph TD" or "graph LR"',
-      '2. Use square brackets for nodes: A[Label Text]',
-      '3. Use arrows: --> or ---',
-      '4. Keep labels under 20 characters',
-      '5. Use 5-12 nodes total',
-      '6. NO markdown fences, NO explanations, ONLY the diagram code',
-      '7. Test all node IDs are unique (A, B, C, etc.)',
-      '8. Ensure all arrows point to defined nodes',
-      'Example: graph TD\\nA[Start] --> B[Process]\\nB --> C[End]',
-    ].join(' ');
-    const prompt = `Topic: ${title}\n\nContent:\n${clampText(content, 3000)}\n\nGenerate Mermaid flowchart code only (no markdown fences).`;
+      'You are a Mermaid.js diagram expert. Generate ONLY valid Mermaid flowchart syntax.',
+      '',
+      'STRICT RULES — violating any will cause rendering failure:',
+      '1. The FIRST line must be exactly: graph TD',
+      '2. Use ONLY single-letter or short alphanumeric IDs: A, B, C, D1, E2, etc.',
+      '3. Node labels use square brackets ONLY: A[My Label]',
+      '4. Arrows use --> only (no other arrow types)',
+      '5. For decision nodes use curly braces: D{Decision?}',
+      '6. Keep all labels under 25 characters — NO special characters like quotes, parentheses, colons, or semicolons inside labels',
+      '7. Use 5-12 nodes maximum',
+      '8. Every node ID must be unique',
+      '9. Every arrow must connect two defined nodes',
+      '10. NO markdown fences (no ```), NO comments, NO explanations — output ONLY the diagram code',
+      '11. Each connection must be on its own line',
+      '12. Do NOT use subgraph unless absolutely necessary',
+      '',
+      'VALID EXAMPLE:',
+      'graph TD',
+      'A[Read Topic] --> B[Extract Ideas]',
+      'B --> C{Understood?}',
+      'C -->|Yes| D[Practice]',
+      'C -->|No| E[Review Again]',
+      'E --> A',
+      'D --> F[Mastered]',
+    ].join('\n');
+    const prompt = `Topic: ${title}\n\nContent:\n${clampText(content, 6000)}\n\nCreate a Mermaid flowchart showing the key concepts and their relationships from the content above. Output ONLY valid Mermaid code, no explanations.`;
     const result = await callAI(prompt, systemPrompt, {
-      maxTokens: 850,
-      temperature: 0.15,
+      maxTokens: 900,
+      temperature: 0.1,
       topP: 0.8,
       minLength: 40,
     });
     
-    const normalized = normalizeMermaid(result);
+    let normalized = normalizeMermaid(result);
+    
+    // Sanitize: remove any problematic characters from node labels
+    normalized = normalized
+      .replace(/["'`]/g, '')
+      .replace(/\(\(/g, '[')
+      .replace(/\)\)/g, ']')
+      .replace(/\[\[/g, '[')
+      .replace(/\]\]/g, ']');
     
     // Validate the generated chart
-    if (!normalized.trim().toLowerCase().startsWith('graph')) {
-      console.warn('[AI] Flowchart missing graph header, adding fallback');
-      return `graph TD\nA[${title}] --> B[Core Concept]\nB --> C[Application]\nC --> D[Review]\nD --> E[Mastery]`;
+    const firstLine = normalized.split('\n')[0]?.trim().toLowerCase() || '';
+    if (!firstLine.startsWith('graph') && !firstLine.startsWith('flowchart')) {
+      // Check if it contains arrow syntax — add header
+      if (normalized.includes('-->') || normalized.includes('---')) {
+        normalized = 'graph TD\n' + normalized;
+      } else {
+        console.warn('[AI] Flowchart invalid, using fallback');
+        const safeTitle = title.replace(/[^a-zA-Z0-9 ]/g, '').slice(0, 20);
+        return `graph TD\nA[${safeTitle}] --> B[Core Concept]\nB --> C[Application]\nC --> D[Review]\nD --> E[Mastery]`;
+      }
     }
     
     return normalized;
@@ -478,37 +577,56 @@ export const aiService = {
 
   async explainCode(code: string, language?: string): Promise<string> {
     const systemPrompt = [
-      'You are a precise programming tutor.',
-      'Respond in markdown with sections:',
+      'You are an expert programming tutor. Analyze the provided code thoroughly.',
+      'Read EVERY line carefully. Your explanation must be SPECIFIC to this exact code.',
+      '',
+      'Respond in well-structured markdown:',
+      '',
       '### What It Does',
-      '### How It Flows',
+      'Explain the purpose and functionality. Reference specific functions, variables, and patterns used.',
+      '',
+      '### Step-by-Step Flow',
+      'Walk through the execution flow. Reference specific line logic and control flow.',
+      '',
+      '### Key Patterns & Techniques',
+      'Identify design patterns, algorithms, or techniques used in the code.',
+      '',
       '### Risks and Edge Cases',
+      'Point out specific bugs, missing error handling, edge cases, or performance issues.',
+      '',
       '### Quick Recall Checklist',
-      'Keep it practical and concise.',
-    ].join(' ');
-    const prompt = `${language ? `Language: ${language}\n\n` : ''}Code:\n\`\`\`\n${clampText(code)}\n\`\`\`\n\nExplain this code.`;
+      'Create 3-5 specific recall questions about this code.',
+      '',
+      'Be precise, technical, and reference actual code elements.',
+    ].join('\n');
+    const prompt = `${language ? `Language: ${language}\n\n` : ''}Code:\n\`\`\`\n${clampText(code)}\n\`\`\`\n\nProvide a thorough, code-specific explanation.`;
     return callAI(prompt, systemPrompt, {
-      maxTokens: 980,
-      temperature: 0.3,
+      maxTokens: 1800,
+      temperature: 0.25,
       topP: 0.9,
-      minLength: 180,
+      minLength: 250,
     });
   },
 
-  async generateQuizQuestions(content: string, title: string, count: number = 3): Promise<{ question: string; answer: string }[]> {
-    const safeCount = Math.max(1, Math.min(8, count));
+  async generateQuizQuestions(content: string, title: string, count: number = 5): Promise<{ question: string; answer: string }[]> {
+    const safeCount = Math.max(1, Math.min(10, count));
     const systemPrompt = [
-      `Generate exactly ${safeCount} quiz pairs for active recall.`,
-      'Return ONLY valid JSON array.',
-      'Each object must contain string keys: question, answer.',
-      'No markdown fences or extra text.',
-    ].join(' ');
-    const prompt = `Title: ${title}\n\nContent:\n${clampText(content)}\n\nReturn JSON only.`;
+      'You are an expert educator creating active recall quiz questions.',
+      'Read the FULL content below. Every question MUST test knowledge of specific facts, concepts, or details from the content.',
+      'DO NOT create generic questions. Each question should test a different aspect of the material.',
+      '',
+      `Generate exactly ${safeCount} quiz pairs.`,
+      'Return ONLY a valid JSON array. Each object must have "question" and "answer" string keys.',
+      'Questions should require understanding, not just keyword matching.',
+      'Answers should be concise but complete (1-3 sentences).',
+      'No markdown fences or extra text outside the JSON array.',
+    ].join('\n');
+    const prompt = `Title: ${title}\n\n--- FULL CONTENT ---\n${clampText(content)}\n--- END ---\n\nGenerate ${safeCount} content-specific quiz questions as a JSON array.`;
     const response = await callAI(prompt, systemPrompt, {
-      maxTokens: 900,
-      temperature: 0.45,
+      maxTokens: 1600,
+      temperature: 0.4,
       topP: 0.92,
-      minLength: 80,
+      minLength: 100,
     });
 
     const snippet = extractJsonArraySnippet(response);
@@ -547,37 +665,64 @@ export const aiService = {
 
   async generateMnemonics(content: string, title: string): Promise<string> {
     const systemPrompt = [
-      'You are a memory expert.',
-      'Create mnemonic hooks that are vivid and easy to recall.',
-      'Return markdown with sections:',
+      'You are a world-class memory coach and mnemonic expert.',
+      'Read the FULL content below. Create memory aids SPECIFICALLY tied to the actual concepts, terms, and facts in the material.',
+      'DO NOT create generic mnemonics. Every hook must reference real content from the material.',
+      '',
+      'Return well-structured markdown:',
+      '',
       '### Mnemonic Hooks',
+      'Create 3-5 vivid, memorable associations for key terms and concepts from the content.',
+      'Use acronyms, visual imagery, rhymes, or method of loci techniques.',
+      '',
       '### Story Link',
+      'Weave the main concepts into a short memorable narrative (3-5 sentences).',
+      'Use the actual terms and facts from the content in the story.',
+      '',
+      '### Analogy Bridge',
+      'Connect the main concepts to everyday familiar experiences.',
+      '',
       '### 10-Second Recall Script',
-    ].join(' ');
-    const prompt = `Title: ${title}\n\nContent:\n${clampText(content)}\n\nCreate memory aids.`;
+      'A rapid-fire sequence that captures the essence of all key points in under 10 seconds of reading.',
+    ].join('\n');
+    const prompt = `Title: ${title}\n\n--- FULL CONTENT ---\n${clampText(content)}\n--- END ---\n\nCreate content-specific memory aids and mnemonics based on the actual material above.`;
     return callAI(prompt, systemPrompt, {
-      maxTokens: 760,
-      temperature: 0.7,
+      maxTokens: 1400,
+      temperature: 0.65,
       topP: 0.95,
-      minLength: 140,
+      minLength: 200,
     });
   },
 
   async chat(content: string, title: string, userMessage: string): Promise<string> {
     const systemPrompt = [
-      'You are an advanced study tutor for spaced repetition.',
-      'Answer with practical reasoning, not generic advice.',
-      'Use markdown and include:',
-      '1) Direct Answer',
-      '2) Why This Works',
-      '3) One Recall Question',
-    ].join(' ');
-    const prompt = `Study Material:\nTitle: ${title}\nContent: ${clampText(content)}\n\nUser Question: ${userMessage}`;
+      'You are an expert AI study tutor with deep knowledge across all subjects.',
+      'You have access to the student\'s full study material below. Use it as your knowledge base to give precise, context-aware answers.',
+      '',
+      'CRITICAL RULES:',
+      '- If the material contains the answer, reference specific facts and concepts FROM the material.',
+      '- If the question is about the material, analyze the actual content to formulate your response.',
+      '- If the question is beyond the material scope, use your general knowledge but note the distinction.',
+      '- Never give vague or generic advice when specific content-based answers are possible.',
+      '',
+      'Response format (markdown):',
+      '### Direct Answer',
+      'Give a clear, specific answer. Reference content facts when applicable.',
+      '',
+      '### Deeper Explanation',
+      'Provide context, examples, or reasoning that helps understanding.',
+      '',
+      '### Recall Check',
+      'End with one targeted question the student can use to verify their understanding.',
+    ].join('\n');
+    const prompt = content
+      ? `--- STUDY MATERIAL ---\nTitle: ${title}\n\n${clampText(content)}\n--- END MATERIAL ---\n\nStudent Question: ${userMessage}`
+      : `Student Question: ${userMessage}`;
     const answer = await callAI(prompt, systemPrompt, {
-      maxTokens: 1000,
-      temperature: 0.45,
+      maxTokens: 2000,
+      temperature: 0.4,
       topP: 0.9,
-      minLength: 120,
+      minLength: 150,
       skipCache: true,
     });
     return answer.trim();
