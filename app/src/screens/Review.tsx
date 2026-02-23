@@ -436,10 +436,10 @@ export function Review() {
           <Button
             onClick={handleReveal}
             className="w-full py-6 rounded-2xl text-white font-semibold text-base shadow-lg active:scale-[0.98] transition-transform"
-            style={{ background: 'linear-gradient(135deg, #FF8000 0%, #FF6B00 100%)' }}
+            style={{ background: 'linear-gradient(135deg, rgb(16, 222, 13) 0%, rgb(20, 241, 0) 100%)' }}
           >
             <Eye size={20} className="mr-2" />
-            Reveal Answer
+            Reviewed
           </Button>
         ) : (
           <div className="space-y-3 animate-slide-up">
