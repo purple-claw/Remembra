@@ -1,9 +1,9 @@
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
-import { PushNotifications } from '@capacitor/push-notifications';
 import type { MemoryItem } from '@/types';
 import { aiService } from '@/services/aiService';
-import { getSupabase } from '@/lib/supabase';
+import { auth, db } from '@/lib/firebase';
+import { doc, setDoc } from 'firebase/firestore';
 
 const REVIEW_CHANNEL_ID = 'review-reminders';
 const DAILY_CHANNEL_ID = 'daily-review-summary';
@@ -186,6 +186,8 @@ class NotificationService {
     }
 
     try {
+      const { PushNotifications } = await import('@capacitor/push-notifications');
+
       const permStatus = await PushNotifications.requestPermissions();
       if (permStatus.receive !== 'granted') {
         console.warn('Push permission not granted');
@@ -216,27 +218,22 @@ class NotificationService {
 
   private async persistPushToken(token: string): Promise<void> {
     try {
-      const supabase = getSupabase();
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = auth.currentUser;
       if (!user) return;
 
-      const payload = {
-        user_id: user.id,
+      const tokenDoc = doc(db, 'device_push_tokens', token);
+      await setDoc(tokenDoc, {
+        user_id: user.uid,
         token,
         platform: Capacitor.getPlatform(),
         device_info: {
           appId: 'com.remembra.app',
           source: 'capacitor-push',
         },
-      };
-
-      const { error } = await supabase
-        .from('device_push_tokens')
-        .upsert(payload as any, { onConflict: 'token' });
-
-      if (error) {
-        console.warn('Failed to persist push token:', error);
-      }
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        last_seen_at: new Date().toISOString(),
+      }, { merge: true });
     } catch (error) {
       console.warn('Unable to persist push token:', error);
     }
@@ -251,7 +248,6 @@ class NotificationService {
       hash |= 0;
     }
     const normalized = Math.abs(hash);
-    // Ensure a safe positive 31-bit integer for Android notification IDs.
     return normalized === 2147483648 ? 2147483647 : Math.max(1, Math.min(2147483647, normalized));
   }
 }
