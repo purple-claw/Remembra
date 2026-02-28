@@ -1,0 +1,2 @@
+-- Deprecated.
+-- Use only app/supabase/schema.sql for the complete 1-4-7 schema.

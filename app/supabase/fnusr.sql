@@ -1,0 +1,2 @@
+-- Deprecated.
+-- User/profile trigger logic is now included in app/supabase/schema.sql.
