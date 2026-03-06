@@ -1,41 +1,66 @@
+/**
+ * MarkdownRenderer — Smart Optimized Engine
+ *
+ * Optimization pipeline:
+ *  1. Content fingerprinted; unchanged content short-circuits via React.memo.
+ *  2. useDeferredValue keeps old tree visible during fast content changes.
+ *  3. Large content (>60 KB) split at heading boundaries and rendered
+ *     progressively via requestIdleCallback — first chunk visible immediately.
+ *  4. Code blocks use a deferred swap: plain text shown instantly, Prism
+ *     syntax highlighting swaps in after the next animation frame (rAF).
+ *  5. Large code blocks (>400 lines) collapsed by default with expand toggle.
+ *  6. Mermaid diagrams guarded by IntersectionObserver — only mounts when
+ *     the diagram scrolls into view (200 px sentinel margin).
+ *  7. All internal sub-components wrapped in React.memo with stable refs.
+ *  8. Component map lives outside render so ReactMarkdown never remounts.
+ */
+
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { MermaidDiagram } from './MermaidDiagram';
-import { Copy, Check, Code2 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { Copy, Check, Code2, ChevronDown, ChevronUp } from 'lucide-react';
+import {
+  memo,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 
 interface MarkdownRendererProps {
   content: string;
   className?: string;
 }
 
-const LARGE_MARKDOWN_THRESHOLD = 120_000;
-const LARGE_CODE_BLOCK_LINES = 700;
-const LARGE_CODE_BLOCK_CHARS = 30_000;
+// ─── Thresholds ───────────────────────────────────────────────────────────────
+const PROGRESSIVE_THRESHOLD = 60_000;  // split into chunks for content > 60 KB
+const LARGE_CODE_LINES = 400;          // collapse code blocks with more lines
+const CODE_PREVIEW_LINES = 50;         // lines shown when collapsed
 
-// VS Code-like syntax theme with McLaren orange accents
-const vscodeTheme = {
+// ─── VS Code-like theme (stable object ref — created once at module level) ────
+const vscodeTheme: Record<string, React.CSSProperties> = {
   ...vscDarkPlus,
   'pre[class*="language-"]': {
-    ...vscDarkPlus['pre[class*="language-"]'],
+    ...(vscDarkPlus['pre[class*="language-"]'] as object),
     background: '#1E1E1E',
-    borderRadius: '8px',
+    borderRadius: '0',
     padding: '16px',
-    margin: '12px 0',
-    border: '1px solid rgba(255, 255, 255, 0.08)',
-    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.3)',
+    margin: '0',
+    border: 'none',
+    boxShadow: 'none',
   },
   'code[class*="language-"]': {
-    ...vscDarkPlus['code[class*="language-"]'],
+    ...(vscDarkPlus['code[class*="language-"]'] as object),
     background: 'transparent',
-    fontFamily: '"JetBrains Mono", "Fira Code", "Cascadia Code", "Source Code Pro", Consolas, monospace',
+    fontFamily: '"JetBrains Mono","Fira Code","Cascadia Code",Consolas,monospace',
     fontSize: '13px',
     lineHeight: '1.6',
     textShadow: 'none',
   },
-  // Enhanced token colors for VS Code feel
   'comment': { color: '#6A9955', fontStyle: 'italic' },
   'prolog': { color: '#6A9955' },
   'doctype': { color: '#6A9955' },
@@ -116,269 +141,350 @@ const languageLabels: Record<string, string> = {
   svelte: 'Svelte',
 };
 
-function CodeBlock({ language, value }: { language: string; value: string }) {
-  const [copied, setCopied] = useState(false);
+// ─── Lazy syntax highlighter ─────────────────────────────────────────────────
+// Shows plain text immediately, swaps Prism in after the next paint so the
+// rest of the document renders first (zero extra blocking time).
+const LazyHighlighter = memo(function LazyHighlighter({
+  language,
+  value,
+  lineCount,
+}: {
+  language: string;
+  value: string;
+  lineCount: number;
+}) {
+  const [highlighted, setHighlighted] = useState(false);
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(value);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setHighlighted(true));
+    return () => cancelAnimationFrame(id);
+  }, [value, language]);
 
-  // Handle mermaid diagrams
-  if (language === 'mermaid') {
-    return <MermaidDiagram chart={value} className="my-4" />;
+  if (!highlighted) {
+    return (
+      <pre className="m-0 bg-[#1E1E1E] p-4 text-[13px] leading-[1.6] text-[#D4D4D4] font-mono overflow-auto whitespace-pre">
+        {value}
+      </pre>
+    );
   }
 
-  const displayLanguage = languageLabels[language?.toLowerCase()] || language?.toUpperCase() || 'TEXT';
-  const lineCount = value.split('\n').length;
-  const isLargeBlock = lineCount > LARGE_CODE_BLOCK_LINES || value.length > LARGE_CODE_BLOCK_CHARS;
+  return (
+    <SyntaxHighlighter
+      language={language || 'text'}
+      style={vscodeTheme}
+      showLineNumbers={lineCount > 3}
+      wrapLines={false}
+      lineNumberStyle={{
+        color: '#858585',
+        minWidth: '2.75em',
+        paddingRight: '1.25em',
+        userSelect: 'none' as const,
+        borderRight: '1px solid #404040',
+        marginRight: '0.85em',
+      }}
+      customStyle={{
+        margin: 0,
+        borderRadius: 0,
+        background: '#1E1E1E',
+        width: 'max-content',
+        minWidth: '100%',
+      }}
+      codeTagProps={{ style: { whiteSpace: 'pre' } }}
+    >
+      {value}
+    </SyntaxHighlighter>
+  );
+});
+
+// ─── CodeBlock ────────────────────────────────────────────────────────────────
+const CodeBlock = memo(function CodeBlock({
+  language,
+  value,
+}: {
+  language: string;
+  value: string;
+}) {
+  const [copied, setCopied] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(value).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [value]);
+
+  if (language === 'mermaid') {
+    return <LazyMermaid chart={value} />;
+  }
+
+  const displayLanguage = languageLabels[language?.toLowerCase()] ?? language?.toUpperCase() ?? 'TEXT';
+  const lines = value.split('\n');
+  const lineCount = lines.length;
+  const isLarge = lineCount > LARGE_CODE_LINES;
+  const displayValue = isLarge && !expanded ? lines.slice(0, CODE_PREVIEW_LINES).join('\n') : value;
 
   return (
-    <div className="relative group my-4 min-w-0 rounded-lg overflow-hidden border border-white/5">
-      {/* VS Code-like header bar */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/5 bg-[#252526] px-3 py-2 sm:px-4">
+    <div className="relative my-4 min-w-0 rounded-xl overflow-hidden border border-white/8">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/8 bg-[#252526] px-3 py-2 sm:px-4">
         <div className="flex min-w-0 items-center gap-2">
-          <Code2 size={14} className="text-remembra-accent-primary" />
-          <span className="truncate text-xs font-medium text-remembra-text-secondary">
-            {displayLanguage}
-          </span>
+          <Code2 size={14} className="text-remembra-accent-primary shrink-0" />
+          <span className="truncate text-xs font-medium text-remembra-text-secondary">{displayLanguage}</span>
         </div>
-        <div className="ml-auto flex items-center gap-2 sm:gap-3">
+        <div className="ml-auto flex items-center gap-2">
           <span className="hidden text-[10px] text-remembra-text-muted sm:inline">
             {lineCount} {lineCount === 1 ? 'line' : 'lines'}
           </span>
           <button
             onClick={handleCopy}
-            className="flex items-center gap-1.5 rounded bg-white/5 px-2.5 py-1 text-xs text-remembra-text-secondary transition-all hover:bg-white/10 hover:text-remembra-text-primary"
+            className="flex items-center gap-1.5 rounded bg-white/5 px-2.5 py-1 text-xs text-remembra-text-secondary transition-colors hover:bg-white/10 hover:text-remembra-text-primary"
           >
             {copied ? <Check size={12} className="text-remembra-success" /> : <Copy size={12} />}
             {copied ? 'Copied!' : 'Copy'}
           </button>
         </div>
       </div>
-      
+
       {/* Code content */}
-      {isLargeBlock ? (
-        <pre className="markdown-scroll custom-scrollbar m-0 max-h-[55dvh] overflow-auto bg-[#1E1E1E] p-3 text-xs leading-6 text-remembra-text-secondary whitespace-pre sm:max-h-[62dvh] sm:p-4">
-          {value}
-        </pre>
-      ) : (
-        <div className="markdown-scroll custom-scrollbar max-h-[55dvh] overflow-auto sm:max-h-[62dvh]">
-          <SyntaxHighlighter
-            language={language || 'text'}
-            style={vscodeTheme}
-            showLineNumbers={lineCount > 3}
-            wrapLines={false}
-            lineNumberStyle={{
-              color: '#858585',
-              minWidth: '2.75em',
-              paddingRight: '1.25em',
-              userSelect: 'none',
-              borderRight: '1px solid #404040',
-              marginRight: '0.85em',
-            }}
-            customStyle={{
-              margin: 0,
-              borderRadius: 0,
-              background: '#1E1E1E',
-              width: 'max-content',
-              minWidth: '100%',
-            }}
-            codeTagProps={{
-              style: {
-                whiteSpace: 'pre',
-              },
-            }}
-          >
-            {value}
-          </SyntaxHighlighter>
-        </div>
+      <div className="markdown-scroll custom-scrollbar max-h-[55dvh] overflow-auto sm:max-h-[62dvh]">
+        <LazyHighlighter language={language} value={displayValue} lineCount={lineCount} />
+      </div>
+
+      {/* Expand/collapse for large blocks */}
+      {isLarge && (
+        <button
+          onClick={() => setExpanded(v => !v)}
+          className="flex w-full items-center justify-center gap-1.5 border-t border-white/8 bg-[#1E1E1E] py-2 text-xs text-remembra-text-muted hover:text-remembra-text-secondary transition-colors"
+        >
+          {expanded ? (
+            <><ChevronUp size={13} /> Collapse</>
+          ) : (
+            <><ChevronDown size={13} /> Show all {lineCount} lines</>
+          )}
+        </button>
       )}
     </div>
   );
-}
+});
 
-export function MarkdownRenderer({ content, className = '' }: MarkdownRendererProps) {
-  const isLargeContent = content.length > LARGE_MARKDOWN_THRESHOLD;
-  const safeContent = useMemo(() => {
-    if (!isLargeContent) return content;
-    const truncated = content.slice(0, LARGE_MARKDOWN_THRESHOLD);
-    return `${truncated}\n\n---\n\n> Large file mode: preview truncated for performance.`;
-  }, [content, isLargeContent]);
+// ─── Lazy Mermaid (only mounts when in viewport) ──────────────────────────────
+const LazyMermaid = memo(function LazyMermaid({ chart }: { chart: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      (entries) => { if (entries[0].isIntersecting) { setVisible(true); obs.disconnect(); } },
+      { rootMargin: '200px' },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
 
   return (
-    <div className={`markdown-content min-w-0 w-full max-w-full break-words ${className}`}>
-      {isLargeContent && (
-        <div className="mb-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
-          Rendering preview mode for large content to keep scrolling smooth.
-        </div>
-      )}
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        components={{
-          // Code blocks and inline code
-          code({ inline, className, children, ...props }: any) {
-            const match = /language-(\w+)/.exec(className || '');
-            const language = match ? match[1] : '';
-            const value = String(children).replace(/\n$/, '');
-            
-            if (!inline && (language || value.includes('\n'))) {
-              return <CodeBlock language={language} value={value} />;
-            }
-            
-            return (
-              <code 
-                className="px-1.5 py-0.5 rounded bg-remembra-accent-primary/10 text-remembra-accent-primary text-sm font-mono"
-                {...props}
-              >
-                {children}
-              </code>
-            );
-          },
-          
-          // Headings
-          h1: ({ children }) => (
-            <h1 className="text-2xl font-bold text-white mb-4 mt-6 first:mt-0 border-b border-white/10 pb-2">
-              {children}
-            </h1>
-          ),
-          h2: ({ children }) => (
-            <h2 className="text-xl font-semibold text-white mb-3 mt-5 first:mt-0">
-              {children}
-            </h2>
-          ),
-          h3: ({ children }) => (
-            <h3 className="text-lg font-semibold text-white mb-2 mt-4 first:mt-0">
-              {children}
-            </h3>
-          ),
-          h4: ({ children }) => (
-            <h4 className="text-base font-semibold text-white mb-2 mt-3 first:mt-0">
-              {children}
-            </h4>
-          ),
-          
-          // Paragraphs
-          p: ({ children }) => (
-            <p className="text-remembra-text-secondary leading-relaxed mb-4 last:mb-0">
-              {children}
-            </p>
-          ),
-          
-          // Links
-          a: ({ href, children }) => (
-            <a 
-              href={href}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-remembra-accent-primary hover:text-remembra-accent-secondary underline underline-offset-2 transition-colors"
-            >
-              {children}
-            </a>
-          ),
-          
-          // Lists
-          ul: ({ children }) => (
-            <ul className="mb-4 list-disc list-outside space-y-2 pl-5 text-remembra-text-secondary last:mb-0">
-              {children}
-            </ul>
-          ),
-          ol: ({ children }) => (
-            <ol className="mb-4 list-decimal list-outside space-y-2 pl-5 text-remembra-text-secondary last:mb-0">
-              {children}
-            </ol>
-          ),
-          li: ({ children }) => (
-            <li className="text-remembra-text-secondary leading-relaxed">
-              {children}
-            </li>
-          ),
-          
-          // Blockquotes
-          blockquote: ({ children }) => (
-            <blockquote className="border-l-4 border-remembra-accent-primary pl-4 py-2 my-4 bg-remembra-accent-primary/5 rounded-r-xl">
-              <div className="text-remembra-text-secondary italic">{children}</div>
-            </blockquote>
-          ),
-          
-          // Tables
-          table: ({ children }) => (
-            <div className="markdown-scroll custom-scrollbar my-4 overflow-x-auto rounded-xl border border-white/10">
-              <table className="w-full min-w-max text-sm">
-                {children}
-              </table>
-            </div>
-          ),
-          thead: ({ children }) => (
-            <thead className="bg-remembra-bg-secondary border-b border-white/10">
-              {children}
-            </thead>
-          ),
-          tbody: ({ children }) => (
-            <tbody className="divide-y divide-white/5">
-              {children}
-            </tbody>
-          ),
-          tr: ({ children }) => (
-            <tr className="hover:bg-white/5 transition-colors">
-              {children}
-            </tr>
-          ),
-          th: ({ children }) => (
-            <th className="px-4 py-3 text-left font-semibold text-white">
-              {children}
-            </th>
-          ),
-          td: ({ children }) => (
-            <td className="px-4 py-3 text-remembra-text-secondary">
-              {children}
-            </td>
-          ),
-          
-          // Horizontal rule
-          hr: () => (
-            <hr className="border-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent my-6" />
-          ),
-          
-          // Images
-          img: ({ src, alt }) => (
-            <figure className="my-4">
-              <img 
-                src={src} 
-                alt={alt}
-                className="rounded-xl border border-white/10 max-w-full h-auto"
-              />
-              {alt && (
-                <figcaption className="text-center text-xs text-remembra-text-muted mt-2">
-                  {alt}
-                </figcaption>
-              )}
-            </figure>
-          ),
-          
-          // Strikethrough
-          del: ({ children }) => (
-            <del className="text-remembra-text-muted line-through">
-              {children}
-            </del>
-          ),
-          
-          // Strong and emphasis
-          strong: ({ children }) => (
-            <strong className="font-semibold text-white">
-              {children}
-            </strong>
-          ),
-          em: ({ children }) => (
-            <em className="italic text-remembra-text-primary">
-              {children}
-            </em>
-          ),
-        }}
-      >
-        {safeContent}
-      </ReactMarkdown>
+    <div ref={ref} className="my-4">
+      {visible
+        ? <MermaidDiagram chart={chart} className="my-0" />
+        : <div className="h-32 rounded-xl border border-white/8 bg-[#0d0d0d] animate-pulse" />
+      }
     </div>
   );
+});
+
+// ─── Stable component map (defined outside render — never recreated) ──────────
+const MD_COMPONENTS = {
+  code({ className, children, ...props }: Record<string, unknown>) {
+    const match = /language-(\w+)/.exec((className as string) || '');
+    const language = match ? match[1] : '';
+    const value = String(children).replace(/\n$/, '');
+    const isBlock = !!language || value.includes('\n');
+
+    if (isBlock) return <CodeBlock language={language} value={value} />;
+
+    return (
+      <code
+        className="px-1.5 py-0.5 rounded bg-remembra-accent-primary/12 text-remembra-accent-primary text-[0.82em] font-mono"
+        {...props as object}
+      >
+        {children as React.ReactNode}
+      </code>
+    );
+  },
+
+  h1: ({ children }: { children?: React.ReactNode }) => (
+    <h1 className="text-2xl font-bold text-white mb-4 mt-6 first:mt-0 border-b border-white/10 pb-2">{children}</h1>
+  ),
+  h2: ({ children }: { children?: React.ReactNode }) => (
+    <h2 className="text-xl font-semibold text-white mb-3 mt-5 first:mt-0">{children}</h2>
+  ),
+  h3: ({ children }: { children?: React.ReactNode }) => (
+    <h3 className="text-lg font-semibold text-white mb-2 mt-4 first:mt-0">{children}</h3>
+  ),
+  h4: ({ children }: { children?: React.ReactNode }) => (
+    <h4 className="text-base font-semibold text-white mb-2 mt-3 first:mt-0">{children}</h4>
+  ),
+  p: ({ children }: { children?: React.ReactNode }) => (
+    <p className="text-remembra-text-secondary leading-relaxed mb-4 last:mb-0">{children}</p>
+  ),
+  a: ({ href, children }: { href?: string; children?: React.ReactNode }) => (
+    <a href={href} target="_blank" rel="noopener noreferrer"
+      className="text-remembra-accent-primary hover:text-remembra-accent-secondary underline underline-offset-2 transition-colors">
+      {children}
+    </a>
+  ),
+  ul: ({ children }: { children?: React.ReactNode }) => (
+    <ul className="mb-4 list-disc list-outside space-y-1.5 pl-5 text-remembra-text-secondary last:mb-0">{children}</ul>
+  ),
+  ol: ({ children }: { children?: React.ReactNode }) => (
+    <ol className="mb-4 list-decimal list-outside space-y-1.5 pl-5 text-remembra-text-secondary last:mb-0">{children}</ol>
+  ),
+  li: ({ children }: { children?: React.ReactNode }) => (
+    <li className="text-remembra-text-secondary leading-relaxed">{children}</li>
+  ),
+  blockquote: ({ children }: { children?: React.ReactNode }) => (
+    <blockquote className="border-l-4 border-remembra-accent-primary/60 pl-4 py-0.5 my-4 bg-remembra-accent-primary/5 rounded-r-lg">
+      <div className="text-remembra-text-secondary italic">{children}</div>
+    </blockquote>
+  ),
+  table: ({ children }: { children?: React.ReactNode }) => (
+    <div className="markdown-scroll custom-scrollbar my-4 overflow-x-auto rounded-xl border border-white/10">
+      <table className="w-full min-w-max text-sm">{children}</table>
+    </div>
+  ),
+  thead: ({ children }: { children?: React.ReactNode }) => (
+    <thead className="bg-white/[0.04] border-b border-white/10">{children}</thead>
+  ),
+  tbody: ({ children }: { children?: React.ReactNode }) => (
+    <tbody className="divide-y divide-white/5">{children}</tbody>
+  ),
+  tr: ({ children }: { children?: React.ReactNode }) => (
+    <tr className="transition-colors hover:bg-white/[0.03]">{children}</tr>
+  ),
+  th: ({ children }: { children?: React.ReactNode }) => (
+    <th className="px-4 py-3 text-left font-semibold text-white">{children}</th>
+  ),
+  td: ({ children }: { children?: React.ReactNode }) => (
+    <td className="px-4 py-3 text-remembra-text-secondary">{children}</td>
+  ),
+  hr: () => (
+    <hr className="border-0 h-px bg-gradient-to-r from-transparent via-white/15 to-transparent my-6" />
+  ),
+  img: ({ src, alt }: { src?: string; alt?: string }) => (
+    <figure className="my-4">
+      <img src={src} alt={alt} loading="lazy" decoding="async"
+        className="rounded-xl border border-white/10 max-w-full h-auto" />
+      {alt && <figcaption className="text-center text-xs text-remembra-text-muted mt-2">{alt}</figcaption>}
+    </figure>
+  ),
+  del: ({ children }: { children?: React.ReactNode }) => (
+    <del className="text-remembra-text-muted line-through">{children}</del>
+  ),
+  strong: ({ children }: { children?: React.ReactNode }) => (
+    <strong className="font-semibold text-white">{children}</strong>
+  ),
+  em: ({ children }: { children?: React.ReactNode }) => (
+    <em className="italic text-remembra-text-primary">{children}</em>
+  ),
+};
+
+const REMARK_PLUGINS = [remarkGfm];
+
+// ─── Split large content at heading / paragraph boundaries ────────────────────
+function splitContent(text: string, maxChunkSize: number): string[] {
+  const chunks: string[] = [];
+  let remaining = text;
+
+  while (remaining.length > maxChunkSize) {
+    const searchArea = remaining.slice(0, maxChunkSize);
+    // Try heading boundary first
+    const headMatch = searchArea.search(/\n(?=#{1,3} )/);
+    let splitAt = headMatch > maxChunkSize / 3 ? headMatch : -1;
+    // Fallback: paragraph boundary
+    if (splitAt < 0) {
+      const paraIdx = remaining.lastIndexOf('\n\n', maxChunkSize);
+      splitAt = paraIdx > 0 ? paraIdx + 2 : maxChunkSize;
+    }
+    chunks.push(remaining.slice(0, splitAt));
+    remaining = remaining.slice(splitAt);
+  }
+
+  if (remaining) chunks.push(remaining);
+  return chunks;
 }
+
+// ─── Single memoized chunk ────────────────────────────────────────────────────
+const MarkdownChunk = memo(
+  function MarkdownChunk({ content }: { content: string }) {
+    return (
+      <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MD_COMPONENTS as never}>
+        {content}
+      </ReactMarkdown>
+    );
+  },
+  (prev, next) => prev.content === next.content,
+);
+
+// ─── Progressive renderer ─────────────────────────────────────────────────────
+const ProgressiveMarkdown = memo(function ProgressiveMarkdown({ chunks }: { chunks: string[] }) {
+  const [visibleCount, setVisibleCount] = useState(1);
+
+  useEffect(() => {
+    if (visibleCount >= chunks.length) return;
+    const schedule = (cb: () => void): number =>
+      typeof requestIdleCallback !== 'undefined'
+        ? requestIdleCallback(cb, { timeout: 200 }) as unknown as number
+        : requestAnimationFrame(cb);
+    const cancel = (id: number) =>
+      typeof cancelIdleCallback !== 'undefined' ? cancelIdleCallback(id) : cancelAnimationFrame(id);
+
+    const id = schedule(() => setVisibleCount(v => Math.min(v + 1, chunks.length)));
+    return () => cancel(id);
+  }, [visibleCount, chunks.length]);
+
+  return (
+    <>
+      {chunks.slice(0, visibleCount).map((chunk, i) => (
+        <MarkdownChunk key={i} content={chunk} />
+      ))}
+      {visibleCount < chunks.length && (
+        <div className="py-4 flex items-center gap-2 text-xs text-remembra-text-muted">
+          <div className="h-px flex-1 bg-white/8" />
+          <span>Loading ({visibleCount}/{chunks.length} sections)…</span>
+          <div className="h-px flex-1 bg-white/8" />
+        </div>
+      )}
+    </>
+  );
+});
+
+// ─── Public component ─────────────────────────────────────────────────────────
+export const MarkdownRenderer = memo(
+  function MarkdownRenderer({ content, className = '' }: MarkdownRendererProps) {
+    // useDeferredValue keeps the old rendered tree visible during fast updates
+    // so typing never causes a flash of empty content.
+    const deferredContent = useDeferredValue(content);
+    const isPending = deferredContent !== content;
+
+    const isProgressive = deferredContent.length > PROGRESSIVE_THRESHOLD;
+
+    const chunks = useMemo(() => {
+      if (!isProgressive) return null;
+      return splitContent(deferredContent, 15_000);
+    }, [deferredContent, isProgressive]);
+
+    return (
+      <div
+        className={`markdown-content min-w-0 w-full max-w-full break-words ${className}`}
+        style={{ opacity: isPending ? 0.7 : 1, transition: 'opacity 120ms ease' }}
+      >
+        {isProgressive && chunks
+          ? <ProgressiveMarkdown chunks={chunks} />
+          : <MarkdownChunk content={deferredContent} />
+        }
+      </div>
+    );
+  },
+  (prev, next) => prev.content === next.content && prev.className === next.className,
+);

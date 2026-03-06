@@ -81,7 +81,7 @@ If you forget (rate "Again"), the item resets to 1 day and starts climbing again
 - **React 19.2 + TypeScript** — Type-safe component architecture
 - **Vite 7** — Lightning-fast dev server and optimized builds
 - **Tailwind CSS + shadcn/ui** — Beautiful, accessible UI components
-- **Supabase** — PostgreSQL database, authentication, real-time subscriptions
+- **Firebase** — Authentication, Firestore database, and storage
 - **Zustand** — Lightweight state management with persistence
 - **Capacitor 8** — Cross-platform mobile (Android/iOS)
 - **Local Notifications** — Review reminders on Android
@@ -121,25 +121,29 @@ npm install
 
 # Set up environment variables
 cp .env.example .env
-# Edit .env with your Supabase credentials
+# Edit .env with your Firebase credentials
 
 # Start development server
 npm run dev
 ```
 
-#### Supabase Setup
+#### Firebase Setup
 
-1. Create a new project at [supabase.com](https://supabase.com)
-2. In the SQL Editor, run `supabase/schema.sql` to create tables
-3. **If migrating from an older version**, also run `supabase/migration_sm2.sql`
-4. Copy your API URL and anon key to `.env`:
+1. Create a Firebase project at [console.firebase.google.com](https://console.firebase.google.com)
+2. Enable **Authentication** (Email/Password and Google if needed)
+3. Create a **Cloud Firestore** database
+4. (Optional) Enable **Firebase Storage** for attachments
+5. Copy Firebase web config values to `.env`:
+    ```env
+    VITE_FIREBASE_API_KEY=your-key
+    VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
+    VITE_FIREBASE_PROJECT_ID=your-project-id
+    VITE_FIREBASE_STORAGE_BUCKET=your-project.firebasestorage.app
+    VITE_FIREBASE_MESSAGING_SENDER_ID=your-sender-id
+    VITE_FIREBASE_APP_ID=your-app-id
     ```
-    VITE_SUPABASE_URL=https://your-project.supabase.co
-    VITE_SUPABASE_ANON_KEY=your-anon-key
-    ```
-5. Enable Email authentication in Supabase Dashboard → Authentication → Providers
 
-See [SUPABASE_SETUP.md](SUPABASE_SETUP.md) for detailed instructions.
+See [app/FIREBASE_DEPLOY.md](app/FIREBASE_DEPLOY.md) for hosting deployment steps.
 
 ## Development Commands
 
@@ -179,18 +183,17 @@ app/
 │   │   ├── Library.tsx
 │   │   ├── Stats.tsx
 │   │   └── Calendar.tsx
-│   ├── services/        # Supabase API layer
+│   ├── services/        # Firebase service layer
 │   │   ├── memoryItemService.ts
 │   │   ├── categoryService.ts
 │   │   └── notificationService.ts
 │   ├── store/           # Zustand state management
-│   │   └── useSupabaseStore.ts
+│   │   └── useFirebaseStore.ts # Firebase store entrypoint
 │   ├── types/           # TypeScript definitions + SM-2 engine
 │   │   └── index.ts     # Core SM-2 algorithm
 │   └── lib/             # Utilities
-├── supabase/
-│   ├── schema.sql       # Initial database schema
-│   └── migration_sm2.sql # SM-2 migration script
+├── firebase.json        # Firebase Hosting config
+├── .firebaserc          # Firebase project mapping
 └── android/             # Capacitor Android project
 ```
 
@@ -253,4 +256,3 @@ MIT License — see [LICENSE](LICENSE) for details.
 ---
 
 **Remembra** — Because your brain deserves an intelligent learning system, not random flashcards.
-

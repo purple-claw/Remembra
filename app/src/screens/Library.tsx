@@ -217,7 +217,7 @@ export function Library() {
       {/* Scrollable Content */}
       <div 
         data-nav-scroll="true"
-        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 sm:px-5 py-4"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 sm:px-5 py-4 custom-scrollbar safe-bottom-nav"
         style={{ 
           WebkitOverflowScrolling: 'touch',
           overscrollBehavior: 'contain'
@@ -236,7 +236,7 @@ export function Library() {
                 <div 
                   key={item.id}
                   onClick={() => setSelectedItem(item)}
-                  className="bg-remembra-bg-secondary/95 rounded-2xl p-4 border border-white/10 flex items-center gap-4 active:scale-[0.98] transition-transform cursor-pointer"
+                  className="glass-card rounded-2xl p-4 flex items-center gap-4 active:scale-[0.98] transition-transform cursor-pointer"
                   style={{ animationDelay: `${index * 18}ms`, WebkitTapHighlightColor: 'transparent' }}
                 >
                   <div 
@@ -273,7 +273,7 @@ export function Library() {
               <div 
                 key={item.id}
                 onClick={() => setSelectedItem(item)}
-                className="bg-remembra-bg-secondary/95 rounded-2xl p-4 border border-white/10 active:scale-[0.95] transition-transform cursor-pointer"
+                className="glass-card rounded-2xl p-4 active:scale-[0.95] transition-transform cursor-pointer"
                 style={{ animationDelay: `${index * 18}ms`, WebkitTapHighlightColor: 'transparent' }}
               >
                 <div className="flex items-start justify-between mb-3">

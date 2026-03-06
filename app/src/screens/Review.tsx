@@ -170,7 +170,7 @@ export function Review() {
   if (!currentItem) {
     return (
       <div className="min-h-[100dvh] bg-black flex items-center justify-center px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-[calc(env(safe-area-inset-bottom)+1.25rem)]">
-        <div className="w-full max-w-md rounded-3xl border border-white/10 bg-remembra-bg-secondary/85 p-6 text-center">
+        <div className="w-full max-w-md glass-card rounded-3xl p-6 text-center">
           <div className="mx-auto w-20 h-20 rounded-2xl bg-gradient-to-br from-remembra-accent-primary/30 to-remembra-success/30 flex items-center justify-center mb-5">
             <Trophy size={34} className="text-remembra-accent-primary" />
           </div>
@@ -294,7 +294,7 @@ export function Review() {
       >
         <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr),320px]">
           <section className="min-w-0 space-y-4">
-            <div className="rounded-2xl border border-white/10 bg-remembra-bg-secondary/80 p-4">
+            <div className="glass-card rounded-2xl p-4">
               <div className="flex items-center gap-2 flex-wrap mb-3">
                 {category && (
                   <div className="px-3 py-1.5 rounded-lg text-xs border border-white/10 flex items-center gap-1.5" style={{ backgroundColor: `${category.color}15` }}>
@@ -359,7 +359,7 @@ export function Review() {
             </div>
 
             {showNotes && (
-              <div className="rounded-2xl border border-remembra-accent-primary/20 bg-remembra-bg-secondary/80 p-4">
+              <div className="glass-card rounded-2xl border border-remembra-accent-primary/20 p-4">
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-sm font-semibold text-remembra-accent-primary">Notes</p>
                   <button
@@ -393,7 +393,7 @@ export function Review() {
           </section>
 
           <aside className="min-w-0 space-y-4 xl:sticky xl:top-4 h-fit">
-            <div className="rounded-2xl border border-white/10 bg-remembra-bg-secondary/80 p-4">
+            <div className="glass-card rounded-2xl p-4">
               <p className="text-xs uppercase tracking-wider text-remembra-text-muted mb-3">Live Metrics</p>
               <div className="space-y-2">
                 <div className="flex items-center justify-between rounded-lg bg-black/25 border border-white/10 p-2.5">
@@ -428,7 +428,7 @@ export function Review() {
             </div>
 
             {phase === 'revealed' && currentItem.review_history.length > 0 && (
-              <div className="rounded-2xl border border-white/10 bg-remembra-bg-secondary/80 p-4">
+              <div className="glass-card rounded-2xl p-4">
                 <div className="flex items-center justify-between mb-3">
                   <p className="text-xs uppercase tracking-wider text-remembra-text-muted">Recent Reviews</p>
                   <p className="text-xs text-remembra-text-muted">EF {currentItem.easiness_factor.toFixed(2)}</p>

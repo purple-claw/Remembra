@@ -178,9 +178,10 @@ export function Calendar() {
       </header>
 
       {/* Scrollable Content */}
-      <div 
-        className="flex-1 overflow-y-auto overscroll-contain px-4 sm:px-5 py-4"
-        style={{ WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}
+      <div
+        data-nav-scroll="true"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 sm:px-5 py-4 custom-scrollbar safe-bottom-nav"
+        style={{ WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' } as React.CSSProperties}
       >
       <Tabs defaultValue="month" className="w-full">
         <TabsList className="w-full grid grid-cols-3 bg-remembra-bg-secondary mb-6">
@@ -423,7 +424,7 @@ export function Calendar() {
               const isTodayWeek = dateStr === todayStr;
 
               return (
-              <div key={dateStr} className="bg-remembra-bg-secondary rounded-2xl p-4 border border-white/5 smooth-surface dynamic-container">
+              <div key={dateStr} className="glass-card rounded-2xl p-4">
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="text-sm font-medium text-remembra-text-primary">
                       {weekDays[d.getDay()]}{isTodayWeek ? ' (Today)' : ''}

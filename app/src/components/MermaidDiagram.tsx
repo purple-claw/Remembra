@@ -9,6 +9,28 @@ interface MermaidDiagramProps {
 let mermaidInitialized = false;
 let renderCounter = 0;
 
+// ─── Serial render queue ──────────────────────────────────────────────────────
+// mermaid.render() is NOT concurrent-safe. Parallel calls deadlock the main
+// thread and cause the "hang/freeze" symptom. We drain one task at a time.
+type RenderTask = () => Promise<void>;
+const mermaidRenderQueue: RenderTask[] = [];
+let mermaidQueueRunning = false;
+
+async function drainMermaidQueue(): Promise<void> {
+  if (mermaidQueueRunning) return;
+  mermaidQueueRunning = true;
+  while (mermaidRenderQueue.length > 0) {
+    const task = mermaidRenderQueue.shift()!;
+    try { await task(); } catch { /* each task handles own errors */ }
+  }
+  mermaidQueueRunning = false;
+}
+
+function enqueueMermaidRender(task: RenderTask): void {
+  mermaidRenderQueue.push(task);
+  drainMermaidQueue(); // intentionally unawaited — fire and forget
+}
+
 function initMermaid() {
   if (mermaidInitialized) return;
   mermaid.initialize({
@@ -135,68 +157,56 @@ export function MermaidDiagram({ chart, className = '' }: MermaidDiagramProps) {
       setIsLoading(true);
       setError(null);
 
-      try {
-        initMermaid();
+      // Wrap the actual mermaid.render() call in the serial queue so concurrent
+      // component instances never call mermaid.render() simultaneously.
+      await new Promise<void>((resolve) => {
+        enqueueMermaidRender(async () => {
+          if (cancelled || !containerRef.current || !mountedRef.current) { resolve(); return; }
 
-        const cleanChart = sanitizeMermaidCode(chart);
+          try {
+            initMermaid();
 
-        if (!cleanChart) {
-          throw new Error('Empty or invalid diagram code after sanitization');
-        }
+            const cleanChart = sanitizeMermaidCode(chart);
+            if (!cleanChart) throw new Error('Empty or invalid diagram code after sanitization');
 
-        // Generate truly unique ID for each render
-        renderCounter++;
-        const id = `mermaid-${renderCounter}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+            renderCounter++;
+            const id = `mermaid-${renderCounter}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
-        // Render with timeout protection
-        const renderPromise = mermaid.render(id, cleanChart);
-        const timeoutPromise = new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Mermaid render timeout (8s)')), 8000)
-        );
+            const renderPromise = mermaid.render(id, cleanChart);
+            const timeoutPromise = new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error('Mermaid render timeout (8s)')), 8000),
+            );
 
-        const { svg } = await Promise.race([renderPromise, timeoutPromise]);
+            const { svg } = await Promise.race([renderPromise, timeoutPromise]);
 
-        if (cancelled || !containerRef.current || !mountedRef.current) return;
+            if (cancelled || !containerRef.current || !mountedRef.current) { resolve(); return; }
 
-        containerRef.current.innerHTML = svg;
+            containerRef.current.innerHTML = svg;
+            const svgEl = containerRef.current.querySelector('svg');
+            if (svgEl) { svgEl.removeAttribute('height'); svgEl.style.maxWidth = '100%'; svgEl.style.height = 'auto'; }
+          } catch (err) {
+            if (!cancelled && mountedRef.current) {
+              console.error('[Mermaid] Rendering error:', err);
+              const errorMsg = err instanceof Error ? err.message : 'Unknown rendering error';
 
-        // Ensure SVG is responsive
-        const svgEl = containerRef.current.querySelector('svg');
-        if (svgEl) {
-          svgEl.removeAttribute('height');
-          svgEl.style.maxWidth = '100%';
-          svgEl.style.height = 'auto';
-        }
-      } catch (err) {
-        if (cancelled || !mountedRef.current) return;
+              document.querySelectorAll(`[id^="mermaid-${renderCounter}"]`).forEach(el => { try { el.remove(); } catch { /* ignore */ } });
+              document.querySelectorAll('[id^="dmermaid-"]').forEach(el => { try { el.remove(); } catch { /* ignore */ } });
 
-        console.error('[Mermaid] Rendering error:', err);
-        const errorMsg = err instanceof Error ? err.message : 'Unknown rendering error';
+              if (attempt === 0 && (errorMsg.includes('Parse error') || errorMsg.includes('Syntax error'))) {
+                resolve();
+                setTimeout(() => { if (!cancelled && mountedRef.current) renderDiagram(1); }, 200);
+                return;
+              }
 
-        // Clean up any failed render elements from the DOM
-        document.querySelectorAll(`[id^="mermaid-${renderCounter}"]`).forEach(el => {
-          try { el.remove(); } catch { /* ignore */ }
+              setError(errorMsg);
+            }
+          }
+
+          resolve();
         });
-        // Also clean up any d* elements mermaid might leave behind
-        document.querySelectorAll('[id^="dmermaid-"]').forEach(el => {
-          try { el.remove(); } catch { /* ignore */ }
-        });
+      });
 
-        // Auto-retry once on parse errors with additional sanitization
-        if (attempt === 0 && (errorMsg.includes('Parse error') || errorMsg.includes('Syntax error'))) {
-          console.log('[Mermaid] Retrying with simplified chart...');
-          setTimeout(() => {
-            if (!cancelled && mountedRef.current) renderDiagram(1);
-          }, 200);
-          return;
-        }
-
-        setError(errorMsg);
-      }
-
-      if (!cancelled && mountedRef.current) {
-        setIsLoading(false);
-      }
+      if (!cancelled && mountedRef.current) setIsLoading(false);
     };
 
     // Small delay to ensure DOM is ready

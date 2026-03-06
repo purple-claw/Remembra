@@ -148,7 +148,30 @@ export async function saveSession(
 
   // `add` returns the auto-incremented key
   const id = await db.add(STORE_NAME, record);
+
+  // Prune old sessions in the background (fire-and-forget)
+  pruneOldSessions(50).catch((err) => console.warn('[Persist] prune failed', err));
+
   return id as number;
+}
+
+// ─── Auto-prune ──────────────────────────────────────────────────────────────
+
+/**
+ * Delete all sessions beyond the newest `maxToKeep` records.
+ * Called automatically inside saveSession.
+ */
+export async function pruneOldSessions(maxToKeep = 50): Promise<void> {
+  const db = await getDb();
+  const all = (await db.getAll(STORE_NAME)) as PersistRecord[];
+  if (all.length <= maxToKeep) return;
+
+  // Sort oldest-first, then delete the tail beyond the limit
+  all.sort((a, b) => new Date(a.savedAt).getTime() - new Date(b.savedAt).getTime());
+  const toDelete = all.slice(0, all.length - maxToKeep);
+  const tx = db.transaction(STORE_NAME, 'readwrite');
+  await Promise.all(toDelete.map((r) => tx.store.delete(r.id!)));
+  await tx.done;
 }
 
 /**

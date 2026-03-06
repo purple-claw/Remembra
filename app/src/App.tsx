@@ -10,6 +10,7 @@ import { AIStudio } from '@/screens/AIStudio';
 import { Stats } from '@/screens/Stats';
 import { Profile } from '@/screens/Profile';
 import { DatabaseTest } from '@/screens/DatabaseTest';
+import { Persist } from '@/screens/Persist';
 import { Auth } from '@/screens/Auth';
 import { BottomNav } from '@/components/BottomNav';
 import { Toaster } from '@/components/ui/sonner';
@@ -51,25 +52,29 @@ function AppContent() {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
 
-    const hasExplicitNavScroll = target.dataset.navScroll === 'true';
-    const computedStyle = window.getComputedStyle(target);
-    const overflowY = computedStyle.overflowY;
-    const allowsVerticalScroll = overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay';
-    const verticalRange = target.scrollHeight - target.clientHeight;
+    // Only respond to elements explicitly marked as the primary scroll pane.
+    // Ignoring all other overflow-y:auto elements (inner code blocks, modals,
+    // horizontal carousels, etc.) prevents them from confusing the nav sensor.
+    if (target.dataset.navScroll !== 'true') return;
 
-    if (!hasExplicitNavScroll && !allowsVerticalScroll) return;
+    const verticalRange = target.scrollHeight - target.clientHeight;
     if (verticalRange <= 24) return;
 
     const currentY = Math.max(0, Math.min(target.scrollTop, verticalRange));
 
-    if (activeScrollElementRef.current !== target) {
+    // Track which element is being scrolled. When the element changes (e.g.
+    // after a screen transition), sync the baseline but still process this
+    // event so the very first scroll gesture is not silently dropped.
+    const isNewElement = activeScrollElementRef.current !== target;
+    if (isNewElement) {
       activeScrollElementRef.current = target;
       lastScrollY.current = currentY;
-      return;
+      // Still allow the show-at-top logic below to run on the first event.
+      if (currentY > 16) return;
     }
 
     const delta = currentY - lastScrollY.current;
-    if (Math.abs(delta) < 8) return;
+    if (!isNewElement && Math.abs(delta) < 8) return;
 
     if (currentY <= 16) {
       setNavVisible(true);
@@ -193,6 +198,8 @@ function AppContent() {
         return <Profile />;
       case 'test':
         return <DatabaseTest />;
+      case 'persist':
+        return <Persist />;
       case 'auth':
         return <Auth />;
       default:

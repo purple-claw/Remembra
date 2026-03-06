@@ -1,6 +1,6 @@
 import { useStore } from '@/store/useStore';
 import type { Screen } from '@/store/useStore';
-import { Home, Calendar, BookOpen, PlusCircle, Sparkles, ChartLine, User } from 'lucide-react';
+import { Archive, BookOpen, Calendar, ChartLine, Home, PlusCircle, Sparkles, User } from 'lucide-react';
 
 interface NavItem {
   id: Screen;
@@ -10,10 +10,11 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { id: 'dashboard', icon: Home, label: 'Home' },
-  { id: 'calendar', icon: Calendar, label: 'Calendar' },
+  { id: 'calendar', icon: Calendar, label: 'Cal' },
   { id: 'library', icon: BookOpen, label: 'Library' },
   { id: 'create', icon: PlusCircle, label: 'Create' },
   { id: 'ai-tools', icon: Sparkles, label: 'AI' },
+  { id: 'persist', icon: Archive, label: 'Archive' },
   { id: 'stats', icon: ChartLine, label: 'Stats' },
   { id: 'profile', icon: User, label: 'Profile' },
 ];
@@ -42,7 +43,7 @@ export function BottomNav({ visible = true }: { visible?: boolean }) {
                   aria-current={isActive ? 'page' : undefined}
                   aria-label={item.label}
                   className={`
-                    relative flex flex-col items-center gap-1 px-2 py-2 rounded-xl min-w-[44px]
+                    relative flex flex-col items-center gap-1 px-1 py-2 rounded-xl flex-1
                     transition-all duration-300 ease-out
                     ${isActive 
                       ? 'text-remembra-accent-primary' 

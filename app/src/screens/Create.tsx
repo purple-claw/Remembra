@@ -399,7 +399,7 @@ export function Create() {
       <main className="flex-1 overflow-y-auto px-4 sm:px-6 py-5 pb-[calc(env(safe-area-inset-bottom)+8rem)] custom-scrollbar">
         <div className="grid gap-5 xl:grid-cols-[1fr,340px]">
           <section className="space-y-5">
-            <div className="rounded-2xl border border-white/10 bg-remembra-bg-secondary/75 p-4">
+            <div className="glass-card rounded-2xl p-4">
               <p className="text-xs uppercase tracking-wider text-remembra-text-muted mb-3">Content Type</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
                 {contentTypes.map((type) => {
@@ -430,7 +430,7 @@ export function Create() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-remembra-bg-secondary/75 p-4 space-y-4">
+            <div className="glass-card rounded-2xl p-4 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-remembra-text-secondary mb-2">Title</label>
                 <Input
@@ -505,7 +505,7 @@ export function Create() {
               )}
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-remembra-bg-secondary/75 p-4">
+            <div className="glass-card rounded-2xl p-4">
               <div className="flex items-center justify-between gap-2 mb-3">
                 <p className="text-xs uppercase tracking-wider text-remembra-text-muted">Content Editor</p>
                 <div className="flex items-center gap-1 border border-white/10 bg-remembra-bg-tertiary rounded-lg p-1">
@@ -578,7 +578,7 @@ export function Create() {
           </section>
 
           <aside className="space-y-4 xl:sticky xl:top-5 h-fit">
-            <div className="rounded-2xl border border-white/10 bg-remembra-bg-secondary/75 p-4">
+            <div className="glass-card rounded-2xl p-4">
               <p className="text-xs uppercase tracking-wider text-remembra-text-muted mb-3">Category</p>
 
               <div className="flex flex-wrap gap-2 mb-3">
@@ -641,7 +641,7 @@ export function Create() {
               )}
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-remembra-bg-secondary/75 p-4">
+            <div className="glass-card rounded-2xl p-4">
               <p className="text-xs uppercase tracking-wider text-remembra-text-muted mb-3">Difficulty</p>
               <div className="space-y-2">
                 {difficulties.map((entry) => {
@@ -676,7 +676,7 @@ export function Create() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-remembra-bg-secondary/75 p-4">
+            <div className="glass-card rounded-2xl p-4">
               <div className="flex items-center gap-2 mb-3">
                 <Calendar size={15} className="text-remembra-accent-primary" />
                 <p className="text-xs uppercase tracking-wider text-remembra-text-muted">Review Plan</p>
@@ -692,7 +692,7 @@ export function Create() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-remembra-bg-secondary/75 p-4">
+            <div className="glass-card rounded-2xl p-4">
               <p className="text-xs uppercase tracking-wider text-remembra-text-muted mb-2">Ready Check</p>
               <div className="space-y-1.5 text-xs text-remembra-text-muted">
                 <p>{title.trim() ? '✓' : '•'} Title added</p>

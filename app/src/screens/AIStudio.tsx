@@ -258,7 +258,7 @@ export function AIStudio() {
 
   if (mode === 'chat') {
     return (
-      <div className="min-h-[100dvh] bg-black lined-bg-subtle flex flex-col">
+      <div className="h-[100dvh] bg-black lined-bg-subtle flex flex-col overflow-hidden">
         <header className="px-4 sm:px-6 safe-top-compact pb-4 border-b border-white/10 bg-black/80 backdrop-blur-xl">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
@@ -288,7 +288,7 @@ export function AIStudio() {
           </div>
         </header>
 
-        <main ref={chatViewportRef} className="flex-1 overflow-y-auto px-4 sm:px-6 py-5 space-y-4 custom-scrollbar">
+        <main ref={chatViewportRef} data-nav-scroll="true" className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 sm:px-6 py-5 space-y-4 custom-scrollbar">
           {chatMessages.map((message, index) => (
             <div key={index} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div
@@ -345,7 +345,7 @@ export function AIStudio() {
     const ToolIcon = tool.icon;
 
     return (
-      <div className="min-h-[100dvh] bg-black lined-bg-subtle flex flex-col">
+      <div className="h-[100dvh] bg-black lined-bg-subtle flex flex-col overflow-hidden">
         <header className="px-4 sm:px-6 safe-top-compact pb-4 border-b border-white/10 bg-black/80 backdrop-blur-xl">
           <div className="flex items-center gap-3">
             <button
@@ -364,10 +364,10 @@ export function AIStudio() {
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-5 custom-scrollbar pb-[calc(env(safe-area-inset-bottom)+7.5rem)] sm:pb-8">
+        <div data-nav-scroll="true" className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 sm:px-6 py-5 custom-scrollbar pb-[calc(env(safe-area-inset-bottom)+7.5rem)] sm:pb-8">
           <div className="grid gap-4 lg:grid-cols-[300px,1fr]">
             <aside className="space-y-4">
-              <section className="rounded-2xl border border-white/10 bg-remembra-bg-secondary/70 p-4">
+              <section className="glass-card rounded-2xl p-4">
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-remembra-text-muted mb-3">Tools</p>
                 <div className="space-y-2">
                   {TOOL_DEFS.map((entry) => {
@@ -395,7 +395,7 @@ export function AIStudio() {
                 </div>
               </section>
 
-              <section className="rounded-2xl border border-white/10 bg-remembra-bg-secondary/70 p-4">
+              <section className="glass-card rounded-2xl p-4">
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-remembra-text-muted mb-2">Context</p>
                 <select
                   value={selectedItemId}
@@ -414,7 +414,7 @@ export function AIStudio() {
             </aside>
 
             <section className="space-y-4">
-              <div className="rounded-2xl border border-white/10 bg-remembra-bg-secondary/70 p-4">
+              <div className="glass-card rounded-2xl p-4">
                 <div className="flex items-center justify-between mb-3">
                   <p className="text-[11px] font-semibold uppercase tracking-wider text-remembra-text-muted">Input</p>
                   <p className="text-xs text-remembra-text-muted">{selectedItem ? 'Using selected item' : 'Manual text'}</p>
@@ -453,7 +453,7 @@ export function AIStudio() {
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-white/10 bg-remembra-bg-secondary/70 p-4">
+              <div className="glass-card rounded-2xl p-4">
                 <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
                   <p className="text-[11px] font-semibold uppercase tracking-wider text-remembra-text-muted">Output</p>
                   <div className="flex items-center gap-2">
@@ -513,9 +513,12 @@ export function AIStudio() {
 
   return (
     <div className="fixed inset-0 bg-black flex flex-col">
-      <div className="flex-1 overflow-y-auto overscroll-contain px-4 sm:px-6 safe-top safe-bottom-nav sm:pb-8">
+      <div
+        data-nav-scroll="true"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 sm:px-6 safe-top safe-bottom-nav custom-scrollbar"
+      >
         <header className="mt-4 mb-6">
-          <div className="rounded-3xl border border-white/10 p-6 bg-[radial-gradient(circle_at_top_right,rgba(255,128,0,0.35),transparent_45%),linear-gradient(135deg,#0f0f0f,#040404)]">
+          <div className="liquid-glass rounded-3xl p-6">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-xs uppercase tracking-wider text-remembra-text-muted mb-2">AI Workspace</p>
@@ -565,7 +568,7 @@ export function AIStudio() {
                 <button
                   key={entry.id}
                   onClick={() => goToTools(entry.id)}
-                  className="rounded-2xl bg-remembra-bg-secondary/75 border border-white/10 p-4 text-left hover:border-white/25 transition-colors"
+                  className="glass-card rounded-2xl p-4 text-left"
                 >
                   <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3" style={{ backgroundColor: `${entry.color}20` }}>
                     <Icon size={18} style={{ color: entry.color }} />
