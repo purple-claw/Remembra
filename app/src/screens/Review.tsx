@@ -67,6 +67,8 @@ export function Review() {
   const [reviewedItems, setReviewedItems] = useState<MemoryItem[]>([]);
   const [persistSaved, setPersistSaved] = useState(false);
   const [persistSaving, setPersistSaving] = useState(false);
+  const [persistAutoSaveFailed, setPersistAutoSaveFailed] = useState(false);
+  const autoSaveAttemptedRef = useRef(false);
 
   const currentItem = reviewQueue[currentReviewIndex];
   const progress = reviewQueue.length > 0 ? (currentReviewIndex / reviewQueue.length) * 100 : 0;
@@ -129,6 +131,26 @@ export function Review() {
     toast('Skipped. We will review it later.');
     nextReviewItem();
   };
+
+  // Auto-save to Persist when the session completes
+  useEffect(() => {
+    if (currentItem || reviewedItems.length === 0 || autoSaveAttemptedRef.current) return;
+    autoSaveAttemptedRef.current = true;
+    setPersistSaving(true);
+    setPersistAutoSaveFailed(false);
+    saveSession(reviewedItems, categories)
+      .then(() => {
+        setPersistSaved(true);
+        toast.success('Session archived to Persist!');
+      })
+      .catch((err) => {
+        console.error('[Persist] auto-save failed', err);
+        setPersistAutoSaveFailed(true);
+        toast.error('Failed to archive session');
+      })
+      .finally(() => setPersistSaving(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentItem]);
 
   const handleCopy = () => {
     if (!currentItem) return;
@@ -197,50 +219,41 @@ export function Review() {
             </div>
           </div>
 
-          {/* ── Persist prompt ── */}
-          {!persistSaved ? (
-            <div className="mb-4 rounded-2xl border border-remembra-accent-primary/20 bg-remembra-accent-primary/5 p-4">
-              <p className="text-sm text-remembra-text-secondary mb-3">
-                Save a compressed snapshot of this session to your <span className="text-remembra-accent-primary font-medium">Persist</span> archive?
-              </p>
-              <div className="flex gap-2">
-                <button
-                  disabled={persistSaving}
-                  onClick={async () => {
-                    if (reviewedItems.length === 0) { setPersistSaved(true); return; }
-                    setPersistSaving(true);
-                    try {
-                      await saveSession(reviewedItems, categories);
-                      setPersistSaved(true);
-                      toast.success('Session archived to Persist!');
-                    } catch {
-                      toast.error('Failed to save to Persist.');
-                    } finally {
-                      setPersistSaving(false);
-                    }
-                  }}
-                  className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-remembra-accent-primary/20 border border-remembra-accent-primary/30 py-2.5 text-sm font-medium text-remembra-accent-primary disabled:opacity-50"
-                >
-                  {persistSaving ? (
-                    <span className="animate-spin text-xs">⏳</span>
-                  ) : (
-                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></svg>
-                  )}
-                  Save to Persist
-                </button>
-                <button
-                  onClick={() => setPersistSaved(true)}
-                  className="px-4 rounded-xl border border-white/10 text-sm text-remembra-text-muted"
-                >
-                  Skip
-                </button>
-              </div>
+          {/* ── Persist status ── */}
+          {persistSaving ? (
+            <div className="mb-4 rounded-2xl border border-remembra-accent-primary/20 bg-remembra-accent-primary/5 p-3 flex items-center gap-2 text-sm text-remembra-text-secondary">
+              <span className="animate-spin">⏳</span>
+              Archiving session to Persist…
             </div>
-          ) : (
+          ) : persistSaved ? (
             <div className="mb-4 rounded-2xl border border-remembra-success/20 bg-remembra-success/5 p-3 text-center text-sm text-remembra-success">
               ✓ Archived to Persist
             </div>
-          )}
+          ) : persistAutoSaveFailed ? (
+            <div className="mb-4 rounded-2xl border border-orange-500/20 bg-orange-500/5 p-4">
+              <p className="text-sm text-orange-400 mb-3">Auto-archive failed. Retry?</p>
+              <button
+                onClick={async () => {
+                  if (reviewedItems.length === 0) return;
+                  setPersistSaving(true);
+                  setPersistAutoSaveFailed(false);
+                  try {
+                    await saveSession(reviewedItems, categories);
+                    setPersistSaved(true);
+                    toast.success('Session archived to Persist!');
+                  } catch {
+                    setPersistAutoSaveFailed(true);
+                    toast.error('Failed to archive session.');
+                  } finally {
+                    setPersistSaving(false);
+                  }
+                }}
+                className="w-full flex items-center justify-center gap-2 rounded-xl bg-orange-500/20 border border-orange-500/30 py-2.5 text-sm font-medium text-orange-400"
+              >
+                Retry Archive
+              </button>
+            </div>
+          ) : null}
 
           <div className="flex gap-2">
             <Button onClick={() => setScreen('dashboard')} className="flex-1 gradient-primary py-5 rounded-2xl text-white">
@@ -459,7 +472,7 @@ export function Review() {
             className="w-full py-6 rounded-2xl text-white font-semibold text-base bg-gradient-to-r from-green-500 to-lime-500"
           >
             <Eye size={20} className="mr-2" />
-            I Reviewed This
+            Complete Review
           </Button>
         ) : (
           <div className="space-y-3">
@@ -477,7 +490,7 @@ export function Review() {
                 className="rounded-2xl border-2 border-green-500/30 bg-green-500/10 py-4 text-center"
               >
                 <p className="text-sm font-semibold text-green-400">Got It</p>
-                <p className="text-xs text-green-300/70 mt-1">Advance stage</p>
+                <p className="text-xs text-green-300/70 mt-1">Next Stage</p>
               </button>
             </div>
           </div>

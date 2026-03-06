@@ -19,7 +19,8 @@ import {
   Check,
   Play,
   Loader2,
-  StickyNote
+  StickyNote,
+  Trash2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -35,7 +36,7 @@ interface ItemDetailProps {
 }
 
 export function ItemDetail({ item, onClose }: ItemDetailProps) {
-  const { getCategoryById, updateMemoryItem, startReviewSession } = useStore();
+  const { getCategoryById, updateMemoryItem, startReviewSession, deleteMemoryItem } = useStore();
   const category = getCategoryById(item.category_id);
   
   const [activeTab, setActiveTab] = useState<'content' | 'summary' | 'flowchart' | 'notes'>('content');
@@ -44,6 +45,8 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   
   // AI-generated content states
   const [aiSummary, setAiSummary] = useState(item.ai_summary || '');
@@ -167,6 +170,36 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
               <Play size={14} />
               Review
             </Button>
+
+            <button
+              onClick={() => {
+                if (!confirmDelete) {
+                  setConfirmDelete(true);
+                  setTimeout(() => setConfirmDelete(false), 3000);
+                  return;
+                }
+                setIsDeleting(true);
+                deleteMemoryItem(item.id)
+                  .then(() => {
+                    toast.success('Item deleted');
+                    onClose();
+                  })
+                  .catch(() => toast.error('Failed to delete'))
+                  .finally(() => setIsDeleting(false));
+              }}
+              disabled={isDeleting}
+              className={`p-2 rounded-xl border transition-colors ${
+                confirmDelete
+                  ? 'border-red-500/40 bg-red-500/15 text-red-400'
+                  : 'border-white/10 bg-white/[0.04] text-remembra-text-muted hover:text-red-400 hover:border-red-500/30'
+              }`}
+              title={confirmDelete ? 'Tap again to confirm' : 'Delete item'}
+            >
+              {isDeleting
+                ? <Loader2 size={16} className="animate-spin" />
+                : <Trash2 size={16} />
+              }
+            </button>
           </div>
         </header>
 

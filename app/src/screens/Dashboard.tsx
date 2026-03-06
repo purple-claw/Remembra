@@ -331,7 +331,7 @@ export function Dashboard() {
                 </div>
                 <h3 className="mb-2 text-lg font-semibold text-remembra-text-primary">Get Started</h3>
                 <p className="mb-5 text-sm text-remembra-text-muted leading-relaxed">
-                  Create your first memory item to begin your learning journey.
+                  Create your first Review to begin your learning.
                 </p>
                 <Button onClick={() => setScreen('create')} className="gradient-primary text-white px-6">
                   <Plus size={16} className="mr-2" />

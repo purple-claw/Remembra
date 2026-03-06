@@ -10,12 +10,15 @@ import {
   CheckCircle2,
   BookOpen,
   Archive,
-  Sparkles
+  Sparkles,
+  Loader2
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ItemDetail } from '@/components/ItemDetail';
+import { saveSession } from '@/services/persistService';
+import { toast } from 'sonner';
 
 const INITIAL_RENDER_COUNT = 36;
 const RENDER_INCREMENT = 24;
@@ -32,6 +35,21 @@ export function Library() {
   const [selectedCategory, setSelectedCategory] = useState<string | 'all'>('all');
   const [selectedItem, setSelectedItem] = useState<MemoryItem | null>(null);
   const [visibleCount, setVisibleCount] = useState(INITIAL_RENDER_COUNT);
+  const [persistingItemId, setPersistingItemId] = useState<string | null>(null);
+
+  const handlePersistItem = async (e: React.MouseEvent, item: MemoryItem) => {
+    e.stopPropagation();
+    if (persistingItemId) return;
+    setPersistingItemId(item.id);
+    try {
+      await saveSession([item], categories, item.title);
+      toast.success('Saved to Persist');
+    } catch {
+      toast.error('Failed to save to Persist');
+    } finally {
+      setPersistingItemId(null);
+    }
+  };
 
   const deferredSearch = useDeferredValue(searchQuery);
   const normalizedSearch = deferredSearch.trim().toLowerCase();
@@ -117,7 +135,7 @@ export function Library() {
       {/* Fixed Header */}
       <header className="flex-shrink-0 px-4 sm:px-5 safe-top pb-4 bg-black border-b border-white/5">
         <h1 className="text-2xl font-bold text-remembra-text-primary mb-1">Library</h1>
-        <p className="text-sm text-remembra-text-muted mb-4">Your learning materials</p>
+        <p className="text-sm text-remembra-text-muted mb-4">Store 4 Reviews</p>
 
         {/* Search Bar */}
         <div className="relative">
@@ -252,9 +270,9 @@ export function Library() {
                     <h3 className="text-sm font-semibold text-remembra-text-primary truncate mb-1">
                       {item.title}
                     </h3>
-                    <p className="text-xs text-remembra-text-muted line-clamp-1 mb-2">
+                    {/* <p className="text-xs text-remembra-text-muted line-clamp-1 mb-2">
                       {item.content.slice(0, 80)}...
-                    </p>
+                    </p> */}
                     <div className="flex items-center gap-2">
                       <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium ${getStatusColor(item.status)}`}>
                         <StatusIcon size={10} />
@@ -265,6 +283,18 @@ export function Library() {
                       </span>
                     </div>
                   </div>
+
+                  {/* Archive to Persist */}
+                  <button
+                    onClick={(e) => handlePersistItem(e, item)}
+                    disabled={persistingItemId === item.id}
+                    title="Save to Persist"
+                    className="w-8 h-8 rounded-lg border border-white/10 bg-white/[0.04] flex items-center justify-center text-remembra-text-muted hover:text-remembra-accent-primary hover:border-remembra-accent-primary/30 transition-colors shrink-0 disabled:opacity-50"
+                  >
+                    {persistingItemId === item.id
+                      ? <Loader2 size={13} className="animate-spin" />
+                      : <Archive size={13} />}
+                  </button>
                 </div>
               );
             }
@@ -295,21 +325,34 @@ export function Library() {
                   {item.title}
                 </h3>
                 
-                <p className="text-xs text-remembra-text-muted line-clamp-2 mb-3 leading-relaxed">
+                {/* <p className="text-xs text-remembra-text-muted line-clamp-2 mb-3 leading-relaxed">
                   {item.content.slice(0, 90)}...
-                </p>
+                </p> */}
                 
                 <div className="flex items-center justify-between text-[10px]">
                   <span className="text-remembra-text-muted font-medium">
                     {getStageDayLabel(item.review_stage, item.status)}
                   </span>
-                  
-                  {item.ai_summary && (
-                    <Badge variant="secondary" className="text-[9px] px-1.5 py-0.5 bg-remembra-accent-primary/10 text-remembra-accent-primary border-0">
-                      <Sparkles size={9} className="mr-0.5" />
-                      AI
-                    </Badge>
-                  )}
+
+                  <div className="flex items-center gap-1.5">
+                    {item.ai_summary && (
+                      <Badge variant="secondary" className="text-[9px] px-1.5 py-0.5 bg-remembra-accent-primary/10 text-remembra-accent-primary border-0">
+                        <Sparkles size={9} className="mr-0.5" />
+                        AI
+                      </Badge>
+                    )}
+                    {/* Archive to Persist */}
+                    <button
+                      onClick={(e) => handlePersistItem(e, item)}
+                      disabled={persistingItemId === item.id}
+                      title="Save to Persist"
+                      className="w-6 h-6 rounded-md border border-white/10 bg-white/[0.04] flex items-center justify-center text-remembra-text-muted hover:text-remembra-accent-primary hover:border-remembra-accent-primary/30 transition-colors disabled:opacity-50"
+                    >
+                      {persistingItemId === item.id
+                        ? <Loader2 size={10} className="animate-spin" />
+                        : <Archive size={10} />}
+                    </button>
+                  </div>
                 </div>
               </div>
             );
@@ -372,7 +415,7 @@ export function Library() {
             }}
           >
             <Brain size={22} className="mr-2" />
-            Quick Review ({activeFilteredCount})
+             Review ({activeFilteredCount})
           </Button>
         </div>
       )}

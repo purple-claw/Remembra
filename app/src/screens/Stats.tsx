@@ -186,7 +186,7 @@ export function Stats() {
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
             <h1 className="text-2xl font-bold text-remembra-text-primary">Insights</h1>
-            <p className="text-sm text-remembra-text-muted mt-0.5">Progress signals, clearly</p>
+            <p className="text-sm text-remembra-text-muted mt-0.5">See, You got this Far.</p>
           </div>
           <button
             onClick={() => setScreen('profile')}
@@ -240,10 +240,10 @@ export function Stats() {
                   </span>
                   <div className="flex gap-2 text-xs text-remembra-text-muted">
                     <span className="rounded-full border border-white/8 bg-white/[0.03] px-2.5 py-1">
-                      {computedStats.totalReviews} total
+                      {computedStats.totalReviews} Total
                     </span>
                     <span className="rounded-full border border-white/8 bg-white/[0.03] px-2.5 py-1">
-                      {computedStats.avgDailyReviews}/day avg
+                      {computedStats.avgDailyReviews}/Day avg
                     </span>
                   </div>
                 </div>
@@ -320,7 +320,7 @@ export function Stats() {
             {/* Activity Heatmap — horizontally scrollable on mobile */}
             <section className="liquid-glass-soft rounded-3xl p-5">
               <div className="mb-4 flex items-center justify-between">
-                <h3 className="text-base font-semibold text-remembra-text-primary">Activity Heatmap</h3>
+                <h3 className="text-base font-semibold text-remembra-text-primary">Activity</h3>
                 <span className="text-xs text-remembra-text-muted">Last 12 weeks</span>
               </div>
               <div className="overflow-x-auto -mx-1 px-1 scrollbar-hide">
@@ -439,7 +439,7 @@ export function Stats() {
             {/* Category distribution */}
             <section className="liquid-glass-soft rounded-3xl p-5">
               <h3 className="text-base font-semibold text-remembra-text-primary">Category Distribution</h3>
-              <p className="text-xs text-remembra-text-muted mb-5 mt-0.5">Memory items by category</p>
+              <p className="text-xs text-remembra-text-muted mb-5 mt-0.5">Reviews by category</p>
               {computedStats.categoryBreakdown.length > 0 ? (
                 <div className="flex flex-col sm:flex-row gap-5 items-start">
                   <div className="w-full sm:w-[220px] flex-shrink-0 h-44">
