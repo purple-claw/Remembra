@@ -1,5 +1,5 @@
-// Database Types for Supabase
-// These types are manually aligned with app/supabase/schema.sql
+// Legacy relational schema types retained for compatibility tooling.
+// Runtime data is now served from Firebase.
 
 export type Json =
   | string

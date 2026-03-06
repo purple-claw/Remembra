@@ -1,22 +1,21 @@
-import { useState, useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useStore } from '@/store/useStore';
-import { 
-  Target, 
-  Flame, 
+import {
+  Target,
+  Flame,
   Award,
   ChevronRight,
   Brain,
   Clock,
   Settings,
-  TrendingUp,
   Calendar as CalendarIcon,
-  Zap
+  Zap,
 } from 'lucide-react';
-import { 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
+import {
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
   ResponsiveContainer,
   PieChart,
   Pie,
@@ -24,68 +23,52 @@ import {
   BarChart,
   Bar,
   AreaChart,
-  Area
+  Area,
 } from 'recharts';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
+type StatsTab = 'overview' | 'analytics' | 'achievements';
+
 export function Stats() {
   const { profile, memoryItems, categories, achievements, setScreen } = useStore();
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState<StatsTab>('overview');
 
-  // Compute real stats from review history
   const computedStats = useMemo(() => {
     const now = new Date();
     const thirtyDaysAgo = new Date(now);
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    
-    // Collect all review history entries
-    const allReviews = memoryItems.flatMap(item => 
-      (item.review_history || []).map(review => ({
+
+    const allReviews = memoryItems.flatMap((item) =>
+      (item.review_history || []).map((review) => ({
         ...review,
         itemId: item.id,
         itemTitle: item.title,
-        categoryId: item.category_id
-      }))
+        categoryId: item.category_id,
+      })),
     );
 
-    // Reviews in last 30 days
-    const recentReviews = allReviews.filter(r => 
-      new Date(r.date) >= thirtyDaysAgo
-    );
+    const recentReviews = allReviews.filter((review) => new Date(review.date) >= thirtyDaysAgo);
+    const successfulReviews = recentReviews.filter((review) => review.performance === 'good' || review.performance === 'easy').length;
+    const accuracy = recentReviews.length > 0 ? Math.round((successfulReviews / recentReviews.length) * 100) : 0;
 
-    // Calculate accuracy from performance
-    const goodReviews = recentReviews.filter(r => 
-      r.performance === 'good' || r.performance === 'easy'
-    ).length;
-    const accuracy = recentReviews.length > 0 
-      ? Math.round((goodReviews / recentReviews.length) * 100) 
-      : 0;
-
-    // Calculate total study time (in hours)
-    const totalSeconds = recentReviews.reduce((sum, r) => 
-      sum + (r.time_spent_seconds || 0), 0
-    );
-    const studyHours = Math.round(totalSeconds / 3600 * 10) / 10;
+    const totalSeconds = recentReviews.reduce((sum, review) => sum + (review.time_spent_seconds || 0), 0);
+    const studyHours = Math.round((totalSeconds / 3600) * 10) / 10;
     const studyMinutes = Math.round(totalSeconds / 60);
 
-    // Generate heatmap data for last 84 days (12 weeks)
-    const heatmapData = [];
     const reviewsByDate = new Map<string, number>();
-    allReviews.forEach(r => {
-      const date = r.date;
-      reviewsByDate.set(date, (reviewsByDate.get(date) || 0) + 1);
+    allReviews.forEach((review) => {
+      reviewsByDate.set(review.date, (reviewsByDate.get(review.date) || 0) + 1);
     });
-    
-    // Find max reviews per day for scaling
+
     const maxReviews = Math.max(1, ...Array.from(reviewsByDate.values()));
-    
+
+    const heatmapData = [];
     for (let i = 83; i >= 0; i--) {
       const date = new Date(now);
       date.setDate(date.getDate() - i);
       const dateStr = date.toISOString().split('T')[0];
       const count = reviewsByDate.get(dateStr) || 0;
-      
-      // Calculate level based on review count
+
       let level = 0;
       if (count > 0) {
         const ratio = count / maxReviews;
@@ -94,68 +77,74 @@ export function Stats() {
         else if (ratio >= 0.25) level = 2;
         else level = 1;
       }
-      
-      heatmapData.push({ 
-        date: dateStr, 
-        count, 
+
+      heatmapData.push({
+        date: dateStr,
+        count,
         level,
-        dayOfWeek: date.toLocaleDateString('en-US', { weekday: 'short' })
       });
     }
 
-    // Weekly activity (last 7 days)
     const dailyActivity = [];
     for (let i = 6; i >= 0; i--) {
       const date = new Date(now);
       date.setDate(date.getDate() - i);
       const dateStr = date.toISOString().split('T')[0];
-      const count = reviewsByDate.get(dateStr) || 0;
       dailyActivity.push({
         day: date.toLocaleDateString('en-US', { weekday: 'short' }),
         date: dateStr,
-        count
+        count: reviewsByDate.get(dateStr) || 0,
       });
     }
 
-    // Items per category (for pie chart)
-    const categoryBreakdown = categories.map(c => ({
-      name: c.name,
-      value: memoryItems.filter(i => i.category_id === c.id).length,
-      color: c.color
-    })).filter(c => c.value > 0);
+    const categoryBreakdown = categories
+      .map((category) => ({
+        name: category.name,
+        value: memoryItems.filter((item) => item.category_id === category.id).length,
+        color: category.color,
+      }))
+      .filter((entry) => entry.value > 0);
 
-    // Review progress over time (cumulative mastered items by date)
-    const progressData: { date: string; mastered: number; total: number }[] = [];
-    const sortedItems = [...memoryItems].sort((a, b) => 
-      new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    const sortedItems = [...memoryItems].sort(
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
     );
-    
     let masteredCount = 0;
-    const seenDates = new Set<string>();
-    sortedItems.forEach(item => {
-      const date = new Date(item.created_at).toISOString().split('T')[0];
-      if (item.status === 'completed') masteredCount++;
-      if (!seenDates.has(date)) {
-        seenDates.add(date);
-        progressData.push({ date, mastered: masteredCount, total: sortedItems.indexOf(item) + 1 });
-      }
+    const rawProgressData = sortedItems.map((item, index) => {
+      if (item.status === 'completed') masteredCount += 1;
+      return {
+        date: new Date(item.created_at).toISOString().split('T')[0],
+        mastered: masteredCount,
+        total: index + 1,
+      };
     });
 
-    // Recent week stats comparison
+    const progressData = rawProgressData.reduce<Array<{ date: string; mastered: number; total: number }>>((acc, entry) => {
+      const last = acc[acc.length - 1];
+      if (last && last.date === entry.date) {
+        last.mastered = entry.mastered;
+        last.total = entry.total;
+        return acc;
+      }
+      acc.push(entry);
+      return acc;
+    }, []);
+
     const lastWeekStart = new Date(now);
     lastWeekStart.setDate(lastWeekStart.getDate() - 7);
     const twoWeeksAgo = new Date(now);
     twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
-    
-    const thisWeekReviews = allReviews.filter(r => new Date(r.date) >= lastWeekStart).length;
-    const lastWeekReviews = allReviews.filter(r => {
-      const d = new Date(r.date);
-      return d >= twoWeeksAgo && d < lastWeekStart;
+
+    const thisWeekReviews = allReviews.filter((review) => new Date(review.date) >= lastWeekStart).length;
+    const lastWeekReviews = allReviews.filter((review) => {
+      const reviewDate = new Date(review.date);
+      return reviewDate >= twoWeeksAgo && reviewDate < lastWeekStart;
     }).length;
-    
-    const weeklyChange = lastWeekReviews > 0 
+
+    const weeklyChange = lastWeekReviews > 0
       ? Math.round(((thisWeekReviews - lastWeekReviews) / lastWeekReviews) * 100)
-      : thisWeekReviews > 0 ? 100 : 0;
+      : thisWeekReviews > 0
+        ? 100
+        : 0;
 
     return {
       accuracy,
@@ -164,462 +153,419 @@ export function Stats() {
       heatmapData,
       dailyActivity,
       categoryBreakdown,
-      progressData: progressData.slice(-30), // Last 30 data points
+      progressData: progressData.slice(-40),
       totalReviews: allReviews.length,
       recentReviews: recentReviews.length,
       weeklyChange,
       thisWeekReviews,
-      avgDailyReviews: Math.round(recentReviews.length / 30 * 10) / 10
+      avgDailyReviews: Math.round((recentReviews.length / 30) * 10) / 10,
     };
   }, [memoryItems, categories]);
 
-  const masteredItems = memoryItems.filter(i => i.status === 'completed').length;
-  const learningItems = memoryItems.filter(i => i.status === 'active').length;
-  const archivedItems = memoryItems.filter(i => i.status === 'archived').length;
+  const masteredItems = memoryItems.filter((item) => item.status === 'completed').length;
+  const learningItems = memoryItems.filter((item) => item.status === 'active').length;
+  const archivedItems = memoryItems.filter((item) => item.status === 'archived').length;
+  const unlockedAchievements = achievements.filter((achievement) => achievement.unlocked_at);
 
   const getHeatmapColor = (level: number) => {
     const colors = [
       'bg-remembra-bg-tertiary',
-      'bg-remembra-accent-primary/20',
-      'bg-remembra-accent-primary/40',
-      'bg-remembra-accent-primary/60',
+      'bg-remembra-accent-primary/25',
+      'bg-remembra-accent-primary/45',
+      'bg-remembra-accent-primary/65',
       'bg-remembra-accent-primary',
     ];
     return colors[level];
   };
 
-  const formatStudyTime = () => {
-    if (computedStats.studyMinutes < 60) {
-      return `${computedStats.studyMinutes}m`;
-    }
-    return `${computedStats.studyHours}h`;
-  };
+  const formatStudyTime = () => (computedStats.studyMinutes < 60 ? `${computedStats.studyMinutes}m` : `${computedStats.studyHours}h`);
 
   return (
-    <div className="fixed inset-0 bg-black flex flex-col" style={{ height: '100vh', maxHeight: '100vh' }}>
-      {/* Fixed Header */}
-      <header className="flex-shrink-0 px-4 sm:px-5 safe-top pb-4 bg-black border-b border-white/5">
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-remembra-text-primary mb-1">Insights</h1>
-            <p className="text-sm text-remembra-text-muted">Track your learning progress</p>
+    <div className="h-[100dvh] min-h-[100dvh] w-full overflow-hidden bg-black flex flex-col">
+      <header className="flex-shrink-0 px-4 sm:px-5 safe-top pb-4 bg-black/80 border-b border-white/[0.06] backdrop-blur-xl">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-remembra-text-primary">Insights</h1>
+            <p className="text-sm text-remembra-text-muted mt-0.5">Progress signals, clearly</p>
           </div>
           <button
             onClick={() => setScreen('profile')}
-            className="w-10 h-10 rounded-xl bg-remembra-bg-secondary border border-white/5 flex items-center justify-center active:bg-white/10 transition-colors"
+            className="h-9 w-9 rounded-xl border border-white/10 bg-white/[0.04] flex items-center justify-center transition-colors hover:bg-white/[0.08] flex-shrink-0"
             style={{ WebkitTapHighlightColor: 'transparent' }}
+            aria-label="Open settings"
           >
-            <Settings size={20} className="text-remembra-text-muted" />
+            <Settings size={18} className="text-remembra-text-muted" />
           </button>
         </div>
       </header>
 
-      {/* Scrollable Content */}
-      <div 
-        className="flex-1 overflow-y-auto overscroll-contain px-4 sm:px-5 py-4"
+      <div
+        data-nav-scroll="true"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 sm:px-5 py-4 custom-scrollbar"
         style={{ WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}
       >
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="w-full grid grid-cols-3 bg-remembra-bg-secondary mb-6">
-          <TabsTrigger 
-            value="overview" 
-            className="data-[state=active]:bg-remembra-accent-primary data-[state=active]:text-white"
-          >
-            Overview
-          </TabsTrigger>
-          <TabsTrigger 
-            value="charts"
-            className="data-[state=active]:bg-remembra-accent-primary data-[state=active]:text-white"
-          >
-            Analytics
-          </TabsTrigger>
-          <TabsTrigger 
-            value="achievements"
-            className="data-[state=active]:bg-remembra-accent-primary data-[state=active]:text-white"
-          >
-            Badges
-          </TabsTrigger>
-        </TabsList>
+        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as StatsTab)} className="mx-auto w-full max-w-6xl safe-bottom-nav space-y-5">
+          {/* Tab bar */}
+          <TabsList className="grid h-auto w-full grid-cols-3 rounded-2xl border border-white/[0.08] bg-white/[0.03] p-1">
+            <TabsTrigger value="overview" className="rounded-xl py-2.5 text-sm font-medium data-[state=active]:bg-remembra-accent-primary data-[state=active]:text-white data-[state=active]:shadow-none">
+              Overview
+            </TabsTrigger>
+            <TabsTrigger value="analytics" className="rounded-xl py-2.5 text-sm font-medium data-[state=active]:bg-remembra-accent-primary data-[state=active]:text-white data-[state=active]:shadow-none">
+              Analytics
+            </TabsTrigger>
+            <TabsTrigger value="achievements" className="rounded-xl py-2.5 text-sm font-medium data-[state=active]:bg-remembra-accent-primary data-[state=active]:text-white data-[state=active]:shadow-none">
+              Badges
+            </TabsTrigger>
+          </TabsList>
 
-        <TabsContent value="overview" className="mt-0 space-y-6">
-          {/* Summary Stats Row */}
-          <div className="bg-gradient-to-r from-remembra-accent-primary/20 to-remembra-accent-secondary/20 rounded-2xl p-4 border border-remembra-accent-primary/20">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-xl bg-remembra-accent-primary/30 flex items-center justify-center">
-                  <TrendingUp size={24} className="text-remembra-accent-primary" />
-                </div>
+          {/* ── OVERVIEW ── */}
+          <TabsContent value="overview" className="mt-0 space-y-5">
+            {/* Weekly hero */}
+            <section className="liquid-glass rounded-3xl p-5 sm:p-6">
+              <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div>
-                  <p className="text-sm text-remembra-text-muted">This Week</p>
-                  <p className="text-2xl font-bold text-remembra-text-primary">{computedStats.thisWeekReviews} reviews</p>
+                  <p className="text-xs uppercase tracking-wider text-remembra-text-muted mb-1">This Week</p>
+                  <p className="text-4xl font-bold text-remembra-text-primary leading-none">{computedStats.thisWeekReviews}</p>
+                  <p className="text-sm text-remembra-text-secondary mt-1.5">reviews completed</p>
                 </div>
-              </div>
-              {computedStats.weeklyChange !== 0 && (
-                <div className={`px-3 py-1.5 rounded-full text-sm font-medium ${
-                  computedStats.weeklyChange > 0 
-                    ? 'bg-remembra-success/20 text-remembra-success' 
-                    : 'bg-remembra-error/20 text-remembra-error'
-                }`}>
-                  {computedStats.weeklyChange > 0 ? '+' : ''}{computedStats.weeklyChange}%
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-remembra-bg-secondary rounded-2xl p-4 border border-white/5">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center">
-                  <Flame size={16} className="text-orange-500" />
-                </div>
-                <span className="text-xs text-remembra-text-muted">Current Streak</span>
-              </div>
-              <p className="text-2xl font-bold text-remembra-text-primary">
-                {profile?.streak_count || 0} days
-              </p>
-              <p className="text-xs text-remembra-text-muted mt-1">
-                {computedStats.totalReviews} total reviews
-              </p>
-            </div>
-
-            <div className="bg-remembra-bg-secondary rounded-2xl p-4 border border-white/5">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-8 h-8 rounded-lg bg-remembra-accent-primary/20 flex items-center justify-center">
-                  <Brain size={16} className="text-remembra-accent-primary" />
-                </div>
-                <span className="text-xs text-remembra-text-muted">Items Mastered</span>
-              </div>
-              <p className="text-2xl font-bold text-remembra-text-primary">
-                {masteredItems}
-              </p>
-              <p className="text-xs text-remembra-text-muted mt-1">
-                of {memoryItems.length} total
-              </p>
-            </div>
-
-            <div className="bg-remembra-bg-secondary rounded-2xl p-4 border border-white/5">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-8 h-8 rounded-lg bg-remembra-success/20 flex items-center justify-center">
-                  <Target size={16} className="text-remembra-success" />
-                </div>
-                <span className="text-xs text-remembra-text-muted">Accuracy</span>
-              </div>
-              <p className="text-2xl font-bold text-remembra-text-primary">
-                {computedStats.accuracy}%
-              </p>
-              <p className="text-xs text-remembra-text-muted mt-1">
-                Last 30 days
-              </p>
-            </div>
-
-            <div className="bg-remembra-bg-secondary rounded-2xl p-4 border border-white/5">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-8 h-8 rounded-lg bg-remembra-warning/20 flex items-center justify-center">
-                  <Clock size={16} className="text-remembra-warning" />
-                </div>
-                <span className="text-xs text-remembra-text-muted">Study Time</span>
-              </div>
-              <p className="text-2xl font-bold text-remembra-text-primary">
-                {formatStudyTime()}
-              </p>
-              <p className="text-xs text-remembra-text-muted mt-1">
-                Last 30 days
-              </p>
-            </div>
-          </div>
-
-          {/* Learning Status */}
-          <div className="bg-remembra-bg-secondary rounded-2xl p-5 border border-white/5">
-            <h3 className="font-semibold text-remembra-text-primary mb-4">Learning Status</h3>
-            <div className="flex gap-3">
-              <div className="flex-1 bg-remembra-bg-tertiary rounded-xl p-3 text-center">
-                <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center mx-auto mb-2">
-                  <Zap size={16} className="text-blue-500" />
-                </div>
-                <p className="text-lg font-bold text-remembra-text-primary">{learningItems}</p>
-                <p className="text-[10px] text-remembra-text-muted">Learning</p>
-              </div>
-              <div className="flex-1 bg-remembra-bg-tertiary rounded-xl p-3 text-center">
-                <div className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center mx-auto mb-2">
-                  <CalendarIcon size={16} className="text-purple-500" />
-                </div>
-                <p className="text-lg font-bold text-remembra-text-primary">{archivedItems}</p>
-                <p className="text-[10px] text-remembra-text-muted">Archived</p>
-              </div>
-              <div className="flex-1 bg-remembra-bg-tertiary rounded-xl p-3 text-center">
-                <div className="w-8 h-8 rounded-full bg-remembra-success/20 flex items-center justify-center mx-auto mb-2">
-                  <Award size={16} className="text-remembra-success" />
-                </div>
-                <p className="text-lg font-bold text-remembra-text-primary">{masteredItems}</p>
-                <p className="text-[10px] text-remembra-text-muted">Mastered</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-remembra-bg-secondary rounded-2xl p-5 border border-white/5">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-remembra-text-primary">Activity Heatmap</h3>
-              <span className="text-xs text-remembra-text-muted">Last 12 weeks</span>
-            </div>
-            
-            <div className="grid grid-cols-12 gap-1">
-              {computedStats.heatmapData.map((day, index) => (
-                <div
-                  key={index}
-                  className={`aspect-square rounded-sm ${getHeatmapColor(day.level)} cursor-default`}
-                  title={`${day.date}: ${day.count} reviews`}
-                />
-              ))}
-            </div>
-            
-            <div className="flex items-center justify-end gap-2 mt-3">
-              <span className="text-xs text-remembra-text-muted">Less</span>
-              {[0, 1, 2, 3, 4].map(level => (
-                <div 
-                  key={level}
-                  className={`w-3 h-3 rounded-sm ${getHeatmapColor(level)}`}
-                />
-              ))}
-              <span className="text-xs text-remembra-text-muted">More</span>
-            </div>
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-remembra-text-primary">Recent Badges</h3>
-              <button 
-                onClick={() => setActiveTab('achievements')}
-                className="text-sm text-remembra-accent-primary hover:text-remembra-accent-secondary transition-colors flex items-center"
-              >
-                See all
-                <ChevronRight size={16} />
-              </button>
-            </div>
-            
-            <div className="flex gap-3 overflow-x-auto scrollbar-hide pb-2">
-              {achievements.filter(a => a.unlocked_at).slice(0, 3).map(achievement => (
-                <div 
-                  key={achievement.id}
-                  className="flex-shrink-0 w-24 bg-remembra-bg-secondary rounded-2xl p-4 border border-white/5 text-center"
-                >
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-remembra-accent-primary to-remembra-accent-secondary flex items-center justify-center mx-auto mb-2">
-                    <Award size={24} className="text-white" />
+                <div className="flex flex-col items-end gap-2">
+                  <span className={`rounded-full px-3 py-1.5 text-sm font-semibold ${
+                    computedStats.weeklyChange > 0
+                      ? 'bg-remembra-success/15 text-remembra-success'
+                      : computedStats.weeklyChange < 0
+                        ? 'bg-remembra-danger/15 text-remembra-danger'
+                        : 'bg-white/8 text-remembra-text-secondary'
+                  }`}>
+                    {computedStats.weeklyChange > 0 ? '+' : ''}{computedStats.weeklyChange}% vs last week
+                  </span>
+                  <div className="flex gap-2 text-xs text-remembra-text-muted">
+                    <span className="rounded-full border border-white/8 bg-white/[0.03] px-2.5 py-1">
+                      {computedStats.totalReviews} total
+                    </span>
+                    <span className="rounded-full border border-white/8 bg-white/[0.03] px-2.5 py-1">
+                      {computedStats.avgDailyReviews}/day avg
+                    </span>
                   </div>
-                  <p className="text-xs font-medium text-remembra-text-primary truncate">
-                    {achievement.name}
-                  </p>
                 </div>
-              ))}
-              {achievements.filter(a => a.unlocked_at).length === 0 && (
-                <div className="flex-1 text-center py-6">
-                  <p className="text-sm text-remembra-text-muted">Complete reviews to earn badges</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </TabsContent>
+              </div>
+            </section>
 
-        <TabsContent value="charts" className="mt-0 space-y-6">
-          <div className="bg-remembra-bg-secondary rounded-2xl p-5 border border-white/5">
-            <h3 className="font-semibold text-remembra-text-primary mb-4">Learning Progress</h3>
-            <div className="h-48">
-              {computedStats.progressData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={computedStats.progressData}>
-                    <defs>
-                      <linearGradient id="colorMastered" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#FF8000" stopOpacity={0.3}/>
-                        <stop offset="95%" stopColor="#FF8000" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#22222E" />
-                    <XAxis 
-                      dataKey="date" 
-                      stroke="#71717A" 
-                      fontSize={10}
-                      tickLine={false}
-                      tickFormatter={(value) => new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                    />
-                    <YAxis 
-                      stroke="#71717A" 
-                      fontSize={12}
-                      tickLine={false}
-                    />
-                    <Tooltip 
-                      contentStyle={{ 
-                        backgroundColor: '#1A1A24', 
-                        border: '1px solid #22222E',
-                        borderRadius: '12px'
-                      }}
-                      labelStyle={{ color: '#FAFAFA' }}
-                      formatter={(value: number, name: string) => [value, name === 'mastered' ? 'Mastered' : 'Total']}
-                    />
-                    <Area 
-                      type="monotone" 
-                      dataKey="mastered" 
-                      stroke="#FF8000" 
-                      strokeWidth={2}
-                      fillOpacity={1}
-                      fill="url(#colorMastered)"
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="h-full flex items-center justify-center">
-                  <p className="text-sm text-remembra-text-muted">Add items to see progress</p>
+            {/* 4 stat chips */}
+            <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="liquid-glass-soft rounded-2xl p-4">
+                <div className="mb-2 flex items-center gap-2 text-remembra-text-muted">
+                  <Flame size={15} className="text-orange-400" />
+                  <span className="text-xs uppercase tracking-wide">Streak</span>
                 </div>
-              )}
-            </div>
-          </div>
-
-          <div className="bg-remembra-bg-secondary rounded-2xl p-5 border border-white/5">
-            <h3 className="font-semibold text-remembra-text-primary mb-4">Items by Category</h3>
-            <div className="h-48">
-              {computedStats.categoryBreakdown.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={computedStats.categoryBreakdown}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={50}
-                      outerRadius={70}
-                      paddingAngle={5}
-                      dataKey="value"
-                    >
-                      {computedStats.categoryBreakdown.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip 
-                      contentStyle={{ 
-                        backgroundColor: '#1A1A24', 
-                        border: '1px solid #22222E',
-                        borderRadius: '12px'
-                      }}
-                      formatter={(value: number, _name: string, props: any) => [value, props.payload.name]}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="h-full flex items-center justify-center">
-                  <p className="text-sm text-remembra-text-muted">No items yet</p>
+                <p className="text-2xl font-bold text-remembra-text-primary">{profile?.streak_count || 0}</p>
+                <p className="text-xs text-remembra-text-muted mt-0.5">days</p>
+              </div>
+              <div className="liquid-glass-soft rounded-2xl p-4">
+                <div className="mb-2 flex items-center gap-2 text-remembra-text-muted">
+                  <Brain size={15} className="text-remembra-accent-primary" />
+                  <span className="text-xs uppercase tracking-wide">Mastered</span>
                 </div>
-              )}
-            </div>
-            
-            <div className="flex flex-wrap gap-3 mt-4">
-              {computedStats.categoryBreakdown.map((cat) => (
-                <div key={cat.name} className="flex items-center gap-2">
-                  <div 
-                    className="w-3 h-3 rounded-full" 
-                    style={{ backgroundColor: cat.color }}
-                  />
-                  <span className="text-xs text-remembra-text-secondary">{cat.name} ({cat.value})</span>
+                <p className="text-2xl font-bold text-remembra-text-primary">{masteredItems}</p>
+                <p className="text-xs text-remembra-text-muted mt-0.5">items</p>
+              </div>
+              <div className="liquid-glass-soft rounded-2xl p-4">
+                <div className="mb-2 flex items-center gap-2 text-remembra-text-muted">
+                  <Target size={15} className="text-remembra-success" />
+                  <span className="text-xs uppercase tracking-wide">Accuracy</span>
                 </div>
-              ))}
-            </div>
-          </div>
+                <p className="text-2xl font-bold text-remembra-text-primary">{computedStats.accuracy}%</p>
+                <p className="text-xs text-remembra-text-muted mt-0.5">30-day</p>
+              </div>
+              <div className="liquid-glass-soft rounded-2xl p-4">
+                <div className="mb-2 flex items-center gap-2 text-remembra-text-muted">
+                  <Clock size={15} className="text-remembra-warning" />
+                  <span className="text-xs uppercase tracking-wide">Study</span>
+                </div>
+                <p className="text-2xl font-bold text-remembra-text-primary">{formatStudyTime()}</p>
+                <p className="text-xs text-remembra-text-muted mt-0.5">30-day</p>
+              </div>
+            </section>
 
-          <div className="bg-remembra-bg-secondary rounded-2xl p-5 border border-white/5">
-            <h3 className="font-semibold text-remembra-text-primary mb-4">Weekly Activity</h3>
-            <div className="h-48">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={computedStats.dailyActivity}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#22222E" vertical={false} />
-                  <XAxis 
-                    dataKey="day" 
-                    stroke="#71717A" 
-                    fontSize={12}
-                    tickLine={false}
-                  />
-                  <YAxis 
-                    stroke="#71717A" 
-                    fontSize={12}
-                    tickLine={false}
-                    allowDecimals={false}
-                  />
-                  <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: '#1A1A24', 
-                      border: '1px solid #22222E',
-                      borderRadius: '12px'
-                    }}
-                    formatter={(value: number) => [`${value} reviews`, 'Reviews']}
-                  />
-                  <Bar 
-                    dataKey="count" 
-                    fill="#FF8000" 
-                    radius={[4, 4, 0, 0]}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="achievements" className="mt-0 space-y-4">
-          {achievements.map((achievement) => {
-            const isUnlocked = !!achievement.unlocked_at;
-            const progressPercent = (achievement.progress / achievement.max_progress) * 100;
-            
-            return (
-              <div 
-                key={achievement.id}
-                className={`
-                  bg-remembra-bg-secondary rounded-2xl p-4 border transition-all
-                  ${isUnlocked 
-                    ? 'border-remembra-accent-primary/30' 
-                    : 'border-white/5'
-                  }
-                `}
-              >
-                <div className="flex items-center gap-4">
-                  <div className={`
-                    w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0
-                    ${isUnlocked 
-                      ? 'bg-gradient-to-br from-remembra-accent-primary to-remembra-accent-secondary' 
-                      : 'bg-remembra-bg-tertiary'
-                    }
-                  `}>
-                    <Award size={24} className={isUnlocked ? 'text-white' : 'text-remembra-text-muted'} />
-                  </div>
-                  
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <h4 className={`font-semibold ${isUnlocked ? 'text-remembra-text-primary' : 'text-remembra-text-muted'}`}>
-                        {achievement.name}
-                      </h4>
-                      {isUnlocked && (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] bg-remembra-success/20 text-remembra-success">
-                          Unlocked
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-remembra-text-muted mb-2">
-                      {achievement.description}
-                    </p>
-                    
-                    <div className="flex items-center gap-3">
-                      <div className="flex-1 h-2 bg-remembra-bg-tertiary rounded-full overflow-hidden">
-                        <div 
-                          className={`h-full rounded-full transition-all ${
-                            isUnlocked ? 'bg-remembra-success' : 'bg-remembra-accent-primary'
-                          }`}
-                          style={{ width: `${progressPercent}%` }}
-                        />
-                      </div>
-                      <span className="text-xs text-remembra-text-muted">
-                        {achievement.progress}/{achievement.max_progress}
+            {/* Learning status bars */}
+            <section className="liquid-glass-soft rounded-3xl p-5">
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-base font-semibold text-remembra-text-primary">Learning Status</h3>
+                <span className="text-xs text-remembra-text-muted">{memoryItems.length} items total</span>
+              </div>
+              <div className="space-y-4">
+                {[
+                  { label: 'Learning', count: learningItems, color: 'bg-remembra-warning', icon: Zap, iconClass: 'text-remembra-warning' },
+                  { label: 'Mastered', count: masteredItems, color: 'bg-remembra-success', icon: Award, iconClass: 'text-remembra-success' },
+                  { label: 'Archived', count: archivedItems, color: 'bg-remembra-text-muted/60', icon: CalendarIcon, iconClass: 'text-remembra-text-muted' },
+                ].map(({ label, count, color, icon: Icon, iconClass }) => (
+                  <div key={label}>
+                    <div className="mb-1.5 flex items-center justify-between">
+                      <span className="text-sm text-remembra-text-secondary flex items-center gap-2">
+                        <Icon size={14} className={iconClass} />
+                        {label}
                       </span>
+                      <span className="text-sm font-semibold text-remembra-text-primary">{count}</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-black/40 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-700 ${color}`}
+                        style={{ width: `${memoryItems.length ? (count / memoryItems.length) * 100 : 0}%` }}
+                      />
                     </div>
                   </div>
+                ))}
+              </div>
+            </section>
+
+            {/* Activity Heatmap — horizontally scrollable on mobile */}
+            <section className="liquid-glass-soft rounded-3xl p-5">
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-base font-semibold text-remembra-text-primary">Activity Heatmap</h3>
+                <span className="text-xs text-remembra-text-muted">Last 12 weeks</span>
+              </div>
+              <div className="overflow-x-auto -mx-1 px-1 scrollbar-hide">
+                <div className="grid gap-1 min-w-[520px]" style={{ gridTemplateColumns: 'repeat(12, 1fr)' }}>
+                  {computedStats.heatmapData.map((day, index) => (
+                    <div
+                      key={index}
+                      className={`aspect-square rounded-[3px] ${getHeatmapColor(day.level)}`}
+                      title={`${day.date}: ${day.count} reviews`}
+                    />
+                  ))}
                 </div>
               </div>
-            );
-          })}
-        </TabsContent>
-      </Tabs>
+              <div className="mt-3 flex items-center justify-end gap-1.5">
+                <span className="text-[11px] text-remembra-text-muted">Less</span>
+                {[0, 1, 2, 3, 4].map((level) => (
+                  <div key={level} className={`h-3 w-3 rounded-[3px] ${getHeatmapColor(level)}`} />
+                ))}
+                <span className="text-[11px] text-remembra-text-muted">More</span>
+              </div>
+            </section>
+
+            {/* Recent badges */}
+            <section>
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="text-base font-semibold text-remembra-text-primary">Recent Badges</h3>
+                <button
+                  onClick={() => setActiveTab('achievements')}
+                  className="text-sm text-remembra-accent-primary hover:text-remembra-accent-secondary transition-colors flex items-center gap-1"
+                  style={{ WebkitTapHighlightColor: 'transparent' }}
+                >
+                  See all
+                  <ChevronRight size={15} />
+                </button>
+              </div>
+              <div className="flex gap-3 overflow-x-auto scrollbar-hide pb-1">
+                {unlockedAchievements.length > 0 ? unlockedAchievements.slice(0, 5).map((achievement) => (
+                  <div key={achievement.id} className="liquid-glass-soft min-w-[7.5rem] rounded-2xl p-4 text-center flex-shrink-0">
+                    <div className="mx-auto mb-2 flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-remembra-accent-primary to-remembra-accent-secondary">
+                      <Award size={20} className="text-white" />
+                    </div>
+                    <p className="text-xs font-medium text-remembra-text-primary truncate">{achievement.name}</p>
+                  </div>
+                )) : (
+                  <div className="liquid-glass-soft w-full rounded-2xl p-5 text-center text-sm text-remembra-text-muted">
+                    Complete more reviews to unlock badges.
+                  </div>
+                )}
+              </div>
+            </section>
+          </TabsContent>
+
+          {/* ── ANALYTICS ── */}
+          <TabsContent value="analytics" className="mt-0 space-y-5">
+            {/* Charts row */}
+            <section className="grid gap-4 lg:grid-cols-2">
+              <div className="liquid-glass-soft rounded-3xl p-5 overflow-hidden">
+                <h3 className="text-base font-semibold text-remembra-text-primary">Learning Progress</h3>
+                <p className="text-xs text-remembra-text-muted mb-4 mt-0.5">Mastered items over time</p>
+                <div className="h-48 sm:h-56 min-w-0">
+                  {computedStats.progressData.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={computedStats.progressData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                        <defs>
+                          <linearGradient id="statsMasteredGradient" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#FF8000" stopOpacity={0.35} />
+                            <stop offset="95%" stopColor="#FF8000" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#1e1e28" vertical={false} />
+                        <XAxis
+                          dataKey="date"
+                          stroke="#555560"
+                          fontSize={10}
+                          tickLine={false}
+                          axisLine={false}
+                          tickFormatter={(value) => new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          interval="preserveStartEnd"
+                        />
+                        <YAxis stroke="#555560" fontSize={10} tickLine={false} axisLine={false} width={28} />
+                        <Tooltip
+                          contentStyle={{ backgroundColor: '#0e0e14', border: '1px solid #2b2b35', borderRadius: '12px', fontSize: '12px' }}
+                          labelStyle={{ color: '#FAFAFA' }}
+                        />
+                        <Area type="monotone" dataKey="mastered" stroke="#FF8000" strokeWidth={2} fillOpacity={1} fill="url(#statsMasteredGradient)" dot={false} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-sm text-remembra-text-muted">
+                      Add items to see progress.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="liquid-glass-soft rounded-3xl p-5 overflow-hidden">
+                <h3 className="text-base font-semibold text-remembra-text-primary">Weekly Activity</h3>
+                <p className="text-xs text-remembra-text-muted mb-4 mt-0.5">Reviews in the last 7 days</p>
+                <div className="h-48 sm:h-56 min-w-0">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={computedStats.dailyActivity} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#1e1e28" vertical={false} />
+                      <XAxis dataKey="day" stroke="#555560" fontSize={11} tickLine={false} axisLine={false} />
+                      <YAxis stroke="#555560" fontSize={11} tickLine={false} axisLine={false} width={28} allowDecimals={false} />
+                      <Tooltip
+                        contentStyle={{ backgroundColor: '#0e0e14', border: '1px solid #2b2b35', borderRadius: '12px', fontSize: '12px' }}
+                        formatter={(value: number) => [`${value} reviews`, 'Reviews']}
+                      />
+                      <Bar dataKey="count" fill="#FF8000" radius={[5, 5, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </section>
+
+            {/* Category distribution */}
+            <section className="liquid-glass-soft rounded-3xl p-5">
+              <h3 className="text-base font-semibold text-remembra-text-primary">Category Distribution</h3>
+              <p className="text-xs text-remembra-text-muted mb-5 mt-0.5">Memory items by category</p>
+              {computedStats.categoryBreakdown.length > 0 ? (
+                <div className="flex flex-col sm:flex-row gap-5 items-start">
+                  <div className="w-full sm:w-[220px] flex-shrink-0 h-44">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={computedStats.categoryBreakdown}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={48}
+                          outerRadius={74}
+                          paddingAngle={4}
+                          dataKey="value"
+                          strokeWidth={0}
+                        >
+                          {computedStats.categoryBreakdown.map((entry, index) => (
+                            <Cell key={index} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          contentStyle={{ backgroundColor: '#0e0e14', border: '1px solid #2b2b35', borderRadius: '12px', fontSize: '12px' }}
+                          formatter={(value: number, _name: string, props: any) => [value, props.payload.name]}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2 w-full">
+                    {computedStats.categoryBreakdown.map((entry) => (
+                      <div key={entry.name} className="rounded-xl border border-white/8 bg-black/25 p-3 flex items-center gap-2.5">
+                        <span className="h-3 w-3 flex-shrink-0 rounded-full" style={{ backgroundColor: entry.color }} />
+                        <div className="min-w-0">
+                          <p className="text-sm text-remembra-text-primary truncate font-medium">{entry.name}</p>
+                          <p className="text-xs text-remembra-text-muted">{entry.value} items</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="flex h-32 items-center justify-center text-sm text-remembra-text-muted">
+                  No categories data yet.
+                </div>
+              )}
+            </section>
+
+            {/* Summary chips */}
+            <section className="grid gap-3 sm:grid-cols-3">
+              <div className="liquid-glass-soft rounded-2xl p-4">
+                <p className="text-xs uppercase tracking-wider text-remembra-text-muted">30-Day Reviews</p>
+                <p className="mt-2 text-2xl font-bold text-remembra-text-primary">{computedStats.recentReviews}</p>
+              </div>
+              <div className="liquid-glass-soft rounded-2xl p-4">
+                <p className="text-xs uppercase tracking-wider text-remembra-text-muted">Total Reviews</p>
+                <p className="mt-2 text-2xl font-bold text-remembra-text-primary">{computedStats.totalReviews}</p>
+              </div>
+              <div className="liquid-glass-soft rounded-2xl p-4">
+                <p className="text-xs uppercase tracking-wider text-remembra-text-muted">Daily Average</p>
+                <p className="mt-2 text-2xl font-bold text-remembra-text-primary">{computedStats.avgDailyReviews}</p>
+              </div>
+            </section>
+          </TabsContent>
+
+          {/* ── ACHIEVEMENTS ── */}
+          <TabsContent value="achievements" className="mt-0 space-y-4">
+            <section className="liquid-glass rounded-3xl p-5">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <p className="text-xs uppercase tracking-wider text-remembra-text-muted mb-1">Unlocked</p>
+                  <p className="text-4xl font-bold text-remembra-text-primary">{unlockedAchievements.length}</p>
+                </div>
+                <span className="rounded-full border border-white/12 bg-white/[0.06] px-3 py-1.5 text-xs text-remembra-text-secondary">
+                  {achievements.length} total tracks
+                </span>
+              </div>
+            </section>
+
+            <section className="space-y-3">
+              {achievements.map((achievement) => {
+                const isUnlocked = !!achievement.unlocked_at;
+                const progressPercent = Math.max(0, Math.min(100, (achievement.progress / achievement.max_progress) * 100));
+
+                return (
+                  <div
+                    key={achievement.id}
+                    className={`liquid-glass-soft rounded-2xl p-4 transition-all ${
+                      isUnlocked ? 'border border-remembra-accent-primary/25' : 'border border-transparent'
+                    }`}
+                  >
+                    <div className="flex items-start gap-4">
+                      <div className={`h-13 w-13 min-w-[3.25rem] rounded-2xl flex items-center justify-center ${
+                        isUnlocked
+                          ? 'bg-gradient-to-br from-remembra-accent-primary to-remembra-accent-secondary'
+                          : 'bg-black/40 border border-white/8'
+                      }`}>
+                        <Award size={22} className={isUnlocked ? 'text-white' : 'text-remembra-text-muted'} />
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-1 flex flex-wrap items-center gap-2">
+                          <h4 className={`font-semibold text-sm ${isUnlocked ? 'text-remembra-text-primary' : 'text-remembra-text-secondary'}`}>
+                            {achievement.name}
+                          </h4>
+                          {isUnlocked && (
+                            <span className="rounded-full bg-remembra-success/15 px-2 py-0.5 text-[11px] font-medium text-remembra-success">
+                              Unlocked
+                            </span>
+                          )}
+                        </div>
+                        <p className="mb-3 text-xs text-remembra-text-muted leading-relaxed">{achievement.description}</p>
+                        <div className="flex items-center gap-3">
+                          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-black/40">
+                            <div
+                              className={`h-full rounded-full transition-all duration-700 ${isUnlocked ? 'bg-remembra-success' : 'bg-remembra-accent-primary'}`}
+                              style={{ width: `${progressPercent}%` }}
+                            />
+                          </div>
+                          <span className="text-xs text-remembra-text-muted whitespace-nowrap">{achievement.progress}/{achievement.max_progress}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </section>
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );

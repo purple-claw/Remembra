@@ -1,4 +1,3 @@
-// Export all services
 export { authService } from './authService';
 export { profileService } from './profileService';
 export { categoryService } from './categoryService';
@@ -12,5 +11,11 @@ export { notificationService } from './notificationService';
 export { storageService, MEMORY_IMAGE_BUCKET } from './storageService';
 export { avatarService } from './avatarService';
 
-// Re-export Supabase client and utilities
-export { supabase, getSupabase, getCurrentUserId, requireAuth, isSupabaseConfigured } from '@/lib/supabase';
+export {
+  auth,
+  db,
+  storage,
+  getCurrentUserId,
+  requireAuth,
+  isFirebaseConfigured,
+} from '@/lib/firebase';

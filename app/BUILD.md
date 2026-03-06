@@ -128,19 +128,24 @@ If you prefer to build from command line without Android Studio:
 Create a `.env` file with:
 
 ```env
-VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_ANON_KEY=your-anon-key
+VITE_FIREBASE_API_KEY=your-key
+VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your-project-id
+VITE_FIREBASE_STORAGE_BUCKET=your-project.firebasestorage.app
+VITE_FIREBASE_MESSAGING_SENDER_ID=your-sender-id
+VITE_FIREBASE_APP_ID=your-app-id
 VITE_GROQ_API_KEY=your-groq-key
 ```
 
 ---
 
-## Supabase Setup
+## Firebase Setup
 
-1. Create a Supabase project at [supabase.com](https://supabase.com)
-2. Run the SQL from `supabase/schema.sql` in the SQL Editor
-3. Enable Email Auth in Authentication settings
-4. Copy credentials to `.env`
+1. Create a Firebase project at [console.firebase.google.com](https://console.firebase.google.com)
+2. Enable Authentication (Email/Password and Google if required)
+3. Create Cloud Firestore and set rules for user-scoped access
+4. Enable Firebase Storage if you use image/file attachments
+5. Copy Firebase web config values into `.env`
 
 ---
 
@@ -164,7 +169,7 @@ cd android
 
 To make this permanent, add the export commands to your `~/.bashrc` or `~/.zshrc`.
 
-### Data not saving to Supabase
+### Data not saving to Firebase
 - Make sure you're **signed in** (not in Demo Mode)
 - Check browser console for errors
 - Verify `.env` credentials are correct
@@ -179,3 +184,12 @@ To make this permanent, add the export commands to your `~/.bashrc` or `~/.zshrc
 1. Run `npm run build`
 2. Run `npx cap sync android`
 3. Rebuild in Android Studio
+
+
+
+
+export ANDROID_HOME="$HOME/Android/Sdk"
+export JAVA_HOME="$HOME/.jdks/temurin-21"
+export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+
+

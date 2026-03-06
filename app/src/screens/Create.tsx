@@ -1,11 +1,30 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { useStore } from '@/store/useStore';
 import type { ContentType, Difficulty } from '@/types';
 import {
-  ArrowLeft, Type, Code, Image as ImageIcon, FileText, Layers,
-  ChevronRight, Check, Sparkles, Calendar, Upload, X,
-  Bold, Italic, List, ListOrdered, Quote, Link2, Code2,
-  Heading1, Heading2, Eye, Edit, Plus
+  ArrowLeft,
+  Type,
+  Code,
+  Image as ImageIcon,
+  FileText,
+  Layers,
+  Check,
+  Sparkles,
+  Calendar,
+  Upload,
+  X,
+  Bold,
+  Italic,
+  List,
+  ListOrdered,
+  Quote,
+  Link2,
+  Code2,
+  Heading1,
+  Heading2,
+  Eye,
+  Edit,
+  Plus,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,17 +35,17 @@ import { OPTIONAL_REVIEW_DAY_30, REVIEW_INTERVALS_147, getScheduledDateForStage,
 import { storageService } from '@/services/storageService';
 
 const contentTypes: { id: ContentType; icon: React.ElementType; label: string; description: string }[] = [
-  { id: 'text', icon: Type, label: 'Notes & Text', description: 'General notes, concepts, and explanations' },
-  { id: 'code', icon: Code, label: 'Code Snippet', description: 'Programming code with syntax highlighting' },
-  { id: 'image', icon: ImageIcon, label: 'Image & Diagram', description: 'Visual learning materials' },
-  { id: 'document', icon: FileText, label: 'Document', description: 'PDFs, articles, and documents' },
-  { id: 'mixed', icon: Layers, label: 'Mixed Content', description: 'Combine multiple content types' },
+  { id: 'text', icon: Type, label: 'Notes & Text', description: 'General notes and explanations' },
+  { id: 'code', icon: Code, label: 'Code Snippet', description: 'Programming code and walkthroughs' },
+  { id: 'image', icon: ImageIcon, label: 'Image & Diagram', description: 'Visual learning references' },
+  { id: 'document', icon: FileText, label: 'Document', description: 'PDFs, articles, and docs' },
+  { id: 'mixed', icon: Layers, label: 'Mixed Content', description: 'Combine text, media, and files' },
 ];
 
 const difficulties: { value: Difficulty; label: string; description: string }[] = [
-  { value: 'easy', label: 'Easy', description: 'Simple concepts, quick to learn' },
-  { value: 'medium', label: 'Medium', description: 'Moderate complexity, needs practice' },
-  { value: 'hard', label: 'Hard', description: 'Complex material, requires deep study' },
+  { value: 'easy', label: 'Easy', description: 'Simple concepts, quick to retain' },
+  { value: 'medium', label: 'Medium', description: 'Moderate complexity and practice' },
+  { value: 'hard', label: 'Hard', description: 'Complex material requiring deep effort' },
 ];
 
 interface UploadedFile {
@@ -42,8 +61,8 @@ interface UploadedFile {
 }
 
 export function Create() {
-  const { categories, addMemoryItem, addCategory, setScreen } = useStore();
-  const [step, setStep] = useState(1);
+  const { categories, addMemoryItem, addCategory, setScreen, goBack } = useStore();
+
   const [contentType, setContentType] = useState<ContentType>('text');
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -57,64 +76,82 @@ export function Create() {
   const [showNewCategory, setShowNewCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
 
-  // Auto-select first category when categories load (fixes async Supabase load)
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const selectedCategory = useMemo(
+    () => categories.find((category) => category.id === categoryId) || null,
+    [categories, categoryId],
+  );
+
   useEffect(() => {
     if (!categoryId && categories.length > 0) {
       setCategoryId(categories[0].id);
     }
   }, [categories, categoryId]);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
-
-  const handleNext = () => {
-    if (step === 2 && (!title.trim() || !content.trim())) {
-      toast.error('Please fill in both title and content');
-      return;
-    }
-    if (step === 3 && !categoryId && categories.length > 0) {
-      toast.error('Please select a category');
-      return;
-    }
-    setStep(step + 1);
-    scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  const handleBack = () => {
+    goBack('dashboard');
   };
 
-  const handleBack = () => {
-    if (step === 1) {
-      setScreen('dashboard');
-    } else {
-      setStep(step - 1);
-      scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  const createNewCategory = async () => {
+    if (!newCategoryName.trim()) {
+      toast.error('Category name is required');
+      return;
+    }
+
+    try {
+      const colors = ['#FF8000', '#FF4500', '#E81224', '#00D26A', '#6366F1', '#FFB800', '#06B6D4'];
+      const icons = ['code', 'book-open', 'flask', 'languages', 'calculator'];
+
+      const newCategory = {
+        name: newCategoryName.trim(),
+        color: colors[categories.length % colors.length],
+        icon: icons[categories.length % icons.length],
+        order_index: categories.length,
+        is_default: false,
+      };
+
+      const created = await addCategory(newCategory);
+      setCategoryId(created.id);
+      setNewCategoryName('');
+      setShowNewCategory(false);
+      toast.success('Category created');
+    } catch (error) {
+      console.error('Category creation failed:', error);
+      toast.error('Failed to create category. Try again.');
     }
   };
 
   const handleCreate = async () => {
     if (isCreating) return;
+
     if (!title.trim() || !content.trim()) {
       toast.error('Title and content are required');
       return;
     }
+
     if (!categoryId) {
       toast.error('Please select a category');
       return;
     }
+
     setIsCreating(true);
+
     const cycleStartedAt = toIsoDate(new Date());
     const newItem = {
       category_id: categoryId,
       title: title.trim(),
       content,
       content_type: contentType,
-      attachments: uploadedFiles.map(f => ({
-        name: f.name,
-        url: f.url || '',
-        type: f.type.startsWith('image/') ? 'image' as const : contentType,
-        size: f.size,
-        path: f.path,
-        bucket: f.bucket,
-        mime_type: f.mime_type || f.type,
+      attachments: uploadedFiles.map((file) => ({
+        name: file.name,
+        url: file.url || '',
+        type: file.type.startsWith('image/') ? 'image' as const : contentType,
+        size: file.size,
+        path: file.path,
+        bucket: file.bucket,
+        mime_type: file.mime_type || file.type,
       })),
       difficulty,
       status: 'active' as const,
@@ -128,11 +165,14 @@ export function Create() {
       repetition: 0,
       lapse_count: 0,
       review_history: [],
-      ai_summary: isGenerating ? '• AI summary will be generated\n• Key points extracted automatically\n• Review schedule created' : undefined,
+      ai_summary: isGenerating
+        ? '• AI summary will be generated\n• Key points extracted automatically\n• Review schedule created'
+        : undefined,
     };
+
     try {
       await addMemoryItem(newItem);
-      toast.success('Item created successfully!');
+      toast.success('Item created successfully');
       setScreen('dashboard');
     } catch (error) {
       console.error('Error creating item:', error);
@@ -144,63 +184,87 @@ export function Create() {
 
   const generateAISummary = () => {
     setIsGenerating(true);
-    setTimeout(() => { toast.success('AI summary generated!'); }, 1500);
+    setTimeout(() => {
+      setIsGenerating(false);
+      toast.success('AI summary generated');
+    }, 1500);
   };
 
   const getReviewDates = () => {
     const dates = [];
     const intervals = [...REVIEW_INTERVALS_147, OPTIONAL_REVIEW_DAY_30];
+
     for (const interval of intervals) {
       const date = new Date();
       date.setDate(date.getDate() + interval);
-      dates.push(date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+      dates.push({
+        day: interval,
+        label: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      });
     }
+
     return dates;
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files) handleFiles(Array.from(files));
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (files) {
+      handleFiles(Array.from(files));
+    }
   };
 
   const handleFiles = useCallback(async (files: File[]) => {
     for (const file of files) {
-      const id = `file-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const id = `file-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
-      if (file.type.startsWith('text/') ||
-          /\.(md|js|ts|jsx|tsx|py|json|css|html)$/.test(file.name)) {
+      if (file.type.startsWith('text/') || /\.(md|js|ts|jsx|tsx|py|json|css|html)$/i.test(file.name)) {
         const reader = new FileReader();
-        reader.onload = (e) => {
-          const fileContent = e.target?.result as string;
+        reader.onload = (readEvent) => {
+          const fileContent = readEvent.target?.result as string;
           const ext = file.name.split('.').pop() || '';
-          const langMap: Record<string, string> = {
-            js: 'javascript', jsx: 'jsx', ts: 'typescript', tsx: 'tsx',
-            py: 'python', json: 'json', css: 'css', html: 'html', md: 'markdown'
+          const languageMap: Record<string, string> = {
+            js: 'javascript',
+            jsx: 'jsx',
+            ts: 'typescript',
+            tsx: 'tsx',
+            py: 'python',
+            json: 'json',
+            css: 'css',
+            html: 'html',
+            md: 'markdown',
           };
-          const lang = langMap[ext] || 'text';
+          const language = languageMap[ext] || 'text';
 
           if (!content.trim()) {
-            if (lang !== 'markdown' && lang !== 'text') {
-              setContent(`\`\`\`${lang}\n${fileContent}\n\`\`\``);
+            if (language !== 'markdown' && language !== 'text') {
+              setContent(`\`\`\`${language}\n${fileContent}\n\`\`\``);
               setContentType('code');
             } else {
               setContent(fileContent);
             }
-            if (!title) setTitle(file.name.replace(/\.[^/.]+$/, ''));
+            if (!title) {
+              setTitle(file.name.replace(/\.[^/.]+$/, ''));
+            }
           } else {
-            setContent(prev => lang !== 'markdown' && lang !== 'text'
-              ? prev + `\n\n\`\`\`${lang}\n${fileContent}\n\`\`\``
-              : prev + '\n\n' + fileContent
-            );
+            setContent((previous) => (
+              language !== 'markdown' && language !== 'text'
+                ? `${previous}\n\n\`\`\`${language}\n${fileContent}\n\`\`\``
+                : `${previous}\n\n${fileContent}`
+            ));
           }
-          setUploadedFiles(prev => [...prev, { id, name: file.name, type: file.type, size: file.size, content: fileContent }]);
+
+          setUploadedFiles((previous) => [
+            ...previous,
+            { id, name: file.name, type: file.type, size: file.size, content: fileContent },
+          ]);
         };
+
         reader.readAsText(file);
       } else if (file.type.startsWith('image/')) {
         try {
           const uploaded = await storageService.uploadImage(file);
-          setUploadedFiles(prev => [
-            ...prev,
+          setUploadedFiles((previous) => [
+            ...previous,
             {
               id,
               name: file.name,
@@ -212,31 +276,34 @@ export function Create() {
               mime_type: uploaded.mime_type,
             },
           ]);
-          setContent(prev => prev + `\n\n![${file.name}](${uploaded.url})`);
+          setContent((previous) => `${previous}\n\n![${file.name}](${uploaded.url})`);
           setContentType('image');
           toast.success(`Uploaded ${file.name}`);
         } catch (error) {
           console.warn('Image upload failed, using local data URL fallback:', error);
           const reader = new FileReader();
-          reader.onload = (e) => {
-            const dataUrl = e.target?.result as string;
-            setUploadedFiles(prev => [...prev, { id, name: file.name, type: file.type, size: file.size, url: dataUrl, mime_type: file.type }]);
-            setContent(prev => prev + `\n\n![${file.name}](${dataUrl})`);
+          reader.onload = (readEvent) => {
+            const dataUrl = readEvent.target?.result as string;
+            setUploadedFiles((previous) => [
+              ...previous,
+              { id, name: file.name, type: file.type, size: file.size, url: dataUrl, mime_type: file.type },
+            ]);
+            setContent((previous) => `${previous}\n\n![${file.name}](${dataUrl})`);
             setContentType('image');
           };
           reader.readAsDataURL(file);
           toast.warning(`Cloud upload failed for ${file.name}. Stored locally in this item.`);
         }
       } else {
-        setUploadedFiles(prev => [...prev, { id, name: file.name, type: file.type, size: file.size, mime_type: file.type }]);
+        setUploadedFiles((previous) => [...previous, { id, name: file.name, type: file.type, size: file.size, mime_type: file.type }]);
         toast.info(`File "${file.name}" attached`);
       }
     }
   }, [content, title]);
 
   const removeFile = async (id: string) => {
-    const target = uploadedFiles.find(f => f.id === id);
-    setUploadedFiles(prev => prev.filter(f => f.id !== id));
+    const target = uploadedFiles.find((file) => file.id === id);
+    setUploadedFiles((previous) => previous.filter((file) => file.id !== id));
 
     if (target?.path && target.bucket) {
       await storageService.removeAttachments([{
@@ -251,525 +318,417 @@ export function Create() {
     }
   };
 
-  const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(true); };
-  const handleDragLeave = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(false); };
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault(); setIsDragging(false);
-    handleFiles(Array.from(e.dataTransfer.files));
+  const handleDragOver = (event: React.DragEvent) => {
+    event.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (event: React.DragEvent) => {
+    event.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (event: React.DragEvent) => {
+    event.preventDefault();
+    setIsDragging(false);
+    handleFiles(Array.from(event.dataTransfer.files));
   };
 
   const insertMarkdown = (before: string, after: string = '') => {
     const textarea = textareaRef.current;
     if (!textarea) return;
+
     const start = textarea.selectionStart;
     const end = textarea.selectionEnd;
-    const selectedText = content.substring(start, end);
-    const newText = content.substring(0, start) + before + selectedText + after + content.substring(end);
-    setContent(newText);
+    const selected = content.substring(start, end);
+    const next = content.substring(0, start) + before + selected + after + content.substring(end);
+
+    setContent(next);
+
     setTimeout(() => {
       textarea.focus();
-      const newPos = start + before.length + selectedText.length + after.length;
-      textarea.setSelectionRange(newPos, newPos);
+      const position = start + before.length + selected.length + after.length;
+      textarea.setSelectionRange(position, position);
     }, 0);
   };
 
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return '0 B';
     const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    const units = ['B', 'KB', 'MB', 'GB'];
+    const index = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${parseFloat((bytes / Math.pow(k, index)).toFixed(1))} ${units[index]}`;
   };
 
+  const markdownActions = [
+    { action: () => insertMarkdown('**', '**'), icon: Bold, title: 'Bold' },
+    { action: () => insertMarkdown('*', '*'), icon: Italic, title: 'Italic' },
+    { action: () => insertMarkdown('# '), icon: Heading1, title: 'Heading 1' },
+    { action: () => insertMarkdown('## '), icon: Heading2, title: 'Heading 2' },
+    { action: () => insertMarkdown('- '), icon: List, title: 'Bullet List' },
+    { action: () => insertMarkdown('1. '), icon: ListOrdered, title: 'Numbered List' },
+    { action: () => insertMarkdown('> '), icon: Quote, title: 'Quote' },
+    { action: () => insertMarkdown('`', '`'), icon: Code2, title: 'Inline Code' },
+    { action: () => insertMarkdown('\n```\n', '\n```\n'), icon: Code, title: 'Code Block' },
+    { action: () => insertMarkdown('[', '](url)'), icon: Link2, title: 'Link' },
+  ];
+
   return (
-    <div className="fixed inset-0 min-h-[100dvh] bg-black lined-bg-subtle flex flex-col z-50">
-      {/* HEADER - fixed at top */}
-      <header className="flex-shrink-0 px-4 sm:px-5 safe-top pb-3">
-        <div className="flex items-center justify-between mb-3">
-          <button
-            onClick={handleBack}
-            className="w-10 h-10 rounded-xl glass-button flex items-center justify-center text-remembra-text-secondary hover:text-remembra-text-primary transition-colors"
-          >
-            <ArrowLeft size={20} />
-          </button>
-
-          {/* Step indicator with orange-red gradient line */}
-          <div className="flex items-center gap-2">
-            {[1, 2, 3, 4].map((s) => (
-              <div key={s} className="flex items-center gap-2">
-                <div
-                  className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 ${
-                    s < step
-                      ? 'gradient-primary text-white'
-                      : s === step
-                        ? 'border-2 border-remembra-accent-primary text-remembra-accent-primary'
-                        : 'border border-white/10 text-remembra-text-muted'
-                  }`}
-                >
-                  {s < step ? <Check size={12} /> : s}
-                </div>
-                {s < 4 && (
-                  <div className={`w-6 h-0.5 rounded-full transition-all duration-300 ${
-                    s < step ? 'gradient-primary' : 'bg-white/10'
-                  }`} />
-                )}
-              </div>
-            ))}
+    <div className="fixed inset-0 bg-black flex flex-col z-50">
+      <header className="flex-shrink-0 px-4 sm:px-6 safe-top pb-4 border-b border-white/10 bg-black/80 backdrop-blur-xl">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <button
+              onClick={handleBack}
+              className="w-10 h-10 rounded-xl border border-white/10 bg-remembra-bg-secondary flex items-center justify-center text-remembra-text-secondary"
+            >
+              <ArrowLeft size={18} />
+            </button>
+            <div className="min-w-0">
+              <h1 className="text-xl sm:text-2xl font-semibold text-remembra-text-primary truncate">Create Memory Item</h1>
+              <p className="text-sm text-remembra-text-muted">Capture, organize, and schedule your learning in one flow.</p>
+            </div>
           </div>
-
-          <div className="w-10" />
+          <div className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl border border-white/10 bg-remembra-bg-secondary/70 text-xs text-remembra-text-muted">
+            <Sparkles size={14} className="text-remembra-accent-primary" />
+            AI Assist Ready
+          </div>
         </div>
-
-        <h1 className="text-xl font-bold text-remembra-text-primary">
-          {step === 1 && 'What are you learning?'}
-          {step === 2 && 'Add your content'}
-          {step === 3 && 'Categorize'}
-          {step === 4 && 'Preview & Create'}
-        </h1>
-        <p className="text-sm text-remembra-text-muted mt-0.5">
-          {step === 1 && 'Choose the type of content'}
-          {step === 2 && 'Enter or upload your learning material'}
-          {step === 3 && 'Organize and set difficulty'}
-          {step === 4 && 'Review before saving'}
-        </p>
-        {/* Orange-red accent line */}
-        <div className="line-accent mt-3" />
       </header>
 
-      {/* SCROLLABLE CONTENT */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto overscroll-contain px-4 sm:px-5 py-4 scrollbar-hide">
-        {/* STEP 1 */}
-        {step === 1 && (
-          <div className="space-y-3 animate-slide-up pb-24">
-            {contentTypes.map((type) => {
-              const Icon = type.icon;
-              const isSelected = contentType === type.id;
-              return (
-                <button
-                  key={type.id}
-                  onClick={() => setContentType(type.id)}
-                  className={`w-full p-4 rounded-2xl transition-all duration-200 flex items-center gap-4
-                    ${isSelected ? 'glass-card border-remembra-accent-primary/50' : 'glass-button border-transparent hover:border-white/10'}`}
-                >
-                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all
-                    ${isSelected ? 'gradient-primary text-white' : 'bg-remembra-bg-tertiary text-remembra-text-muted'}`}>
-                    <Icon size={24} />
-                  </div>
-                  <div className="text-left flex-1">
-                    <h3 className={`font-semibold ${isSelected ? 'text-remembra-accent-primary' : 'text-remembra-text-primary'}`}>{type.label}</h3>
-                    <p className="text-sm text-remembra-text-muted">{type.description}</p>
-                  </div>
-                  {isSelected && (
-                    <div className="w-6 h-6 rounded-full gradient-primary flex items-center justify-center">
-                      <Check size={14} className="text-white" />
-                    </div>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        )}
+      <main className="flex-1 overflow-y-auto px-4 sm:px-6 py-5 pb-[calc(env(safe-area-inset-bottom)+8rem)] custom-scrollbar">
+        <div className="grid gap-5 xl:grid-cols-[1fr,340px]">
+          <section className="space-y-5">
+            <div className="rounded-2xl border border-white/10 bg-remembra-bg-secondary/75 p-4">
+              <p className="text-xs uppercase tracking-wider text-remembra-text-muted mb-3">Content Type</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                {contentTypes.map((type) => {
+                  const Icon = type.icon;
+                  const active = contentType === type.id;
 
-        {/* STEP 2 */}
-        {step === 2 && (
-          <div className="space-y-4 animate-slide-up pb-24">
-            <div>
-              <label className="block text-sm font-medium text-remembra-text-secondary mb-2">Title</label>
-              <Input
-                type="text"
-                placeholder="Enter a descriptive title..."
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className="glass-card border-white/10 rounded-xl text-remembra-text-primary placeholder:text-remembra-text-muted focus:border-remembra-accent-primary/50 py-6"
-              />
-            </div>
-
-            {/* File upload zone */}
-            <div
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-              className={`relative border-2 border-dashed rounded-2xl p-6 text-center transition-all duration-300 ${
-                isDragging
-                  ? 'border-remembra-accent-primary bg-remembra-accent-primary/10'
-                  : 'border-white/10 hover:border-remembra-accent-primary/30 bg-remembra-bg-secondary/30'
-              }`}
-            >
-              <input ref={fileInputRef} type="file" multiple accept=".txt,.md,.js,.ts,.jsx,.tsx,.py,.json,.css,.html,.jpg,.jpeg,.png,.gif,.webp,.pdf" onChange={handleFileSelect} className="hidden" />
-              <Upload size={28} className={`mx-auto mb-2 ${isDragging ? 'text-remembra-accent-primary' : 'text-remembra-text-muted'}`} />
-              <p className="text-sm text-remembra-text-secondary mb-1">
-                Drag & drop files here, or{' '}
-                <button onClick={() => fileInputRef.current?.click()} className="text-remembra-accent-primary hover:underline font-medium">browse</button>
-              </p>
-              <p className="text-xs text-remembra-text-muted">Text, Code, Markdown, Images, PDFs</p>
-            </div>
-
-            {/* Uploaded files list */}
-            {uploadedFiles.length > 0 && (
-              <div className="space-y-2">
-                {uploadedFiles.map(file => (
-                  <div key={file.id} className="flex items-center gap-3 glass-button p-3 rounded-xl">
-                    {file.type.startsWith('image/') && file.url ? (
-                      <img src={file.url} alt={file.name} className="w-10 h-10 rounded-lg object-cover" />
-                    ) : (
-                      <div className="w-10 h-10 rounded-lg bg-remembra-accent-primary/10 flex items-center justify-center">
-                        <Code size={16} className="text-remembra-accent-primary" />
-                      </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-white truncate">{file.name}</p>
-                      <p className="text-xs text-remembra-text-muted">{formatBytes(file.size)}</p>
-                    </div>
-                    <button onClick={() => removeFile(file.id)} className="p-1.5 rounded-lg hover:bg-red-500/20 text-red-400 transition-colors">
-                      <X size={16} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Content editor with markdown toolbar */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-sm font-medium text-remembra-text-secondary">Content</label>
-                <div className="flex items-center gap-1 glass-button rounded-lg p-0.5">
-                  <button
-                    onClick={() => setIsPreviewMode(false)}
-                    className={`px-3 py-1.5 rounded-md text-xs flex items-center gap-1.5 transition-all ${
-                      !isPreviewMode ? 'gradient-orange text-white' : 'text-remembra-text-muted hover:text-white'
-                    }`}
-                  >
-                    <Edit size={12} /> Edit
-                  </button>
-                  <button
-                    onClick={() => setIsPreviewMode(true)}
-                    className={`px-3 py-1.5 rounded-md text-xs flex items-center gap-1.5 transition-all ${
-                      isPreviewMode ? 'gradient-orange text-white' : 'text-remembra-text-muted hover:text-white'
-                    }`}
-                  >
-                    <Eye size={12} /> Preview
-                  </button>
-                </div>
-              </div>
-
-              {/* Markdown toolbar */}
-              {!isPreviewMode && (
-                <div className="flex items-center gap-0.5 p-1.5 glass-card rounded-t-xl border-b-0 overflow-x-auto scrollbar-hide">
-                  {[
-                    { action: () => insertMarkdown('**', '**'), icon: Bold, title: 'Bold' },
-                    { action: () => insertMarkdown('*', '*'), icon: Italic, title: 'Italic' },
-                    null,
-                    { action: () => insertMarkdown('# '), icon: Heading1, title: 'H1' },
-                    { action: () => insertMarkdown('## '), icon: Heading2, title: 'H2' },
-                    null,
-                    { action: () => insertMarkdown('- '), icon: List, title: 'Bullet' },
-                    { action: () => insertMarkdown('1. '), icon: ListOrdered, title: 'Number' },
-                    null,
-                    { action: () => insertMarkdown('> '), icon: Quote, title: 'Quote' },
-                    { action: () => insertMarkdown('`', '`'), icon: Code2, title: 'Code' },
-                    { action: () => insertMarkdown('\n```\n', '\n```\n'), icon: Code, title: 'Block' },
-                    { action: () => insertMarkdown('[', '](url)'), icon: Link2, title: 'Link' },
-                  ].map((item, i) =>
-                    item === null ? (
-                      <div key={`sep-${i}`} className="w-px h-5 bg-white/10 mx-0.5 flex-shrink-0" />
-                    ) : (
-                      <button
-                        key={item.title}
-                        onClick={item.action}
-                        className="p-2 rounded-lg hover:bg-white/10 text-remembra-text-muted hover:text-remembra-accent-primary transition-colors flex-shrink-0"
-                        title={item.title}
-                      >
-                        <item.icon size={15} />
-                      </button>
-                    )
-                  )}
-                </div>
-              )}
-
-              {isPreviewMode ? (
-                <div className="glass-card rounded-xl p-4 min-h-[200px] max-h-[350px] overflow-y-auto custom-scrollbar">
-                  {content ? <MarkdownRenderer content={content} /> : <p className="text-remembra-text-muted text-sm italic">Nothing to preview yet...</p>}
-                </div>
-              ) : (
-                <Textarea
-                  ref={textareaRef}
-                  placeholder={contentType === 'code'
-                    ? "Paste your code here... Use ```language for code blocks"
-                    : "Write your notes...\n\n# Heading\n**Bold** and *italic*\n- Bullet points\n```code blocks```"
-                  }
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  className={`glass-card border-white/10 ${!isPreviewMode ? 'rounded-t-none' : ''} rounded-b-xl text-remembra-text-primary placeholder:text-remembra-text-muted/50 focus:border-remembra-accent-primary/50 min-h-[200px] resize-none font-mono text-sm`}
-                />
-              )}
-            </div>
-
-            <button
-              onClick={generateAISummary}
-              disabled={isGenerating || !content.trim()}
-              className="flex items-center gap-2 text-sm text-remembra-accent-primary hover:text-[#E81224] transition-colors disabled:opacity-50"
-            >
-              <Sparkles size={16} />
-              {isGenerating ? 'Generating...' : 'Generate AI summary'}
-            </button>
-          </div>
-        )}
-
-        {/* STEP 3 */}
-        {step === 3 && (
-          <div className="space-y-6 animate-slide-up pb-24">
-            <div>
-              <label className="block text-sm font-medium text-remembra-text-secondary mb-3">Category</label>
-              <div className="flex flex-wrap gap-2">
-                {categories.map((cat) => (
-                  <button
-                    key={cat.id}
-                    onClick={() => setCategoryId(cat.id)}
-                    className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
-                      categoryId === cat.id ? 'text-white shadow-lg' : 'glass-button text-remembra-text-muted hover:text-white'
-                    }`}
-                    style={categoryId === cat.id ? { backgroundColor: cat.color, boxShadow: `0 4px 14px ${cat.color}40` } : {}}
-                  >
-                    {cat.name}
-                  </button>
-                ))}
-
-                {/* New category inline form */}
-                {showNewCategory ? (
-                  <div className="flex items-center gap-2 w-full mt-2">
-                    <Input
-                      type="text"
-                      placeholder="Category name..."
-                      value={newCategoryName}
-                      onChange={(e) => setNewCategoryName(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && newCategoryName.trim()) {
-                          const colors = ['#FF8000', '#FF4500', '#E81224', '#00D26A', '#6366F1', '#FFB800', '#06B6D4'];
-                          const icons = ['code', 'book-open', 'flask', 'languages', 'calculator'];
-                          const newCat = {
-                            name: newCategoryName.trim(),
-                            color: colors[categories.length % colors.length],
-                            icon: icons[categories.length % icons.length],
-                            order_index: categories.length,
-                            is_default: false,
-                          };
-                          addCategory(newCat).then((created) => {
-                            setCategoryId(created.id);
-                            setNewCategoryName('');
-                            setShowNewCategory(false);
-                            toast.success('Category created!');
-                          }).catch((err) => {
-                            console.error('Category creation failed:', err);
-                            toast.error('Failed to create category. Try again.');
-                          });
-                        }
-                        if (e.key === 'Escape') {
-                          setShowNewCategory(false);
-                          setNewCategoryName('');
-                        }
-                      }}
-                      className="flex-1 glass-card border-white/10 rounded-xl text-remembra-text-primary placeholder:text-remembra-text-muted focus:border-remembra-accent-primary/50 py-2 text-sm"
-                      autoFocus
-                    />
-                    <button
-                      onClick={() => {
-                        if (newCategoryName.trim()) {
-                          const colors = ['#FF8000', '#FF4500', '#E81224', '#00D26A', '#6366F1', '#FFB800', '#06B6D4'];
-                          const icons = ['code', 'book-open', 'flask', 'languages', 'calculator'];
-                          const newCat = {
-                            name: newCategoryName.trim(),
-                            color: colors[categories.length % colors.length],
-                            icon: icons[categories.length % icons.length],
-                            order_index: categories.length,
-                            is_default: false,
-                          };
-                          addCategory(newCat).then((created) => {
-                            setCategoryId(created.id);
-                            setNewCategoryName('');
-                            setShowNewCategory(false);
-                            toast.success('Category created!');
-                          }).catch((err) => {
-                            console.error('Category creation failed:', err);
-                            toast.error('Failed to create category. Try again.');
-                          });
-                        }
-                      }}
-                      className="px-3 py-2 rounded-xl gradient-primary text-white text-sm font-medium"
-                    >
-                      <Check size={16} />
-                    </button>
-                    <button
-                      onClick={() => { setShowNewCategory(false); setNewCategoryName(''); }}
-                      className="px-3 py-2 rounded-xl glass-button text-remembra-text-muted text-sm"
-                    >
-                      <X size={16} />
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => setShowNewCategory(true)}
-                    className="px-4 py-2.5 rounded-xl text-sm font-medium glass-button text-remembra-accent-primary hover:text-white border-dashed border-remembra-accent-primary/30 flex items-center gap-1.5"
-                  >
-                    <Plus size={14} /> New Category
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div className="line-accent" />
-
-            <div>
-              <label className="block text-sm font-medium text-remembra-text-secondary mb-3">Difficulty Level</label>
-              <div className="space-y-2">
-                {difficulties.map((diff) => {
-                  const isSelected = difficulty === diff.value;
-                  const colorMap: Record<string, string> = {
-                    easy: '#00D26A',
-                    medium: '#FF8000',
-                    hard: '#E81224',
-                  };
                   return (
                     <button
-                      key={diff.value}
-                      onClick={() => setDifficulty(diff.value)}
-                      className={`w-full p-4 rounded-2xl transition-all duration-200 flex items-center justify-between ${
-                        isSelected ? 'glass-card' : 'glass-button border-transparent hover:border-white/10'
+                      key={type.id}
+                      onClick={() => setContentType(type.id)}
+                      className={`rounded-xl border p-3 text-left transition-colors ${
+                        active
+                          ? 'bg-black/40 border-remembra-accent-primary/40'
+                          : 'bg-remembra-bg-tertiary/65 border-white/5 hover:border-white/15'
                       }`}
-                      style={isSelected ? { borderColor: `${colorMap[diff.value]}30` } : {}}
                     >
-                      <div className="flex items-center gap-3">
-                        <div
-                          className="w-3 h-3 rounded-full"
-                          style={{ backgroundColor: colorMap[diff.value], boxShadow: `0 0 8px ${colorMap[diff.value]}60` }}
-                        />
-                        <div className="text-left">
-                          <h4 className="font-medium text-remembra-text-primary">{diff.label}</h4>
-                          <p className="text-sm text-remembra-text-muted">{diff.description}</p>
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${active ? 'bg-remembra-accent-primary/20 text-remembra-accent-primary' : 'bg-white/5 text-remembra-text-muted'}`}>
+                          <Icon size={15} />
                         </div>
+                        {active && <Check size={14} className="text-remembra-accent-primary" />}
                       </div>
-                      {isSelected && (
-                        <div className="w-6 h-6 rounded-full flex items-center justify-center" style={{ backgroundColor: colorMap[diff.value] }}>
-                          <Check size={14} className="text-white" />
-                        </div>
-                      )}
+                      <p className="text-sm font-medium text-remembra-text-primary">{type.label}</p>
+                      <p className="text-xs text-remembra-text-muted mt-1">{type.description}</p>
                     </button>
                   );
                 })}
               </div>
             </div>
-          </div>
-        )}
 
-        {/* STEP 4 */}
-        {step === 4 && (
-          <div className="space-y-4 animate-slide-up pb-24">
-            <div className="glass-card rounded-2xl p-5">
-              <div className="flex items-center gap-2 mb-3">
-                {categories.find(c => c.id === categoryId) && (
-                  <span
-                    className="px-2.5 py-1 rounded-lg text-xs font-medium"
-                    style={{ backgroundColor: `${categories.find(c => c.id === categoryId)?.color}20`, color: categories.find(c => c.id === categoryId)?.color }}
-                  >
-                    {categories.find(c => c.id === categoryId)?.name}
-                  </span>
-                )}
-                <span className={`px-2.5 py-1 rounded-lg text-xs font-medium capitalize ${
-                  difficulty === 'easy' ? 'bg-green-500/20 text-green-400'
-                    : difficulty === 'hard' ? 'bg-red-500/20 text-red-400'
-                      : 'bg-orange-500/20 text-orange-400'
-                }`}>
-                  {difficulty}
-                </span>
+            <div className="rounded-2xl border border-white/10 bg-remembra-bg-secondary/75 p-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-remembra-text-secondary mb-2">Title</label>
+                <Input
+                  type="text"
+                  placeholder="Enter a descriptive title..."
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
+                  className="bg-remembra-bg-tertiary border-white/10 rounded-xl text-remembra-text-primary py-6"
+                />
               </div>
-              <h3 className="text-lg font-semibold text-remembra-text-primary mb-3">{title || 'Untitled'}</h3>
-              <div className="max-h-[200px] overflow-y-auto custom-scrollbar">
-                <MarkdownRenderer content={content.slice(0, 500) + (content.length > 500 ? '\n\n...' : '')} />
+
+              <div
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                className={`rounded-2xl border-2 border-dashed p-5 transition-colors ${
+                  isDragging
+                    ? 'border-remembra-accent-primary bg-remembra-accent-primary/10'
+                    : 'border-white/15 bg-remembra-bg-tertiary/60 hover:border-remembra-accent-primary/40'
+                }`}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept=".txt,.md,.js,.ts,.jsx,.tsx,.py,.json,.css,.html,.jpg,.jpeg,.png,.gif,.webp,.pdf"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-remembra-accent-primary/15 flex items-center justify-center text-remembra-accent-primary flex-shrink-0">
+                    <Upload size={17} />
+                  </div>
+                  <div>
+                    <p className="text-sm text-remembra-text-secondary">
+                      Drag files here or{' '}
+                      <button onClick={() => fileInputRef.current?.click()} className="text-remembra-accent-primary font-medium hover:underline">
+                        browse
+                      </button>
+                    </p>
+                    <p className="text-xs text-remembra-text-muted mt-1">Text, code, markdown, images, PDFs</p>
+                  </div>
+                </div>
+              </div>
+
+              {uploadedFiles.length > 0 && (
+                <div className="space-y-2">
+                  {uploadedFiles.map((file) => (
+                    <div key={file.id} className="rounded-xl border border-white/10 bg-black/25 p-3 flex items-center gap-3">
+                      {file.type.startsWith('image/') && file.url ? (
+                        <img src={file.url} alt={file.name} className="w-10 h-10 rounded-lg object-cover" />
+                      ) : (
+                        <div className="w-10 h-10 rounded-lg bg-remembra-bg-tertiary flex items-center justify-center text-remembra-text-muted">
+                          <Code size={16} />
+                        </div>
+                      )}
+
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-remembra-text-primary truncate">{file.name}</p>
+                        <p className="text-xs text-remembra-text-muted">{formatBytes(file.size)}</p>
+                      </div>
+
+                      <button
+                        onClick={() => removeFile(file.id)}
+                        className="w-8 h-8 rounded-lg border border-red-500/25 text-red-400 flex items-center justify-center"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-remembra-bg-secondary/75 p-4">
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <p className="text-xs uppercase tracking-wider text-remembra-text-muted">Content Editor</p>
+                <div className="flex items-center gap-1 border border-white/10 bg-remembra-bg-tertiary rounded-lg p-1">
+                  <button
+                    onClick={() => setIsPreviewMode(false)}
+                    className={`px-3 py-1.5 rounded-md text-xs flex items-center gap-1 ${
+                      !isPreviewMode ? 'gradient-orange text-white' : 'text-remembra-text-muted'
+                    }`}
+                  >
+                    <Edit size={12} />
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => setIsPreviewMode(true)}
+                    className={`px-3 py-1.5 rounded-md text-xs flex items-center gap-1 ${
+                      isPreviewMode ? 'gradient-orange text-white' : 'text-remembra-text-muted'
+                    }`}
+                  >
+                    <Eye size={12} />
+                    Preview
+                  </button>
+                </div>
+              </div>
+
+              {!isPreviewMode && (
+                <div className="flex items-center gap-1 p-1.5 rounded-t-xl border border-white/10 bg-remembra-bg-tertiary overflow-x-auto scrollbar-hide">
+                  {markdownActions.map((action) => (
+                    <button
+                      key={action.title}
+                      onClick={action.action}
+                      className="w-8 h-8 rounded-lg border border-transparent hover:border-white/10 text-remembra-text-muted hover:text-remembra-accent-primary flex items-center justify-center"
+                      title={action.title}
+                    >
+                      <action.icon size={14} />
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {isPreviewMode ? (
+                <div className="rounded-xl border border-white/10 bg-black/25 p-4 min-h-[260px] max-h-[500px] overflow-y-auto custom-scrollbar">
+                  {content ? (
+                    <MarkdownRenderer content={content} />
+                  ) : (
+                    <p className="text-sm text-remembra-text-muted italic">Nothing to preview yet...</p>
+                  )}
+                </div>
+              ) : (
+                <Textarea
+                  ref={textareaRef}
+                  placeholder={contentType === 'code'
+                    ? 'Paste your code here...'
+                    : 'Write your notes...'
+                  }
+                  value={content}
+                  onChange={(event) => setContent(event.target.value)}
+                  className="min-h-[280px] resize-none rounded-t-none rounded-b-xl bg-black/25 border-white/10 text-remembra-text-primary text-sm"
+                />
+              )}
+
+              <button
+                onClick={generateAISummary}
+                disabled={isGenerating || !content.trim()}
+                className="mt-3 text-sm text-remembra-accent-primary hover:text-remembra-accent-secondary disabled:opacity-50 flex items-center gap-2"
+              >
+                <Sparkles size={15} />
+                {isGenerating ? 'Generating AI summary...' : 'Generate AI summary'}
+              </button>
+            </div>
+          </section>
+
+          <aside className="space-y-4 xl:sticky xl:top-5 h-fit">
+            <div className="rounded-2xl border border-white/10 bg-remembra-bg-secondary/75 p-4">
+              <p className="text-xs uppercase tracking-wider text-remembra-text-muted mb-3">Category</p>
+
+              <div className="flex flex-wrap gap-2 mb-3">
+                {categories.map((category) => (
+                  <button
+                    key={category.id}
+                    onClick={() => setCategoryId(category.id)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${
+                      categoryId === category.id
+                        ? 'text-white border-transparent'
+                        : 'text-remembra-text-muted border-white/10 bg-remembra-bg-tertiary'
+                    }`}
+                    style={categoryId === category.id ? { backgroundColor: category.color } : {}}
+                  >
+                    {category.name}
+                  </button>
+                ))}
+              </div>
+
+              {!showNewCategory ? (
+                <button
+                  onClick={() => setShowNewCategory(true)}
+                  className="w-full rounded-xl border border-dashed border-remembra-accent-primary/40 text-remembra-accent-primary py-2 text-sm font-medium flex items-center justify-center gap-1"
+                >
+                  <Plus size={14} />
+                  New Category
+                </button>
+              ) : (
+                <div className="flex gap-2">
+                  <Input
+                    value={newCategoryName}
+                    onChange={(event) => setNewCategoryName(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        createNewCategory();
+                      }
+                      if (event.key === 'Escape') {
+                        setShowNewCategory(false);
+                        setNewCategoryName('');
+                      }
+                    }}
+                    placeholder="Category name"
+                    className="bg-remembra-bg-tertiary border-white/10 text-remembra-text-primary"
+                    autoFocus
+                  />
+                  <button onClick={createNewCategory} className="w-10 h-10 rounded-xl gradient-primary text-white flex items-center justify-center">
+                    <Check size={14} />
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowNewCategory(false);
+                      setNewCategoryName('');
+                    }}
+                    className="w-10 h-10 rounded-xl border border-white/10 bg-remembra-bg-tertiary text-remembra-text-muted flex items-center justify-center"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-remembra-bg-secondary/75 p-4">
+              <p className="text-xs uppercase tracking-wider text-remembra-text-muted mb-3">Difficulty</p>
+              <div className="space-y-2">
+                {difficulties.map((entry) => {
+                  const selected = difficulty === entry.value;
+                  const colors: Record<Difficulty, string> = {
+                    easy: '#00D26A',
+                    medium: '#FF8000',
+                    hard: '#E81224',
+                  };
+                  const color = colors[entry.value];
+
+                  return (
+                    <button
+                      key={entry.value}
+                      onClick={() => setDifficulty(entry.value)}
+                      className={`w-full rounded-xl border p-3 text-left ${
+                        selected
+                          ? 'bg-black/35 border-white/20'
+                          : 'bg-remembra-bg-tertiary/65 border-white/10'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-medium text-remembra-text-primary">{entry.label}</p>
+                          <p className="text-xs text-remembra-text-muted mt-0.5">{entry.description}</p>
+                        </div>
+                        <div className="w-3 h-3 rounded-full mt-1" style={{ backgroundColor: color }} />
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
-            {uploadedFiles.length > 0 && (
-              <div className="glass-card-red rounded-2xl p-4">
-                <h4 className="text-sm font-medium text-white mb-2">{uploadedFiles.length} Attachment{uploadedFiles.length > 1 ? 's' : ''}</h4>
-                <div className="flex flex-wrap gap-2">
-                  {uploadedFiles.map(file => (
-                    <span key={file.id} className="px-2.5 py-1 rounded-lg bg-remembra-bg-tertiary text-xs text-remembra-text-secondary border border-white/5">
-                      {file.name}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {isGenerating && (
-              <div className="bg-remembra-accent-primary/10 rounded-2xl p-4 border border-remembra-accent-primary/20">
-                <div className="flex items-center gap-2 mb-2">
-                  <Sparkles size={16} className="text-remembra-accent-primary" />
-                  <span className="text-sm font-medium text-remembra-accent-primary">AI Summary</span>
-                </div>
-                <ul className="text-sm text-remembra-text-secondary space-y-1">
-                  <li>• Key concepts extracted from content</li>
-                  <li>• Important points highlighted</li>
-                  <li>• Review questions generated</li>
-                </ul>
-              </div>
-            )}
-
-            <div className="glass-card rounded-2xl p-4">
+            <div className="rounded-2xl border border-white/10 bg-remembra-bg-secondary/75 p-4">
               <div className="flex items-center gap-2 mb-3">
-                <Calendar size={16} className="text-[#E81224]" />
-                <span className="text-sm font-medium text-remembra-text-primary">1-4-7 (+30 optional) Retention Schedule</span>
+                <Calendar size={15} className="text-remembra-accent-primary" />
+                <p className="text-xs uppercase tracking-wider text-remembra-text-muted">Review Plan</p>
               </div>
-              <div className="flex justify-around">
-                {getReviewDates().map((date, index) => (
-                  <div key={index} className="text-center">
-                    <div className={`w-11 h-11 rounded-full flex items-center justify-center mb-1.5 ${
-                      index === 0 ? 'bg-remembra-accent-primary/20'
-                        : index === 1 ? 'bg-[#FF4500]/20'
-                          : index === 2 ? 'bg-[#E81224]/20'
-                            : 'bg-[#00B8D9]/20'
-                    }`}>
-                      <span className={`text-xs font-bold ${
-                        index === 0 ? 'text-remembra-accent-primary'
-                          : index === 1 ? 'text-[#FF4500]'
-                            : index === 2 ? 'text-[#E81224]'
-                              : 'text-[#00B8D9]'
-                      }`}>
-                        Day {[...REVIEW_INTERVALS_147, OPTIONAL_REVIEW_DAY_30][index]}
-                      </span>
-                    </div>
-                    <span className="text-xs text-remembra-text-muted">{date}</span>
+
+              <div className="grid grid-cols-2 gap-2">
+                {getReviewDates().map((entry) => (
+                  <div key={entry.day} className="rounded-lg border border-white/10 bg-black/20 p-2.5">
+                    <p className="text-xs text-remembra-text-muted">Day {entry.day}</p>
+                    <p className="text-sm font-medium text-remembra-text-primary mt-0.5">{entry.label}</p>
                   </div>
                 ))}
               </div>
             </div>
-          </div>
-        )}
-      </div>
 
-      {/* FOOTER - fixed at bottom */}
-      <div className="flex-shrink-0 px-4 sm:px-5 safe-footer pt-3 bg-gradient-to-t from-black via-black/95 to-transparent">
-        <div className="line-accent mb-3" />
-        {step < 4 ? (
-          <Button
-            onClick={handleNext}
-            className="w-full gradient-primary py-6 rounded-2xl text-white font-semibold text-base shadow-lg shadow-[#FF8000]/20"
-          >
-            Continue <ChevronRight size={18} className="ml-1" />
-          </Button>
-        ) : (
-          <Button
-            onClick={handleCreate}
-            disabled={isCreating}
-            className="w-full gradient-primary py-6 rounded-2xl text-white font-semibold text-base shadow-lg shadow-[#E81224]/20 disabled:opacity-60"
-          >
-            {isCreating ? (
-              <><span className="mr-2 inline-block w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Creating...</>
-            ) : (
-              <><Check size={18} className="mr-2" /> Create Item</>
-            )}
-          </Button>
-        )}
-      </div>
+            <div className="rounded-2xl border border-white/10 bg-remembra-bg-secondary/75 p-4">
+              <p className="text-xs uppercase tracking-wider text-remembra-text-muted mb-2">Ready Check</p>
+              <div className="space-y-1.5 text-xs text-remembra-text-muted">
+                <p>{title.trim() ? '✓' : '•'} Title added</p>
+                <p>{content.trim() ? '✓' : '•'} Content added</p>
+                <p>{selectedCategory ? '✓' : '•'} Category selected</p>
+                <p>{uploadedFiles.length > 0 ? `✓ ${uploadedFiles.length} attachment(s)` : '• Optional attachments'}</p>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </main>
+
+      <footer className="flex-shrink-0 px-4 sm:px-6 safe-footer pt-3 pb-3 border-t border-white/10 bg-black/90 backdrop-blur-xl">
+        <div className="flex items-center justify-between gap-3 mb-3 text-xs">
+          <span className="text-remembra-text-muted">{selectedCategory ? selectedCategory.name : 'No category'} • {difficulty}</span>
+          <span className="text-remembra-text-muted">{content.length.toLocaleString()} chars</span>
+        </div>
+
+        <Button
+          onClick={handleCreate}
+          disabled={isCreating}
+          className="w-full gradient-primary py-6 rounded-2xl text-white font-semibold text-base disabled:opacity-60"
+        >
+          {isCreating ? (
+            <>
+              <span className="mr-2 inline-block w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+              Creating...
+            </>
+          ) : (
+            <>
+              <Check size={18} className="mr-2" />
+              Create Item
+            </>
+          )}
+        </Button>
+      </footer>
     </div>
   );
 }

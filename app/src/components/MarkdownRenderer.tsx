@@ -135,22 +135,22 @@ function CodeBlock({ language, value }: { language: string; value: string }) {
   const isLargeBlock = lineCount > LARGE_CODE_BLOCK_LINES || value.length > LARGE_CODE_BLOCK_CHARS;
 
   return (
-    <div className="relative group my-4 rounded-lg overflow-hidden border border-white/5">
+    <div className="relative group my-4 min-w-0 rounded-lg overflow-hidden border border-white/5">
       {/* VS Code-like header bar */}
-      <div className="flex items-center justify-between px-4 py-2 bg-[#252526] border-b border-white/5">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/5 bg-[#252526] px-3 py-2 sm:px-4">
+        <div className="flex min-w-0 items-center gap-2">
           <Code2 size={14} className="text-remembra-accent-primary" />
-          <span className="text-xs font-medium text-remembra-text-secondary">
+          <span className="truncate text-xs font-medium text-remembra-text-secondary">
             {displayLanguage}
           </span>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="text-[10px] text-remembra-text-muted">
+        <div className="ml-auto flex items-center gap-2 sm:gap-3">
+          <span className="hidden text-[10px] text-remembra-text-muted sm:inline">
             {lineCount} {lineCount === 1 ? 'line' : 'lines'}
           </span>
           <button
             onClick={handleCopy}
-            className="flex items-center gap-1.5 px-2 py-1 rounded text-xs bg-white/5 hover:bg-white/10 text-remembra-text-secondary hover:text-remembra-text-primary transition-all"
+            className="flex items-center gap-1.5 rounded bg-white/5 px-2.5 py-1 text-xs text-remembra-text-secondary transition-all hover:bg-white/10 hover:text-remembra-text-primary"
           >
             {copied ? <Check size={12} className="text-remembra-success" /> : <Copy size={12} />}
             {copied ? 'Copied!' : 'Copy'}
@@ -160,29 +160,35 @@ function CodeBlock({ language, value }: { language: string; value: string }) {
       
       {/* Code content */}
       {isLargeBlock ? (
-        <pre className="m-0 p-4 overflow-auto custom-scrollbar max-h-[62dvh] text-xs leading-6 font-mono bg-[#1E1E1E] text-remembra-text-secondary whitespace-pre">
+        <pre className="markdown-scroll custom-scrollbar m-0 max-h-[55dvh] overflow-auto bg-[#1E1E1E] p-3 text-xs leading-6 text-remembra-text-secondary whitespace-pre sm:max-h-[62dvh] sm:p-4">
           {value}
         </pre>
       ) : (
-        <div className="max-h-[62dvh] overflow-auto custom-scrollbar">
+        <div className="markdown-scroll custom-scrollbar max-h-[55dvh] overflow-auto sm:max-h-[62dvh]">
           <SyntaxHighlighter
             language={language || 'text'}
             style={vscodeTheme}
             showLineNumbers={lineCount > 3}
-            wrapLines
-            wrapLongLines
+            wrapLines={false}
             lineNumberStyle={{
               color: '#858585',
-              minWidth: '3em',
-              paddingRight: '1.5em',
+              minWidth: '2.75em',
+              paddingRight: '1.25em',
               userSelect: 'none',
               borderRight: '1px solid #404040',
-              marginRight: '1em',
+              marginRight: '0.85em',
             }}
             customStyle={{
               margin: 0,
               borderRadius: 0,
               background: '#1E1E1E',
+              width: 'max-content',
+              minWidth: '100%',
+            }}
+            codeTagProps={{
+              style: {
+                whiteSpace: 'pre',
+              },
             }}
           >
             {value}
@@ -202,7 +208,7 @@ export function MarkdownRenderer({ content, className = '' }: MarkdownRendererPr
   }, [content, isLargeContent]);
 
   return (
-    <div className={`markdown-content w-full max-w-full overflow-x-hidden break-words ${className}`}>
+    <div className={`markdown-content min-w-0 w-full max-w-full break-words ${className}`}>
       {isLargeContent && (
         <div className="mb-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
           Rendering preview mode for large content to keep scrolling smooth.
@@ -274,21 +280,18 @@ export function MarkdownRenderer({ content, className = '' }: MarkdownRendererPr
           
           // Lists
           ul: ({ children }) => (
-            <ul className="list-none space-y-2 mb-4 last:mb-0">
+            <ul className="mb-4 list-disc list-outside space-y-2 pl-5 text-remembra-text-secondary last:mb-0">
               {children}
             </ul>
           ),
           ol: ({ children }) => (
-            <ol className="list-decimal list-inside space-y-2 mb-4 last:mb-0 text-remembra-text-secondary">
+            <ol className="mb-4 list-decimal list-outside space-y-2 pl-5 text-remembra-text-secondary last:mb-0">
               {children}
             </ol>
           ),
-          li: ({ children, ordered }: any) => (
-            <li className="text-remembra-text-secondary flex items-start gap-2">
-              {!ordered && (
-                <span className="w-1.5 h-1.5 rounded-full bg-remembra-accent-primary mt-2 flex-shrink-0" />
-              )}
-              <span className="flex-1">{children}</span>
+          li: ({ children }) => (
+            <li className="text-remembra-text-secondary leading-relaxed">
+              {children}
             </li>
           ),
           
@@ -301,8 +304,8 @@ export function MarkdownRenderer({ content, className = '' }: MarkdownRendererPr
           
           // Tables
           table: ({ children }) => (
-            <div className="overflow-x-auto custom-scrollbar my-4 rounded-xl border border-white/10">
-              <table className="w-full text-sm">
+            <div className="markdown-scroll custom-scrollbar my-4 overflow-x-auto rounded-xl border border-white/10">
+              <table className="w-full min-w-max text-sm">
                 {children}
               </table>
             </div>

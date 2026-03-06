@@ -1,6 +1,6 @@
 import { useStore } from '@/store/useStore';
 import type { Screen } from '@/store/useStore';
-import { Home, Calendar, BookOpen, PlusCircle, Sparkles, ChartLine } from 'lucide-react';
+import { Home, Calendar, BookOpen, PlusCircle, Sparkles, ChartLine, User } from 'lucide-react';
 
 interface NavItem {
   id: Screen;
@@ -15,6 +15,7 @@ const navItems: NavItem[] = [
   { id: 'create', icon: PlusCircle, label: 'Create' },
   { id: 'ai-tools', icon: Sparkles, label: 'AI' },
   { id: 'stats', icon: ChartLine, label: 'Stats' },
+  { id: 'profile', icon: User, label: 'Profile' },
 ];
 
 export function BottomNav({ visible = true }: { visible?: boolean }) {
@@ -22,8 +23,8 @@ export function BottomNav({ visible = true }: { visible?: boolean }) {
 
   return (
     <nav 
-      className={`flex-shrink-0 relative z-50 transition-all duration-300 ease-in-out ${
-        visible ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0'
+      className={`fixed bottom-0 inset-x-0 z-50 transition-all duration-300 ease-in-out ${
+        visible ? 'translate-y-0 opacity-100 pointer-events-auto' : 'translate-y-full opacity-0 pointer-events-none'
       }`}
     >
       <div className="relative mx-auto max-w-lg px-3 sm:px-4 pb-[calc(env(safe-area-inset-bottom)+8px)] pt-2 bg-black/95 backdrop-blur-sm">
@@ -38,6 +39,8 @@ export function BottomNav({ visible = true }: { visible?: boolean }) {
                 <button
                   key={item.id}
                   onClick={() => setScreen(item.id)}
+                  aria-current={isActive ? 'page' : undefined}
+                  aria-label={item.label}
                   className={`
                     relative flex flex-col items-center gap-1 px-2 py-2 rounded-xl min-w-[44px]
                     transition-all duration-300 ease-out

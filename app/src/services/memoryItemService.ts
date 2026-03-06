@@ -1,4 +1,6 @@
-import { getSupabase, requireAuth } from '@/lib/supabase';
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { collection, deleteDoc, doc, getDoc, getDocs, setDoc } from 'firebase/firestore';
+import { db, requireAuth } from '@/lib/firebase';
 import type {
   Attachment,
   ContentType,
@@ -21,6 +23,30 @@ import {
 } from '@/domain/review147';
 import { storageService } from './storageService';
 
+const userMemoryItemsCollection = (userId: string) => collection(db, 'users', userId, 'memory_items');
+const userReviewsCollection = (userId: string) => collection(db, 'users', userId, 'reviews');
+
+const nullableFields = new Set([
+  'completed_at',
+  'mastered_at',
+  'archive_at',
+  'delete_at',
+  'last_reviewed_at',
+  'ai_summary',
+  'ai_flowchart',
+  'notes',
+]);
+
+const toIsoString = (value: any, fallback: string): string => {
+  if (!value) return fallback;
+  if (typeof value === 'string') return value;
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value.toDate === 'function') {
+    return value.toDate().toISOString();
+  }
+  return new Date(value).toISOString();
+};
+
 const normalizeStatus = (status: string): ReviewStatus => {
   if (status === 'learning' || status === 'reviewing') return 'active';
   if (status === 'mastered') return 'completed';
@@ -33,21 +59,34 @@ const normalizeStage = (item: any): number => {
   return Math.max(0, Math.min(Number(raw) || 0, MAX_ACTIVE_STAGE));
 };
 
-// Helper to transform database record to MemoryItem (legacy-safe)
-const transformItem = (item: any): MemoryItem => {
+const normalizeReviewHistory = (history: any): ReviewHistory[] => {
+  if (!Array.isArray(history)) return [];
+  return history.map((entry) => ({
+    date: entry.date,
+    performance: entry.performance,
+    time_spent_seconds: entry.time_spent_seconds || 0,
+    stage_index: entry.stage_index,
+    interval: entry.interval,
+    easiness_factor: entry.easiness_factor,
+  }));
+};
+
+const transformItem = (id: string, item: any): MemoryItem => {
+  const createdAt = toIsoString(item.created_at, new Date().toISOString());
+  const updatedAt = toIsoString(item.updated_at, createdAt);
   const stage = normalizeStage(item);
-  const cycleStartedAt = toIsoDate(item.cycle_started_at || item.created_at || new Date());
+  const cycleStartedAt = toIsoDate(item.cycle_started_at || createdAt || new Date());
   const status = normalizeStatus(item.status);
 
   return {
-    id: item.id,
+    id,
     user_id: item.user_id,
     category_id: item.category_id,
     title: item.title,
     content: item.content,
-    content_type: item.content_type as ContentType,
+    content_type: (item.content_type || 'text') as ContentType,
     attachments: (item.attachments || []) as Attachment[],
-    difficulty: item.difficulty as Difficulty,
+    difficulty: (item.difficulty || 'medium') as Difficulty,
     status,
     easiness_factor: item.easiness_factor ?? 2.5,
     interval: item.interval ?? (
@@ -61,154 +100,127 @@ const transformItem = (item: any): MemoryItem => {
     lapse_count: item.lapse_count ?? 0,
     next_review_date: item.next_review_date || (status === 'active' ? getScheduledDateForStage(cycleStartedAt, stage) : ''),
     cycle_started_at: cycleStartedAt,
-    last_reviewed_at: item.last_reviewed_at,
-    review_history: (item.review_history || []) as ReviewHistory[],
+    last_reviewed_at: item.last_reviewed_at || undefined,
+    review_history: normalizeReviewHistory(item.review_history),
     review_template: item.review_template || '1-4-7',
     current_stage_index: item.current_stage_index ?? stage,
     review_stage: stage,
-    completed_at: item.completed_at,
-    mastered_at: item.mastered_at ?? item.completed_at,
-    archive_at: item.archive_at,
-    delete_at: item.delete_at,
-    ai_summary: item.ai_summary,
-    ai_flowchart: item.ai_flowchart,
-    ai_bullet_points: item.ai_bullet_points,
-    notes: item.notes,
+    completed_at: item.completed_at || undefined,
+    mastered_at: item.mastered_at || item.completed_at || undefined,
+    archive_at: item.archive_at || undefined,
+    delete_at: item.delete_at || undefined,
+    ai_summary: item.ai_summary || undefined,
+    ai_flowchart: item.ai_flowchart || undefined,
+    ai_bullet_points: Array.isArray(item.ai_bullet_points) ? item.ai_bullet_points : [],
+    notes: item.notes || undefined,
     is_bookmarked: item.is_bookmarked ?? false,
-    created_at: item.created_at,
-    updated_at: item.updated_at,
+    created_at: createdAt,
+    updated_at: updatedAt,
   };
+};
+
+const stripUndefinedForUpdate = (data: Record<string, any>): Record<string, any> => {
+  const cleaned: Record<string, any> = {};
+
+  for (const [key, value] of Object.entries(data)) {
+    if (value === undefined) {
+      if (nullableFields.has(key)) {
+        cleaned[key] = null;
+      }
+      continue;
+    }
+    cleaned[key] = value;
+  }
+
+  return cleaned;
+};
+
+const sortByCreatedAtDesc = (a: MemoryItem, b: MemoryItem) =>
+  new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+
+const sortByDueThenCreated = (a: MemoryItem, b: MemoryItem) => {
+  const dueA = a.next_review_date ? new Date(`${a.next_review_date}T00:00:00`).getTime() : Number.MAX_SAFE_INTEGER;
+  const dueB = b.next_review_date ? new Date(`${b.next_review_date}T00:00:00`).getTime() : Number.MAX_SAFE_INTEGER;
+  if (dueA !== dueB) return dueA - dueB;
+  return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
 };
 
 export const memoryItemService = {
   async getMemoryItems(): Promise<MemoryItem[]> {
-    const supabase = getSupabase();
     const userId = await requireAuth();
+    const snapshot = await getDocs(userMemoryItemsCollection(userId));
 
-    const { data, error } = await supabase
-      .from('memory_items')
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.error('Error fetching memory items:', error);
-      throw error;
-    }
-
-    return (data || []).map(transformItem);
+    return snapshot.docs
+      .map((itemDoc) => transformItem(itemDoc.id, itemDoc.data()))
+      .sort(sortByCreatedAtDesc);
   },
 
   async getMemoryItemById(id: string): Promise<MemoryItem | null> {
-    const supabase = getSupabase();
     const userId = await requireAuth();
+    const itemRef = doc(db, 'users', userId, 'memory_items', id);
+    const itemSnap = await getDoc(itemRef);
 
-    const { data, error } = await supabase
-      .from('memory_items')
-      .select('*')
-      .eq('id', id)
-      .eq('user_id', userId)
-      .single();
-
-    if (error) {
-      if (error.code === 'PGRST116') return null;
-      console.error('Error fetching memory item:', error);
-      throw error;
+    if (!itemSnap.exists()) {
+      return null;
     }
 
-    return data ? transformItem(data) : null;
+    return transformItem(itemSnap.id, itemSnap.data());
   },
 
   async getItemsDueToday(): Promise<MemoryItem[]> {
-    const supabase = getSupabase();
-    const userId = await requireAuth();
     const today = new Date().toISOString().split('T')[0];
-
-    const { data, error } = await supabase
-      .from('memory_items')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('status', 'active')
-      .lte('next_review_date', today)
-      .order('next_review_date', { ascending: true })
-      .order('created_at', { ascending: true });
-
-    if (error) {
-      console.error('Error fetching items due today:', error);
-      throw error;
-    }
-
-    return (data || []).map(transformItem);
+    const items = await this.getMemoryItems();
+    return items
+      .filter((item) => item.status === 'active' && !!item.next_review_date && item.next_review_date <= today)
+      .sort(sortByDueThenCreated);
   },
 
   async getItemsByCategory(categoryId: string): Promise<MemoryItem[]> {
-    const supabase = getSupabase();
-    const userId = await requireAuth();
-
-    const { data, error } = await supabase
-      .from('memory_items')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('category_id', categoryId)
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.error('Error fetching items by category:', error);
-      throw error;
-    }
-
-    return (data || []).map(transformItem);
+    const items = await this.getMemoryItems();
+    return items
+      .filter((item) => item.category_id === categoryId)
+      .sort(sortByCreatedAtDesc);
   },
 
   async getItemsByStatus(status: ReviewStatus): Promise<MemoryItem[]> {
-    const supabase = getSupabase();
-    const userId = await requireAuth();
-
-    const { data, error } = await supabase
-      .from('memory_items')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('status', status)
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.error('Error fetching items by status:', error);
-      throw error;
-    }
-
-    return (data || []).map(transformItem);
+    const items = await this.getMemoryItems();
+    return items
+      .filter((item) => item.status === status)
+      .sort(sortByCreatedAtDesc);
   },
 
   async createMemoryItem(item: Omit<MemoryItem, 'id' | 'user_id' | 'created_at' | 'updated_at'>): Promise<MemoryItem> {
-    const supabase = getSupabase();
     const userId = await requireAuth();
 
-    // Validate required fields
     const title = (item.title || '').trim();
     const content = (item.content || '').trim();
     if (!title) throw new Error('Title is required');
     if (!content) throw new Error('Content is required');
     if (title.length > 500) throw new Error('Title must be under 500 characters');
 
-    const cycleStartedAt = toIsoDate(item.cycle_started_at || new Date());
+    const now = new Date().toISOString();
+    const cycleStartedAt = toIsoDate(item.cycle_started_at || now);
     const reviewStage = 0;
     const nextReviewDate = getScheduledDateForStage(cycleStartedAt, reviewStage);
+
+    const collectionRef = userMemoryItemsCollection(userId);
+    const itemRef = doc(collectionRef);
 
     const insertData = {
       user_id: userId,
       category_id: item.category_id,
-      title: item.title,
-      content: item.content,
+      title,
+      content,
       content_type: item.content_type,
-      attachments: item.attachments,
+      attachments: item.attachments || [],
       difficulty: item.difficulty,
       status: 'active',
       next_review_date: nextReviewDate,
       cycle_started_at: cycleStartedAt,
       review_stage: reviewStage,
       review_history: item.review_history || [],
-      ai_summary: item.ai_summary,
-      ai_flowchart: item.ai_flowchart,
+      ai_summary: item.ai_summary || null,
+      ai_flowchart: item.ai_flowchart || null,
       ai_bullet_points: item.ai_bullet_points || [],
       easiness_factor: item.easiness_factor ?? 2.5,
       interval: 1,
@@ -217,66 +229,59 @@ export const memoryItemService = {
       review_template: '1-4-7',
       current_stage_index: 0,
       is_bookmarked: item.is_bookmarked ?? false,
-      notes: item.notes,
+      notes: item.notes || null,
+      completed_at: null,
+      mastered_at: null,
+      archive_at: null,
+      delete_at: null,
+      last_reviewed_at: null,
+      created_at: now,
+      updated_at: now,
     };
 
-    const { data, error } = await supabase
-      .from('memory_items')
-      .insert(insertData as any)
-      .select()
-      .single();
-
-    if (error) {
-      console.error('Error creating memory item:', error);
-      throw error;
-    }
-
-    return transformItem(data);
+    await setDoc(itemRef, insertData);
+    return transformItem(itemRef.id, insertData);
   },
 
   async updateMemoryItem(id: string, updates: Partial<MemoryItem>): Promise<MemoryItem> {
-    const supabase = getSupabase();
     const userId = await requireAuth();
+    const itemRef = doc(db, 'users', userId, 'memory_items', id);
+    const itemSnap = await getDoc(itemRef);
 
-    const updateData: any = {
+    if (!itemSnap.exists()) {
+      throw new Error('Memory item not found');
+    }
+
+    const updateData = stripUndefinedForUpdate({
       ...updates,
       updated_at: new Date().toISOString(),
-    };
+    });
 
     delete updateData.id;
     delete updateData.user_id;
     delete updateData.created_at;
 
     if (updateData.next_review_date === '') {
-      updateData.next_review_date = null;
+      updateData.next_review_date = '';
     }
 
-    const { data, error } = await supabase
-      .from('memory_items')
-      .update(updateData)
-      .eq('id', id)
-      .eq('user_id', userId)
-      .select()
-      .single();
+    await setDoc(itemRef, updateData, { merge: true });
+    const updatedSnap = await getDoc(itemRef);
 
-    if (error) {
-      console.error('Error updating memory item:', error);
-      throw error;
+    if (!updatedSnap.exists()) {
+      throw new Error('Memory item not found after update');
     }
 
-    return transformItem(data);
+    return transformItem(updatedSnap.id, updatedSnap.data());
   },
 
-  // Complete a review using strict 1-4-7 pass/fail progression
   async completeReview(
     id: string,
     performance: Performance,
     timeSpentSeconds?: number,
     scheduledDateOverride?: string,
   ): Promise<MemoryItem | null> {
-    const supabase = getSupabase();
     const userId = await requireAuth();
-
     const item = await this.getMemoryItemById(id);
     if (!item) throw new Error('Memory item not found');
 
@@ -321,73 +326,45 @@ export const memoryItemService = {
 
     const updatedItem = await this.updateMemoryItem(id, updates);
 
-    // Persist review log for analytics/stats calendar.
+    const reviewRef = doc(userReviewsCollection(userId));
     const scheduledDate = scheduledDateOverride || item.next_review_date || eventDate;
-    const { error: reviewError } = await supabase
-      .from('reviews')
-      .insert({
-        user_id: userId,
-        memory_item_id: id,
-        scheduled_date: scheduledDate,
-        completed_date: now,
-        performance,
-        time_spent_seconds: timeSpentSeconds ?? 0,
-      } as any);
 
-    if (reviewError) {
-      console.warn('Review log insert failed:', reviewError);
-    }
+    await setDoc(reviewRef, {
+      user_id: userId,
+      memory_item_id: id,
+      scheduled_date: scheduledDate,
+      completed_date: now,
+      performance,
+      time_spent_seconds: timeSpentSeconds ?? 0,
+      notes: null,
+      created_at: now,
+    });
 
     return updatedItem;
   },
 
   async processLifecycle(): Promise<{ archived: number; deleted: number }> {
-    const supabase = getSupabase();
     const userId = await requireAuth();
     const today = new Date().toISOString().split('T')[0];
+
+    const items = await this.getMemoryItems();
+    const archivedToDelete = items.filter((item) => item.status === 'archived' && !!item.delete_at && item.delete_at <= today);
+    const completedToDelete = items.filter((item) => item.status === 'completed' && !!item.delete_at && item.delete_at <= today);
+
     let deleted = 0;
 
-    // Legacy cleanup path only: keep backwards compatibility for already-archived rows.
-    const { data: toDelete } = await supabase
-      .from('memory_items')
-      .select('id')
-      .eq('user_id', userId)
-      .eq('status', 'archived')
-      .lte('delete_at', today);
-
-    if (toDelete && toDelete.length > 0) {
-      const ids = toDelete.map(i => i.id);
-      await supabase.from('memory_items').delete().in('id', ids);
-      deleted = ids.length;
+    for (const item of archivedToDelete) {
+      await deleteDoc(doc(db, 'users', userId, 'memory_items', item.id));
+      deleted += 1;
     }
 
-    // Active completed queue cleanup: auto-delete 20 days after completion date.
-    const { data: completedToDelete } = await supabase
-      .from('memory_items')
-      .select('id, attachments')
-      .eq('user_id', userId)
-      .eq('status', 'completed')
-      .lte('delete_at', today);
-
-    if (completedToDelete && completedToDelete.length > 0) {
-      const completedIds = completedToDelete.map(i => i.id);
-      const attachments = completedToDelete
-        .flatMap(row => Array.isArray(row.attachments) ? row.attachments : [])
-        .filter(Boolean) as Attachment[];
-
-      const { error: deleteError } = await supabase
-        .from('memory_items')
-        .delete()
-        .in('id', completedIds)
-        .eq('user_id', userId);
-
-      if (!deleteError) {
-        deleted += completedIds.length;
-        if (attachments.length > 0) {
-          await storageService.removeAttachments(attachments);
+    if (completedToDelete.length > 0) {
+      for (const item of completedToDelete) {
+        await deleteDoc(doc(db, 'users', userId, 'memory_items', item.id));
+        if (item.attachments.length > 0) {
+          await storageService.removeAttachments(item.attachments);
         }
-      } else {
-        console.warn('Failed to auto-delete completed items:', deleteError);
+        deleted += 1;
       }
     }
 
@@ -436,20 +413,10 @@ export const memoryItemService = {
   },
 
   async deleteMemoryItem(id: string): Promise<void> {
-    const supabase = getSupabase();
     const userId = await requireAuth();
     const item = await this.getMemoryItemById(id);
 
-    const { error } = await supabase
-      .from('memory_items')
-      .delete()
-      .eq('id', id)
-      .eq('user_id', userId);
-
-    if (error) {
-      console.error('Error deleting memory item:', error);
-      throw error;
-    }
+    await deleteDoc(doc(db, 'users', userId, 'memory_items', id));
 
     if (item?.attachments?.length) {
       await storageService.removeAttachments(item.attachments);
@@ -464,26 +431,16 @@ export const memoryItemService = {
     return this.updateMemoryItem(id, { status: 'active' });
   },
 
-  async searchMemoryItems(query: string): Promise<MemoryItem[]> {
-    const supabase = getSupabase();
-    const userId = await requireAuth();
+  async searchMemoryItems(queryText: string): Promise<MemoryItem[]> {
+    const normalized = queryText.trim().toLowerCase();
+    if (!normalized) return [];
 
-    // Sanitize search query to prevent injection via .or() filter
-    const sanitized = query.replace(/[%_\\]/g, c => `\\${c}`).replace(/'/g, "''");
-
-    const { data, error } = await supabase
-      .from('memory_items')
-      .select('*')
-      .eq('user_id', userId)
-      .or(`title.ilike.%${sanitized}%,content.ilike.%${sanitized}%`)
-      .order('created_at', { ascending: false })
-      .limit(100);
-
-    if (error) {
-      console.error('Error searching memory items:', error);
-      throw error;
-    }
-
-    return (data || []).map(transformItem);
+    const items = await this.getMemoryItems();
+    return items
+      .filter((item) => {
+        const searchable = `${item.title}\n${item.content}`.toLowerCase();
+        return searchable.includes(normalized);
+      })
+      .slice(0, 100);
   },
 };

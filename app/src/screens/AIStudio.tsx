@@ -9,11 +9,11 @@ import {
   FileText,
   GitBranch,
   HelpCircle,
-  Home,
+  LayoutGrid,
   Loader2,
-  Maximize2,
   MessageCircle,
   Minimize2,
+  Maximize2,
   Save,
   Send,
   Sparkles,
@@ -81,14 +81,14 @@ const TOOL_DEFS: ToolDef[] = [
     name: 'Memory Hooks',
     desc: 'Create mnemonics and analogies.',
     color: '#FFB800',
-    icon: Home,
+    icon: BrainCircuit,
     placeholder: 'Paste facts you want to memorize deeply...',
   },
   {
     id: 'code',
     name: 'Code Explainer',
     desc: 'Explain structure, flow, and caveats of code.',
-    color: '#8B5CF6',
+    color: '#7DD3FC',
     icon: BrainCircuit,
     placeholder: 'Paste code and request explanation...',
   },
@@ -102,7 +102,7 @@ function extractMermaid(raw: string): string {
 
 function toQuizMarkdown(qa: { question: string; answer: string }[]): string {
   return qa
-    .map((item, idx) => `### Q${idx + 1}\n${item.question}\n\n**Answer:** ${item.answer}`)
+    .map((item, index) => `### Q${index + 1}\n${item.question}\n\n**Answer:** ${item.answer}`)
     .join('\n\n');
 }
 
@@ -118,7 +118,7 @@ export function AIStudio() {
   const [copied, setCopied] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [lastError, setLastError] = useState<string>('');
+  const [lastError, setLastError] = useState('');
   const [expandOutput, setExpandOutput] = useState(false);
 
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
@@ -128,9 +128,9 @@ export function AIStudio() {
   const [isChatting, setIsChatting] = useState(false);
   const chatViewportRef = useRef<HTMLDivElement | null>(null);
 
-  const tool = useMemo(() => TOOL_DEFS.find((t) => t.id === toolId) || TOOL_DEFS[0], [toolId]);
+  const tool = useMemo(() => TOOL_DEFS.find((entry) => entry.id === toolId) || TOOL_DEFS[0], [toolId]);
   const selectedItem = useMemo(
-    () => memoryItems.find((m) => m.id === selectedItemId) || null,
+    () => memoryItems.find((item) => item.id === selectedItemId) || null,
     [memoryItems, selectedItemId],
   );
 
@@ -155,11 +155,12 @@ export function AIStudio() {
     setLastError('');
     try {
       let output = '';
+
       if (tool.id === 'summary') {
         output = await aiService.generateSummary(effectiveInput, effectiveTitle);
       } else if (tool.id === 'bullets') {
         const bullets = await aiService.generateBulletPoints(effectiveInput, effectiveTitle);
-        output = bullets.map((b) => `- ${b}`).join('\n');
+        output = bullets.map((bullet) => `- ${bullet}`).join('\n');
       } else if (tool.id === 'flowchart') {
         output = await aiService.generateFlowchart(effectiveInput, effectiveTitle);
       } else if (tool.id === 'quiz') {
@@ -224,20 +225,22 @@ export function AIStudio() {
 
   const handleSendChat = async () => {
     if (!chatInput.trim()) return;
+
     const userMessage = chatInput;
     const contextTitle = selectedItem?.title || 'General Study Chat';
     const contextContent = selectedItem?.content || '';
 
-    setChatMessages((prev) => [...prev, { role: 'user', content: userMessage }]);
+    setChatMessages((previous) => [...previous, { role: 'user', content: userMessage }]);
     setChatInput('');
     setIsChatting(true);
+
     try {
       const reply = await aiService.chat(contextContent, contextTitle, userMessage);
-      setChatMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
+      setChatMessages((previous) => [...previous, { role: 'assistant', content: reply }]);
     } catch (error) {
       console.error('AI chat failed:', error);
-      setChatMessages((prev) => [
-        ...prev,
+      setChatMessages((previous) => [
+        ...previous,
         { role: 'assistant', content: 'Live AI failed. Retry after checking provider configuration.' },
       ]);
     } finally {
@@ -255,65 +258,75 @@ export function AIStudio() {
 
   if (mode === 'chat') {
     return (
-      <div className="min-h-[100dvh] bg-black lined-bg-subtle flex flex-col smooth-scroll-content">
-        <header className="px-4 sm:px-5 safe-top-compact pb-3 border-b border-white/5">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setMode('home')}
-              className="w-10 h-10 rounded-xl bg-remembra-bg-secondary flex items-center justify-center text-remembra-text-secondary"
+      <div className="min-h-[100dvh] bg-black lined-bg-subtle flex flex-col">
+        <header className="px-4 sm:px-6 safe-top-compact pb-4 border-b border-white/10 bg-black/80 backdrop-blur-xl">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <button
+                onClick={() => setMode('home')}
+                className="w-10 h-10 rounded-xl border border-white/10 bg-remembra-bg-secondary flex items-center justify-center text-remembra-text-secondary"
+              >
+                <ArrowLeft size={18} />
+              </button>
+              <div className="min-w-0">
+                <h1 className="text-lg font-semibold text-remembra-text-primary">Tutor Chat</h1>
+                <p className="text-xs text-remembra-text-muted truncate">
+                  {selectedItem ? `Context: ${selectedItem.title}` : 'No context selected'}
+                </p>
+              </div>
+            </div>
+            <select
+              value={selectedItemId}
+              onChange={(event) => setSelectedItemId(event.target.value)}
+              className="hidden sm:block max-w-[280px] bg-remembra-bg-secondary border border-white/10 rounded-lg px-3 py-2 text-xs text-remembra-text-secondary"
             >
-              <ArrowLeft size={18} />
-            </button>
-            <div className="w-10 h-10 rounded-xl bg-remembra-accent-primary/20 flex items-center justify-center">
-              <MessageCircle size={18} className="text-remembra-accent-primary" />
-            </div>
-            <div className="min-w-0">
-              <h1 className="text-lg font-bold text-remembra-text-primary">AI Tutor Chat</h1>
-              <p className="text-xs text-remembra-text-muted truncate">
-                {selectedItem ? `Context: ${selectedItem.title}` : 'No item context selected'}
-              </p>
-            </div>
+              <option value="">No Context</option>
+              {memoryItems.map((item) => (
+                <option key={item.id} value={item.id}>{item.title}</option>
+              ))}
+            </select>
           </div>
         </header>
 
-        <main ref={chatViewportRef} className="flex-1 px-4 sm:px-5 py-4 overflow-y-auto custom-scrollbar space-y-3">
-          {chatMessages.map((message, idx) => (
-            <div key={idx} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+        <main ref={chatViewportRef} className="flex-1 overflow-y-auto px-4 sm:px-6 py-5 space-y-4 custom-scrollbar">
+          {chatMessages.map((message, index) => (
+            <div key={index} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div
-                className={`max-w-[84%] rounded-2xl px-4 py-3 text-sm ${
+                className={`max-w-[88%] sm:max-w-[70%] rounded-2xl px-4 py-3 text-sm leading-relaxed border ${
                   message.role === 'user'
-                    ? 'bg-remembra-accent-primary text-white'
-                    : 'bg-remembra-bg-secondary border border-white/5 text-remembra-text-primary'
-                } smooth-surface`}
+                    ? 'bg-gradient-to-r from-remembra-accent-primary to-remembra-accent-secondary text-white border-transparent'
+                    : 'bg-remembra-bg-secondary text-remembra-text-primary border-white/10'
+                }`}
               >
                 {message.content}
               </div>
             </div>
           ))}
+
           {isChatting && (
             <div className="flex justify-start">
-              <div className="max-w-[84%] rounded-2xl px-4 py-3 text-sm bg-remembra-bg-secondary border border-white/5 text-remembra-text-muted flex items-center gap-2">
+              <div className="rounded-2xl px-4 py-3 text-sm bg-remembra-bg-secondary border border-white/10 text-remembra-text-muted flex items-center gap-2">
                 <Loader2 size={13} className="animate-spin" />
-                Generating...
+                Thinking...
               </div>
             </div>
           )}
         </main>
 
-        <footer className="px-4 sm:px-5 pb-[calc(env(safe-area-inset-bottom)+6.75rem)] pt-3 border-t border-white/5 sm:pb-8">
-          <div className="flex gap-2">
+        <footer className="px-4 sm:px-6 pb-[calc(env(safe-area-inset-bottom)+6.75rem)] pt-3 border-t border-white/10 sm:pb-8 bg-black/90 backdrop-blur-xl">
+          <div className="flex items-center gap-2">
             <Input
               type="text"
               placeholder="Ask your question..."
               value={chatInput}
-              onChange={(e) => setChatInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
+              onChange={(event) => setChatInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
                   handleSendChat();
                 }
               }}
-              className="bg-remembra-bg-secondary border-white/5 rounded-xl text-remembra-text-primary py-6"
+              className="bg-remembra-bg-secondary border-white/10 rounded-xl text-remembra-text-primary py-6"
             />
             <button
               onClick={handleSendChat}
@@ -329,202 +342,241 @@ export function AIStudio() {
   }
 
   if (mode === 'tools') {
-    const Icon = tool.icon;
+    const ToolIcon = tool.icon;
+
     return (
-      <div className="min-h-[100dvh] bg-black lined-bg-subtle flex flex-col smooth-scroll-content">
-        <header className="px-4 sm:px-5 safe-top-compact pb-4 border-b border-white/5">
+      <div className="min-h-[100dvh] bg-black lined-bg-subtle flex flex-col">
+        <header className="px-4 sm:px-6 safe-top-compact pb-4 border-b border-white/10 bg-black/80 backdrop-blur-xl">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setMode('home')}
-              className="w-10 h-10 rounded-xl bg-remembra-bg-secondary flex items-center justify-center text-remembra-text-secondary"
+              className="w-10 h-10 rounded-xl border border-white/10 bg-remembra-bg-secondary flex items-center justify-center text-remembra-text-secondary"
             >
               <ArrowLeft size={18} />
             </button>
             <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: `${tool.color}20` }}>
-              <Icon size={18} style={{ color: tool.color }} />
+              <ToolIcon size={18} style={{ color: tool.color }} />
             </div>
             <div className="min-w-0">
-              <h1 className="text-lg font-bold text-remembra-text-primary">{tool.name}</h1>
+              <h1 className="text-lg font-semibold text-remembra-text-primary">{tool.name}</h1>
               <p className="text-xs text-remembra-text-muted">{tool.desc}</p>
             </div>
           </div>
         </header>
 
-        <main className="flex-1 px-4 sm:px-5 py-4 overflow-y-auto custom-scrollbar space-y-4">
-          <div className="glass-card rounded-2xl p-4 border border-white/5 dynamic-container smooth-surface">
-            <p className="text-xs font-semibold uppercase tracking-wider text-remembra-text-muted mb-2">Context Source</p>
-            <select
-              value={selectedItemId}
-              onChange={(e) => setSelectedItemId(e.target.value)}
-              className="w-full bg-remembra-bg-secondary border border-white/10 rounded-xl px-3 py-2 text-sm text-remembra-text-primary"
-            >
-              <option value="">Manual Input</option>
-              {memoryItems.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.title}
-                </option>
-              ))}
-            </select>
-            {!selectedItem && (
-              <Textarea
-                placeholder={tool.placeholder}
-                value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
-                className="mt-3 bg-remembra-bg-secondary border-white/5 rounded-xl text-remembra-text-primary min-h-[170px] resize-none"
-              />
-            )}
-            {selectedItem && (
-              <div className="mt-3 rounded-xl border border-white/10 bg-remembra-bg-secondary p-3">
-                <p className="text-xs text-remembra-text-muted mb-1">Using selected memory item content</p>
-                <p className="text-sm text-remembra-text-primary max-h-28 overflow-y-auto custom-scrollbar whitespace-pre-wrap break-words">
-                  {selectedItem.content}
-                </p>
-              </div>
-            )}
-          </div>
-
-          <div className="glass-card rounded-2xl p-4 border border-white/5 dynamic-container smooth-surface">
-            <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
-              <p className="text-xs font-semibold uppercase tracking-wider text-remembra-text-muted">Generated Output</p>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setExpandOutput((prev) => !prev)}
-                  className="px-2.5 py-1 rounded-lg bg-remembra-bg-secondary text-[11px] text-remembra-text-secondary border border-white/5 flex items-center gap-1"
-                >
-                  {expandOutput ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
-                  {expandOutput ? 'Compact' : 'Expand'}
-                </button>
-                <button
-                  onClick={handleCopy}
-                  disabled={!result}
-                  className="px-2.5 py-1 rounded-lg bg-remembra-bg-secondary text-[11px] text-remembra-text-secondary border border-white/5 disabled:opacity-50 flex items-center gap-1"
-                >
-                  {copied ? <Check size={12} /> : <Copy size={12} />}
-                  {copied ? 'Copied' : 'Copy'}
-                </button>
-                <button
-                  onClick={handleSaveToItem}
-                  disabled={!selectedItem || !result || isSaving}
-                  className="px-2.5 py-1 rounded-lg bg-remembra-bg-secondary text-[11px] text-remembra-text-secondary border border-white/5 disabled:opacity-50 flex items-center gap-1"
-                >
-                  {isSaving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
-                  Save
-                </button>
-              </div>
-            </div>
-
-            <div
-              className={`rounded-xl border border-white/10 bg-black/20 p-3 transition-all duration-300 ${
-                expandOutput ? 'max-h-[72dvh]' : 'max-h-[48dvh] sm:max-h-[56dvh]'
-              } overflow-y-auto overflow-x-hidden custom-scrollbar`}
-            >
-              {!result ? (
-                <div className="rounded-xl border border-dashed border-white/10 p-8 text-center min-h-36 flex flex-col items-center justify-center">
-                  <Wand2 size={18} className="mx-auto text-remembra-text-muted mb-2" />
-                  <p className="text-sm text-remembra-text-muted">Generate to view AI output here.</p>
+        <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-5 custom-scrollbar pb-[calc(env(safe-area-inset-bottom)+7.5rem)] sm:pb-8">
+          <div className="grid gap-4 lg:grid-cols-[300px,1fr]">
+            <aside className="space-y-4">
+              <section className="rounded-2xl border border-white/10 bg-remembra-bg-secondary/70 p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-remembra-text-muted mb-3">Tools</p>
+                <div className="space-y-2">
+                  {TOOL_DEFS.map((entry) => {
+                    const Icon = entry.icon;
+                    const active = entry.id === tool.id;
+                    return (
+                      <button
+                        key={entry.id}
+                        onClick={() => setToolId(entry.id)}
+                        className={`w-full rounded-xl px-3 py-2.5 text-left border transition-colors ${
+                          active
+                            ? 'bg-black/40 border-white/20'
+                            : 'bg-remembra-bg-tertiary/60 border-white/5 hover:border-white/15'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: `${entry.color}20` }}>
+                            <Icon size={14} style={{ color: entry.color }} />
+                          </div>
+                          <p className="text-sm font-medium text-remembra-text-primary">{entry.name}</p>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
-              ) : tool.id === 'flowchart' ? (
-                <div className="overflow-auto custom-scrollbar">
-                  <MermaidDiagram chart={extractMermaid(result)} className="my-1 min-w-max" />
+              </section>
+
+              <section className="rounded-2xl border border-white/10 bg-remembra-bg-secondary/70 p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-remembra-text-muted mb-2">Context</p>
+                <select
+                  value={selectedItemId}
+                  onChange={(event) => setSelectedItemId(event.target.value)}
+                  className="w-full bg-remembra-bg-tertiary border border-white/10 rounded-xl px-3 py-2 text-sm text-remembra-text-primary"
+                >
+                  <option value="">Manual Input</option>
+                  {memoryItems.map((item) => (
+                    <option key={item.id} value={item.id}>{item.title}</option>
+                  ))}
+                </select>
+                {selectedItem && (
+                  <p className="text-xs text-remembra-text-muted mt-2 line-clamp-4">{selectedItem.content}</p>
+                )}
+              </section>
+            </aside>
+
+            <section className="space-y-4">
+              <div className="rounded-2xl border border-white/10 bg-remembra-bg-secondary/70 p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-remembra-text-muted">Input</p>
+                  <p className="text-xs text-remembra-text-muted">{selectedItem ? 'Using selected item' : 'Manual text'}</p>
                 </div>
-              ) : (
-                <MarkdownRenderer content={result} className="max-w-none break-words" />
-              )}
-            </div>
+                {!selectedItem && (
+                  <Textarea
+                    placeholder={tool.placeholder}
+                    value={inputText}
+                    onChange={(event) => setInputText(event.target.value)}
+                    className="min-h-[220px] resize-none bg-remembra-bg-tertiary border-white/10 rounded-xl text-remembra-text-primary"
+                  />
+                )}
+                {selectedItem && (
+                  <div className="rounded-xl border border-white/10 bg-remembra-bg-tertiary/70 p-4 max-h-[280px] overflow-y-auto custom-scrollbar">
+                    <p className="text-sm text-remembra-text-secondary whitespace-pre-wrap break-words">{selectedItem.content}</p>
+                  </div>
+                )}
+                <div className="mt-4">
+                  <Button
+                    onClick={handleGenerate}
+                    disabled={isGenerating || !effectiveInput.trim()}
+                    className="w-full gradient-primary py-5 rounded-xl text-white font-semibold disabled:opacity-50"
+                  >
+                    {isGenerating ? (
+                      <>
+                        <Loader2 size={16} className="mr-2 animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Wand2 size={16} className="mr-2" />
+                        Generate Output
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
 
-            {lastError && (
-              <p className="mt-3 text-xs text-red-400">{lastError}</p>
-            )}
+              <div className="rounded-2xl border border-white/10 bg-remembra-bg-secondary/70 p-4">
+                <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-remembra-text-muted">Output</p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setExpandOutput((prev) => !prev)}
+                      className="px-3 py-1.5 rounded-lg text-xs border border-white/10 bg-remembra-bg-tertiary text-remembra-text-secondary flex items-center gap-1"
+                    >
+                      {expandOutput ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
+                      {expandOutput ? 'Compact' : 'Expand'}
+                    </button>
+                    <button
+                      onClick={handleCopy}
+                      disabled={!result}
+                      className="px-3 py-1.5 rounded-lg text-xs border border-white/10 bg-remembra-bg-tertiary text-remembra-text-secondary disabled:opacity-50 flex items-center gap-1"
+                    >
+                      {copied ? <Check size={12} /> : <Copy size={12} />}
+                      {copied ? 'Copied' : 'Copy'}
+                    </button>
+                    <button
+                      onClick={handleSaveToItem}
+                      disabled={!selectedItem || !result || isSaving}
+                      className="px-3 py-1.5 rounded-lg text-xs border border-white/10 bg-remembra-bg-tertiary text-remembra-text-secondary disabled:opacity-50 flex items-center gap-1"
+                    >
+                      {isSaving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                      Save
+                    </button>
+                  </div>
+                </div>
+
+                <div
+                  className={`rounded-xl border border-white/10 bg-black/20 p-4 overflow-y-auto custom-scrollbar transition-all duration-300 ${
+                    expandOutput ? 'max-h-[70dvh]' : 'max-h-[45dvh]'
+                  }`}
+                >
+                  {!result ? (
+                    <div className="rounded-xl border border-dashed border-white/10 py-10 text-center">
+                      <Sparkles size={18} className="mx-auto text-remembra-text-muted mb-2" />
+                      <p className="text-sm text-remembra-text-muted">Generate to see the response here.</p>
+                    </div>
+                  ) : tool.id === 'flowchart' ? (
+                    <div className="overflow-auto custom-scrollbar">
+                      <MermaidDiagram chart={extractMermaid(result)} className="my-1 min-w-max" />
+                    </div>
+                  ) : (
+                    <MarkdownRenderer content={result} className="max-w-none break-words" />
+                  )}
+                </div>
+
+                {lastError && <p className="mt-3 text-xs text-red-400">{lastError}</p>}
+              </div>
+            </section>
           </div>
-        </main>
-
-        <footer className="px-4 sm:px-5 pb-[calc(env(safe-area-inset-bottom)+6.75rem)] pt-3 border-t border-white/5 sm:pb-8">
-          <Button
-            onClick={handleGenerate}
-            disabled={isGenerating || !effectiveInput.trim()}
-            className="w-full gradient-primary py-6 rounded-2xl text-white font-semibold disabled:opacity-50"
-          >
-            {isGenerating ? (
-              <>
-                <Loader2 size={16} className="mr-2 animate-spin" />
-                Generating...
-              </>
-            ) : (
-              <>
-                <Sparkles size={16} className="mr-2" />
-                Generate
-              </>
-            )}
-          </Button>
-        </footer>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="fixed inset-0 bg-black flex flex-col" style={{ height: '100vh', maxHeight: '100vh' }}>
-      <div 
-        className="flex-1 overflow-y-auto overscroll-contain px-4 sm:px-5 safe-top safe-bottom-nav sm:pb-8"
-        style={{ WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}
-      >
-        <header className="mb-6 mt-4">
-          <div
-            className="rounded-2xl p-5 border border-white/10 relative overflow-hidden"
-            style={{ background: 'linear-gradient(140deg, #FF8000 0%, #FF4500 40%, #E81224 100%)' }}
-          >
-            <div className="absolute -top-8 -right-8 w-28 h-28 rounded-full bg-white/20 blur-2xl" />
-            <div className="relative z-10">
-              <h1 className="text-xl font-bold text-white mb-1">AI Studio</h1>
-              <p className="text-sm text-white/80 mb-3">Full AI workbench for summaries, quizzes, flowcharts, and tutor chat.</p>
-              <div className="flex flex-wrap gap-2 text-[11px]">
-                <span className="px-2 py-1 rounded-md bg-black/25 text-white flex items-center gap-1">
-                  <BrainCircuit size={12} />
-                  {provider.preferredReasoningModel}
-                </span>
-                <span className="px-2 py-1 rounded-md bg-black/25 text-white">
-                  {provider.mode === 'live' ? 'Live AI active' : 'Fallback mode'}
-                </span>
+    <div className="fixed inset-0 bg-black flex flex-col">
+      <div className="flex-1 overflow-y-auto overscroll-contain px-4 sm:px-6 safe-top safe-bottom-nav sm:pb-8">
+        <header className="mt-4 mb-6">
+          <div className="rounded-3xl border border-white/10 p-6 bg-[radial-gradient(circle_at_top_right,rgba(255,128,0,0.35),transparent_45%),linear-gradient(135deg,#0f0f0f,#040404)]">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-wider text-remembra-text-muted mb-2">AI Workspace</p>
+                <h1 className="text-2xl font-semibold text-remembra-text-primary">AI Studio</h1>
+                <p className="text-sm text-remembra-text-secondary mt-1 max-w-xl">
+                  Build summaries, quizzes, concept maps, and recall-ready notes without leaving your learning flow.
+                </p>
               </div>
+              <div className="w-11 h-11 rounded-xl bg-remembra-accent-primary/15 flex items-center justify-center">
+                <LayoutGrid size={20} className="text-remembra-accent-primary" />
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-2 text-xs">
+              <span className="px-2.5 py-1 rounded-lg bg-black/40 text-remembra-text-secondary border border-white/10 flex items-center gap-1">
+                <BrainCircuit size={12} />
+                {provider.preferredReasoningModel}
+              </span>
+              <span className="px-2.5 py-1 rounded-lg bg-black/40 text-remembra-text-secondary border border-white/10">
+                {provider.mode === 'live' ? 'Live AI active' : 'Fallback mode'}
+              </span>
             </div>
           </div>
         </header>
 
-      <section className="mb-5">
-        <button
-          onClick={() => setMode('chat')}
-          className="w-full rounded-2xl border border-remembra-accent-primary/30 bg-remembra-accent-primary/10 p-4 text-left flex items-center gap-3 hover:bg-remembra-accent-primary/15 transition-colors smooth-surface"
-        >
-          <div className="w-11 h-11 rounded-xl bg-remembra-accent-primary/20 flex items-center justify-center">
-            <MessageCircle size={18} className="text-remembra-accent-primary" />
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-remembra-text-primary">Tutor Chat</p>
-            <p className="text-xs text-remembra-text-muted">Interactive reasoning chat with optional item context.</p>
-          </div>
-        </button>
-      </section>
+        <section className="mb-5">
+          <button
+            onClick={() => setMode('chat')}
+            className="w-full rounded-2xl border border-remembra-accent-primary/20 bg-remembra-accent-primary/8 p-4 text-left flex items-center gap-3 hover:bg-remembra-accent-primary/12 transition-colors"
+          >
+            <div className="w-11 h-11 rounded-xl bg-remembra-accent-primary/15 flex items-center justify-center">
+              <MessageCircle size={18} className="text-remembra-accent-primary" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-remembra-text-primary">Tutor Chat</p>
+              <p className="text-xs text-remembra-text-muted">Ask questions with optional item context and keep a focused dialogue.</p>
+            </div>
+          </button>
+        </section>
 
-      <section>
-        <h2 className="text-sm font-semibold text-remembra-text-muted uppercase tracking-wider mb-3">AI Tools</h2>
-        <div className="grid grid-cols-2 gap-3">
-          {TOOL_DEFS.map((def) => {
-            const Icon = def.icon;
-            return (
-              <button
-                key={def.id}
-                onClick={() => goToTools(def.id)}
-                className="rounded-2xl bg-remembra-bg-secondary/80 border border-white/5 p-4 text-left hover:border-white/15 transition-colors smooth-surface"
-              >
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-2" style={{ backgroundColor: `${def.color}20` }}>
-                  <Icon size={18} style={{ color: def.color }} />
-                </div>
-                <p className="text-sm font-semibold text-remembra-text-primary mb-1">{def.name}</p>
-                <p className="text-xs text-remembra-text-muted leading-relaxed">{def.desc}</p>
-              </button>
-            );
-          })}
-        </div>
-      </section>
+        <section>
+          <h2 className="text-sm font-semibold text-remembra-text-muted uppercase tracking-wider mb-3">Toolbox</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {TOOL_DEFS.map((entry) => {
+              const Icon = entry.icon;
+              return (
+                <button
+                  key={entry.id}
+                  onClick={() => goToTools(entry.id)}
+                  className="rounded-2xl bg-remembra-bg-secondary/75 border border-white/10 p-4 text-left hover:border-white/25 transition-colors"
+                >
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3" style={{ backgroundColor: `${entry.color}20` }}>
+                    <Icon size={18} style={{ color: entry.color }} />
+                  </div>
+                  <p className="text-sm font-semibold text-remembra-text-primary mb-1">{entry.name}</p>
+                  <p className="text-xs text-remembra-text-muted leading-relaxed">{entry.desc}</p>
+                </button>
+              );
+            })}
+          </div>
+        </section>
       </div>
     </div>
   );

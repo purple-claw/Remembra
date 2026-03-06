@@ -1,54 +1,27 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+// Compatibility shim after Firebase migration.
+// Legacy imports should move to '@/lib/firebase'.
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+import {
+  auth,
+  db,
+  storage,
+  getCurrentUserId,
+  isFirebaseConfigured,
+  requireAuth,
+} from '@/lib/firebase';
 
-// Check if Supabase is configured
-export const isSupabaseConfigured = !!(supabaseUrl && supabaseAnonKey);
+export const isSupabaseConfigured = isFirebaseConfigured;
 
-// Create the Supabase client - we use 'any' for the database type to avoid strict typing issues
-// The actual table types are handled by the service layer transform functions
-let supabaseInstance: SupabaseClient | null = null;
-
-if (isSupabaseConfigured) {
-  supabaseInstance = createClient(supabaseUrl, supabaseAnonKey, {
-    auth: {
-      autoRefreshToken: true,
-      persistSession: true,
-      detectSessionInUrl: true,
-      flowType: 'pkce',
-      storageKey: 'remembra-auth',
-    },
-  });
-} else {
-  console.warn('Supabase not configured. Running in demo mode with mock data.');
-}
-
-export const supabase = supabaseInstance;
-
-// Helper to get supabase client with null check
-export const getSupabase = (): SupabaseClient => {
-  if (!supabase) {
-    throw new Error('Supabase not configured');
-  }
-  return supabase;
+export const getSupabase = (): never => {
+  throw new Error('Supabase client has been removed. Use Firebase services instead.');
 };
 
-// Helper to get current user ID
-export const getCurrentUserId = async (): Promise<string | null> => {
-  if (!supabase) return null;
-  const { data: { user } } = await supabase.auth.getUser();
-  return user?.id ?? null;
-};
+export const supabase = null;
 
-// Helper to require authentication
-export const requireAuth = async (): Promise<string> => {
-  if (!supabase) {
-    throw new Error('Supabase not configured');
-  }
-  const userId = await getCurrentUserId();
-  if (!userId) {
-    throw new Error('Authentication required');
-  }
-  return userId;
+export {
+  auth,
+  db,
+  storage,
+  getCurrentUserId,
+  requireAuth,
 };

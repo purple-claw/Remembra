@@ -1,211 +1,132 @@
-import { getSupabase, requireAuth } from '@/lib/supabase';
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import {
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  setDoc,
+} from 'firebase/firestore';
+import { db, requireAuth } from '@/lib/firebase';
 import type { Review, Performance } from '@/types';
 
-// Helper to transform database record to Review
-const transformReview = (data: any): Review => ({
-  id: data.id,
+const userReviewsCollection = (userId: string) => collection(db, 'users', userId, 'reviews');
+
+const transformReview = (id: string, data: any): Review => ({
+  id,
   memory_item_id: data.memory_item_id,
   scheduled_date: data.scheduled_date,
-  completed_date: data.completed_date,
+  completed_date: data.completed_date || undefined,
   performance: data.performance as Performance | undefined,
   time_spent_seconds: data.time_spent_seconds,
-  notes: data.notes,
+  notes: data.notes || undefined,
 });
 
+const sortByScheduledThenCreated = (a: any, b: any) => {
+  const byDate = String(a.scheduled_date || '').localeCompare(String(b.scheduled_date || ''));
+  if (byDate !== 0) return byDate;
+  return String(a.created_at || '').localeCompare(String(b.created_at || ''));
+};
+
 export const reviewService = {
-  // Get all reviews for current user
   async getReviews(): Promise<Review[]> {
-    const supabase = getSupabase();
     const userId = await requireAuth();
-    
-    const { data, error } = await supabase
-      .from('reviews')
-      .select('*')
-      .eq('user_id', userId)
-      .order('scheduled_date', { ascending: true });
-    
-    if (error) {
-      console.error('Error fetching reviews:', error);
-      throw error;
-    }
-    
-    return (data || []).map(transformReview);
+    const snapshot = await getDocs(userReviewsCollection(userId));
+
+    return snapshot.docs
+      .map((reviewDoc) => ({ id: reviewDoc.id, ...reviewDoc.data() }))
+      .sort(sortByScheduledThenCreated)
+      .map((review) => transformReview(review.id, review));
   },
 
-  // Get reviews scheduled for a specific date
   async getReviewsByDate(date: string): Promise<Review[]> {
-    const supabase = getSupabase();
-    const userId = await requireAuth();
-    
-    const { data, error } = await supabase
-      .from('reviews')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('scheduled_date', date)
-      .order('created_at', { ascending: true });
-    
-    if (error) {
-      console.error('Error fetching reviews by date:', error);
-      throw error;
-    }
-    
-    return (data || []).map(transformReview);
+    const reviews = await this.getReviews();
+    return reviews.filter((review) => review.scheduled_date === date);
   },
 
-  // Get reviews in an inclusive date range
   async getReviewsInRange(startDate: string, endDate: string): Promise<Review[]> {
-    const supabase = getSupabase();
-    const userId = await requireAuth();
-
-    const { data, error } = await supabase
-      .from('reviews')
-      .select('*')
-      .eq('user_id', userId)
-      .gte('scheduled_date', startDate)
-      .lte('scheduled_date', endDate)
-      .order('scheduled_date', { ascending: true })
-      .order('created_at', { ascending: true });
-
-    if (error) {
-      console.error('Error fetching reviews in range:', error);
-      throw error;
-    }
-
-    return (data || []).map(transformReview);
+    const reviews = await this.getReviews();
+    return reviews.filter((review) => review.scheduled_date >= startDate && review.scheduled_date <= endDate);
   },
 
-  // Get pending (incomplete) reviews
   async getPendingReviews(): Promise<Review[]> {
-    const supabase = getSupabase();
-    const userId = await requireAuth();
     const today = new Date().toISOString().split('T')[0];
-    
-    const { data, error } = await supabase
-      .from('reviews')
-      .select('*')
-      .eq('user_id', userId)
-      .lte('scheduled_date', today)
-      .is('completed_date', null)
-      .order('scheduled_date', { ascending: true });
-    
-    if (error) {
-      console.error('Error fetching pending reviews:', error);
-      throw error;
-    }
-    
-    return (data || []).map(transformReview);
+    const reviews = await this.getReviews();
+
+    return reviews.filter((review) => review.scheduled_date <= today && !review.completed_date);
   },
 
-  // Create a new review
   async createReview(review: Omit<Review, 'id'>): Promise<Review> {
-    const supabase = getSupabase();
     const userId = await requireAuth();
-    
+    const now = new Date().toISOString();
+    const reviewRef = doc(userReviewsCollection(userId));
+
     const insertData = {
       user_id: userId,
       memory_item_id: review.memory_item_id,
       scheduled_date: review.scheduled_date,
-      completed_date: review.completed_date,
-      performance: review.performance,
-      time_spent_seconds: review.time_spent_seconds,
-      notes: review.notes,
+      completed_date: review.completed_date || null,
+      performance: review.performance || null,
+      time_spent_seconds: review.time_spent_seconds || null,
+      notes: review.notes || null,
+      created_at: now,
     };
-    
-    const { data, error } = await supabase
-      .from('reviews')
-      .insert(insertData as any)
-      .select()
-      .single();
-    
-    if (error) {
-      console.error('Error creating review:', error);
-      throw error;
-    }
-    
-    return transformReview(data);
+
+    await setDoc(reviewRef, insertData);
+    return transformReview(reviewRef.id, insertData);
   },
 
-  // Complete a review
   async completeReview(
-    id: string, 
-    performance: Performance, 
+    id: string,
+    performance: Performance,
     timeSpentSeconds: number,
-    notes?: string
+    notes?: string,
   ): Promise<Review> {
-    const supabase = getSupabase();
     const userId = await requireAuth();
-    
+    const reviewRef = doc(db, 'users', userId, 'reviews', id);
+    const current = await getDoc(reviewRef);
+
+    if (!current.exists()) {
+      throw new Error('Review not found');
+    }
+
     const updateData = {
       completed_date: new Date().toISOString(),
       performance,
       time_spent_seconds: timeSpentSeconds,
-      notes,
+      notes: notes || null,
     };
-    
-    const { data, error } = await supabase
-      .from('reviews')
-      .update(updateData as any)
-      .eq('id', id)
-      .eq('user_id', userId)
-      .select()
-      .single();
-    
-    if (error) {
-      console.error('Error completing review:', error);
-      throw error;
+
+    await setDoc(reviewRef, updateData, { merge: true });
+
+    const updated = await getDoc(reviewRef);
+    if (!updated.exists()) {
+      throw new Error('Review not found after update');
     }
-    
-    return transformReview(data);
+
+    return transformReview(updated.id, updated.data());
   },
 
-  // Get review statistics for date range
   async getReviewStats(startDate: string, endDate: string) {
-    const supabase = getSupabase();
-    const userId = await requireAuth();
-    
-    const { data, error } = await supabase
-      .from('reviews')
-      .select('scheduled_date, completed_date, performance')
-      .eq('user_id', userId)
-      .gte('scheduled_date', startDate)
-      .lte('scheduled_date', endDate);
-    
-    if (error) {
-      console.error('Error fetching review stats:', error);
-      throw error;
-    }
-    
-    // Aggregate by date
+    const reviews = await this.getReviewsInRange(startDate, endDate);
     const stats: Record<string, { scheduled: number; completed: number }> = {};
-    
-    for (const review of data || []) {
-      const reviewData = review as any;
-      if (!stats[reviewData.scheduled_date]) {
-        stats[reviewData.scheduled_date] = { scheduled: 0, completed: 0 };
+
+    for (const review of reviews) {
+      if (!stats[review.scheduled_date]) {
+        stats[review.scheduled_date] = { scheduled: 0, completed: 0 };
       }
-      stats[reviewData.scheduled_date].scheduled++;
-      if (reviewData.completed_date) {
-        stats[reviewData.scheduled_date].completed++;
+      stats[review.scheduled_date].scheduled++;
+      if (review.completed_date) {
+        stats[review.scheduled_date].completed++;
       }
     }
-    
+
     return stats;
   },
 
-  // Delete a review
   async deleteReview(id: string): Promise<void> {
-    const supabase = getSupabase();
     const userId = await requireAuth();
-    
-    const { error } = await supabase
-      .from('reviews')
-      .delete()
-      .eq('id', id)
-      .eq('user_id', userId);
-    
-    if (error) {
-      console.error('Error deleting review:', error);
-      throw error;
-    }
+    const reviewRef = doc(db, 'users', userId, 'reviews', id);
+    await deleteDoc(reviewRef);
   },
 };

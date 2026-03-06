@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import type { MemoryItem, Category, Profile, Achievement, DaySchedule, Performance, ReviewStatus, NotificationPreferences, DailyReview } from '@/types';
-import type { User, Session } from '@supabase/supabase-js';
+import type { AppUser, AppSession } from '@/types/auth';
 import { DECISION_STAGE } from '@/domain/review147';
 import { 
   authService,
@@ -13,9 +13,8 @@ import {
   streakService,
   notificationService,
   avatarService,
-  isSupabaseConfigured,
+  isFirebaseConfigured,
 } from '@/services';
-import { supabase } from '@/lib/supabase';
 
 // Track if already initialized to prevent double data loads
 let _initialized = false;
@@ -35,11 +34,14 @@ const sortByDueThenCreated = (a: MemoryItem, b: MemoryItem) => {
 const isAwaitingSevenDayDecision = (item: MemoryItem) =>
   item.status === 'active' && item.review_stage === DECISION_STAGE && !item.next_review_date;
 
-export type Screen = 'dashboard' | 'calendar' | 'review' | 'library' | 'create' | 'ai-tools' | 'stats' | 'profile' | 'test' | 'auth';
+export type Screen = 'dashboard' | 'calendar' | 'review' | 'library' | 'create' | 'ai-tools' | 'stats' | 'profile' | 'persist' | 'test' | 'auth';
+
+const MAX_NAV_HISTORY = 40;
+const NON_HISTORY_SCREENS: Screen[] = ['auth'];
 
 interface AuthState {
-  user: User | null;
-  session: Session | null;
+  user: AppUser | null;
+  session: AppSession | null;
   isAuthenticated: boolean;
   isLoading: boolean;
 }
@@ -47,7 +49,11 @@ interface AuthState {
 interface AppState extends AuthState {
   // Navigation
   currentScreen: Screen;
-  setScreen: (screen: Screen) => void;
+  navigationHistory: Screen[];
+  setScreen: (screen: Screen, options?: { replace?: boolean }) => void;
+  goBack: (fallback?: Screen) => boolean;
+  canGoBack: () => boolean;
+  resetNavigation: (screen?: Screen) => void;
   
   // Data
   profile: Profile | null;
@@ -109,9 +115,72 @@ export const useStore = create<AppState>()(persist((set, get) => ({
   
   // Navigation
   currentScreen: 'auth',
-  setScreen: (screen) => set({ currentScreen: screen }),
+  navigationHistory: [],
+  setScreen: (screen, options) => set((state) => {
+    if (state.currentScreen === screen) {
+      return state;
+    }
+
+    const shouldTrackHistory = !options?.replace
+      && !NON_HISTORY_SCREENS.includes(state.currentScreen)
+      && !NON_HISTORY_SCREENS.includes(screen);
+
+    const navigationHistory = shouldTrackHistory
+      ? [...state.navigationHistory, state.currentScreen].slice(-MAX_NAV_HISTORY)
+      : state.navigationHistory;
+
+    return {
+      currentScreen: screen,
+      navigationHistory,
+    };
+  }),
+  goBack: (fallback = 'dashboard') => {
+    const state = get();
+    const history = [...state.navigationHistory];
+
+    while (history.length > 0) {
+      const previousScreen = history.pop() as Screen;
+      if (previousScreen === state.currentScreen) continue;
+      if (!state.isAuthenticated && previousScreen !== 'auth') continue;
+
+      set({
+        currentScreen: previousScreen,
+        navigationHistory: history,
+      });
+      return true;
+    }
+
+    if (state.isAuthenticated && state.currentScreen !== fallback) {
+      set({
+        currentScreen: fallback,
+        navigationHistory: [],
+      });
+      return true;
+    }
+
+    if (!state.isAuthenticated && state.currentScreen !== 'auth') {
+      set({
+        currentScreen: 'auth',
+        navigationHistory: [],
+      });
+      return true;
+    }
+
+    return false;
+  },
+  canGoBack: () => {
+    const state = get();
+    if (state.navigationHistory.length > 0) return true;
+    if (state.isAuthenticated && state.currentScreen !== 'dashboard') return true;
+    if (!state.isAuthenticated && state.currentScreen !== 'auth') return true;
+    return false;
+  },
+  resetNavigation: (screen) => set((state) => ({
+    navigationHistory: [],
+    currentScreen: screen ?? state.currentScreen,
+  })),
   
-  // Initial Data - empty until authenticated and loaded from Supabase
+  // Initial Data - empty until authenticated and loaded from Firebase
   profile: null,
   categories: [],
   memoryItems: [],
@@ -130,10 +199,10 @@ export const useStore = create<AppState>()(persist((set, get) => ({
     _initialized = true;
     
     try {
-      // If Supabase is not configured, show auth screen
-      if (!isSupabaseConfigured || !supabase) {
-        console.log('Supabase not configured. Please set environment variables.');
-        set({ isLoading: false, currentScreen: 'auth' });
+      // If Firebase is not configured, show auth screen
+      if (!isFirebaseConfigured) {
+        console.log('Firebase not configured. Please set environment variables.');
+        set({ isLoading: false, currentScreen: 'auth', navigationHistory: [] });
         return;
       }
       
@@ -148,6 +217,7 @@ export const useStore = create<AppState>()(persist((set, get) => ({
           session, 
           isAuthenticated: true,
           currentScreen: 'dashboard',
+          navigationHistory: [],
         });
         
         // Load user data before dismissing loading screen
@@ -176,6 +246,7 @@ export const useStore = create<AppState>()(persist((set, get) => ({
           isAuthenticated: false,
           isLoading: false,
           currentScreen: 'auth',
+          navigationHistory: [],
         });
       }
       
@@ -185,7 +256,7 @@ export const useStore = create<AppState>()(persist((set, get) => ({
       }
       
       // Subscribe to auth changes
-      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      const { data: { subscription } } = authService.onAuthStateChange(async (event, session) => {
         const user = session?.user ?? null;
         set({ 
           user, 
@@ -194,7 +265,7 @@ export const useStore = create<AppState>()(persist((set, get) => ({
         });
         
         if (event === 'SIGNED_IN' && user) {
-          set({ currentScreen: 'dashboard' });
+          set({ currentScreen: 'dashboard', navigationHistory: [] });
           try {
             await get().loadUserData();
           } catch (e) {
@@ -211,6 +282,7 @@ export const useStore = create<AppState>()(persist((set, get) => ({
         } else if (event === 'SIGNED_OUT') {
           set({
             currentScreen: 'auth',
+            navigationHistory: [],
             profile: null,
             categories: [],
             memoryItems: [],
@@ -218,15 +290,13 @@ export const useStore = create<AppState>()(persist((set, get) => ({
             calendarData: [],
             dailyReviews: [],
           });
-        } else if (event === 'PASSWORD_RECOVERY') {
-          set({ currentScreen: 'auth' });
         }
       });
       
       _authSubscription = subscription;
     } catch (error) {
       console.error('Error initializing app:', error);
-      set({ isLoading: false, currentScreen: 'auth' });
+      set({ isLoading: false, currentScreen: 'auth', navigationHistory: [] });
     }
   },
   
@@ -244,13 +314,19 @@ export const useStore = create<AppState>()(persist((set, get) => ({
   
   // Sign out
   signOut: async () => {
-    await authService.signOut();
+    // Always clear local state even if Firebase call fails
+    try {
+      await authService.signOut();
+    } catch (error) {
+      console.warn('[Store] Firebase signOut error (clearing local state anyway):', error);
+    }
     notificationService.cancelAll().catch(console.warn);
     set({
       user: null,
       session: null,
       isAuthenticated: false,
       currentScreen: 'auth',
+      navigationHistory: [],
       profile: null,
       categories: [],
       memoryItems: [],
@@ -260,7 +336,7 @@ export const useStore = create<AppState>()(persist((set, get) => ({
     });
   },
   
-  // Load all user data from Supabase
+  // Load all user data from Firebase
   loadUserData: async () => {
     try {
       const { user } = get();
@@ -302,7 +378,7 @@ export const useStore = create<AppState>()(persist((set, get) => ({
         username: user.user_metadata?.username || user.email?.split('@')[0] || 'User',
         avatar_url: user.user_metadata?.avatar_url || avatarService.generateProfileAvatarUrl({
           username: user.user_metadata?.username || user.email?.split('@')[0] || 'User',
-          email: user.email,
+          email: user.email || undefined,
           userId: user.id,
         }),
         timezone: 'UTC',
@@ -359,10 +435,18 @@ export const useStore = create<AppState>()(persist((set, get) => ({
     const itemsToReview = items || get().getItemsDueToday();
     // Review due topics in deterministic order: due date first, then creation time.
     const sorted = [...itemsToReview].sort(sortByDueThenCreated);
-    set({ 
-      reviewQueue: sorted, 
-      currentReviewIndex: 0,
-      currentScreen: 'review' 
+    set((state) => {
+      const shouldTrackHistory = state.currentScreen !== 'review' && !NON_HISTORY_SCREENS.includes(state.currentScreen);
+      const navigationHistory = shouldTrackHistory
+        ? [...state.navigationHistory, state.currentScreen].slice(-MAX_NAV_HISTORY)
+        : state.navigationHistory;
+
+      return {
+        reviewQueue: sorted,
+        currentReviewIndex: 0,
+        currentScreen: 'review',
+        navigationHistory,
+      };
     });
   },
   
@@ -373,6 +457,7 @@ export const useStore = create<AppState>()(persist((set, get) => ({
     } else {
       set({ 
         currentScreen: 'dashboard',
+        navigationHistory: [],
         currentReviewIndex: 0,
         reviewQueue: []
       });
@@ -386,7 +471,7 @@ export const useStore = create<AppState>()(persist((set, get) => ({
     if (!currentItem) return;
     
     try {
-      // Update item in Supabase using strict 1-4-7 engine
+      // Update item in Firebase using strict 1-4-7 engine
       let updatedItem = await memoryItemService.completeReview(currentItem.id, performance, timeSpentSeconds);
       
       // Update local state
@@ -553,7 +638,7 @@ export const useStore = create<AppState>()(persist((set, get) => ({
     return get().categories.find(c => c.id === id);
   },
   
-  // Mark a review as complete from calendar (uses strict 1-4-7) — persists to Supabase
+  // Mark a review as complete from calendar (uses strict 1-4-7) — persists to Firebase
   markReviewComplete: async (itemId, date, performance) => {
     try {
       let updatedItem = await memoryItemService.completeReview(itemId, performance, 0, date);
@@ -608,7 +693,7 @@ export const useStore = create<AppState>()(persist((set, get) => ({
       const reminderTime = get().profile?.notification_preferences?.reminder_time || '09:00';
       notificationService.scheduleDailySummary(get().memoryItems, reminderTime).catch(console.warn);
     } catch (error) {
-      console.error('Error persisting review to Supabase:', error);
+      console.error('Error persisting review to Firebase:', error);
     }
   },
   

@@ -18,7 +18,7 @@ export const mockProfile: Profile = {
   created_at: new Date().toISOString(),
 };
 
-// Empty defaults - real data comes from Supabase
+// Empty defaults - real data comes from Firebase
 export const mockCategories: Category[] = [];
 export const mockMemoryItems: MemoryItem[] = [];
 export const mockAchievements: Achievement[] = [];

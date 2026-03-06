@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { getSupabase, isSupabaseConfigured } from '@/lib/supabase';
+import { collection, getDocs, limit, query } from 'firebase/firestore';
+import { auth, db, isFirebaseConfigured } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { CheckCircle, XCircle, Loader2 } from 'lucide-react';
 
@@ -9,6 +10,11 @@ interface TestResult {
   message?: string;
 }
 
+const getErrorMessage = (error: unknown): string => {
+  if (error instanceof Error) return error.message;
+  return 'Unknown error';
+};
+
 export function DatabaseTest() {
   const [tests, setTests] = useState<TestResult[]>([]);
   const [running, setRunning] = useState(false);
@@ -17,105 +23,73 @@ export function DatabaseTest() {
     setRunning(true);
     const results: TestResult[] = [];
 
-    // Test 1: Check Supabase configuration
     results.push({
-      name: 'Supabase Configuration',
-      status: isSupabaseConfigured ? 'success' : 'error',
-      message: isSupabaseConfigured 
-        ? 'Environment variables loaded' 
-        : 'Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY',
+      name: 'Firebase Configuration',
+      status: isFirebaseConfigured ? 'success' : 'error',
+      message: isFirebaseConfigured
+        ? 'Environment variables loaded'
+        : 'Missing one or more VITE_FIREBASE_* variables',
     });
     setTests([...results]);
 
-    if (!isSupabaseConfigured) {
+    if (!isFirebaseConfigured) {
       setRunning(false);
       return;
     }
 
-    const supabase = getSupabase();
-
-    // Test 2: Basic connection (query non-existent table catches connection issues)
     try {
-      const start = Date.now();
-      // We'll query the profiles table - it will return empty due to RLS but proves connection works
-      const { error } = await supabase.from('profiles').select('id').limit(1);
-      const elapsed = Date.now() - start;
-      
-      if (error && !error.message.includes('permission') && !error.message.includes('RLS')) {
-        throw error;
-      }
+      const startedAt = Date.now();
+      await getDocs(query(collection(db, 'profiles'), limit(1)));
+      const elapsed = Date.now() - startedAt;
       results.push({
-        name: 'Database Connection',
+        name: 'Firestore Connection',
         status: 'success',
         message: `Connected in ${elapsed}ms`,
       });
-    } catch (err: any) {
+    } catch (error) {
       results.push({
-        name: 'Database Connection',
+        name: 'Firestore Connection',
         status: 'error',
-        message: err.message || 'Connection failed',
+        message: getErrorMessage(error) || 'Connection failed',
       });
     }
     setTests([...results]);
 
-    // Test 3: Check tables exist
-    const tablesToCheck = ['profiles', 'categories', 'memory_items', 'reviews', 'streak_entries', 'achievements', 'device_push_tokens'];
-    for (const table of tablesToCheck) {
-      try {
-        const { error } = await supabase.from(table).select('*').limit(0);
-        if (error && error.code === '42P01') {
-          // Table doesn't exist
+    const user = auth.currentUser;
+    if (!user) {
+      results.push({
+        name: 'User Collections',
+        status: 'success',
+        message: 'Skipped (no signed-in user)',
+      });
+      setTests([...results]);
+    } else {
+      const collectionsToCheck = ['categories', 'memory_items', 'reviews', 'streak_entries', 'achievements'];
+
+      for (const collectionName of collectionsToCheck) {
+        try {
+          await getDocs(query(collection(db, 'users', user.uid, collectionName), limit(1)));
           results.push({
-            name: `Table: ${table}`,
-            status: 'error',
-            message: 'Table does not exist',
-          });
-        } else if (error && error.message.includes('permission')) {
-          // RLS blocking but table exists
-          results.push({
-            name: `Table: ${table}`,
+            name: `Collection: ${collectionName}`,
             status: 'success',
-            message: 'Table exists (RLS active)',
+            message: 'Collection reachable',
           });
-        } else if (error) {
+        } catch (error) {
           results.push({
-            name: `Table: ${table}`,
+            name: `Collection: ${collectionName}`,
             status: 'error',
-            message: error.message,
-          });
-        } else {
-          results.push({
-            name: `Table: ${table}`,
-            status: 'success',
-            message: 'Table exists and accessible',
+            message: getErrorMessage(error) || 'Collection check failed',
           });
         }
-      } catch (err: any) {
-        results.push({
-          name: `Table: ${table}`,
-          status: 'error',
-          message: err.message,
-        });
+        setTests([...results]);
       }
-      setTests([...results]);
     }
 
-    // Test 4: Auth service check
-    try {
-      const { data, error } = await supabase.auth.getSession();
-      if (error) throw error;
-      results.push({
-        name: 'Auth Service',
-        status: 'success',
-        message: data.session ? 'Session active' : 'No active session (expected)',
-      });
-    } catch (err: any) {
-      results.push({
-        name: 'Auth Service',
-        status: 'error',
-        message: err.message,
-      });
-    }
+    results.push({
+      name: 'Auth Service',
+      status: 'success',
+      message: auth.currentUser ? 'Session active' : 'No active session (expected)',
+    });
     setTests([...results]);
 
     setRunning(false);
@@ -132,7 +106,7 @@ export function DatabaseTest() {
           Database Connection Test
         </h1>
         <p className="text-remembra-text-secondary mb-6">
-          Testing Supabase connection and schema...
+          Testing Firebase Auth + Firestore connectivity...
         </p>
 
         <div className="space-y-3 mb-6">
@@ -187,13 +161,15 @@ export function DatabaseTest() {
 
         <div className="mt-8 p-4 bg-remembra-bg-tertiary rounded-xl">
           <h2 className="text-sm font-semibold text-remembra-text-primary mb-2">
-            Supabase Config
+            Firebase Config
           </h2>
           <p className="text-xs text-remembra-text-muted font-mono break-all">
-            URL: {import.meta.env.VITE_SUPABASE_URL || 'Not set'}
+            Project ID: {import.meta.env.VITE_FIREBASE_PROJECT_ID || 'remembra-8e791 (fallback)'}
           </p>
           <p className="text-xs text-remembra-text-muted font-mono mt-1">
-            Key: {import.meta.env.VITE_SUPABASE_ANON_KEY ? '••••••' + import.meta.env.VITE_SUPABASE_ANON_KEY.slice(-8) : 'Not set'}
+            API Key: {(import.meta.env.VITE_FIREBASE_API_KEY || '').length > 0
+              ? '••••••' + String(import.meta.env.VITE_FIREBASE_API_KEY).slice(-8)
+              : 'Using embedded fallback key'}
           </p>
         </div>
       </div>

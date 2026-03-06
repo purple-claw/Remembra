@@ -90,9 +90,9 @@ npm run deploy
 ```
 
 ## Environment Variables
-Firebase Hosting serves static files only. Your Supabase credentials in `.env` are bundled at build time via Vite's `import.meta.env` system.
+Firebase Hosting serves static files only. Your Firebase web config in `.env` is bundled at build time via Vite's `import.meta.env` system.
 
-**Security Note**: The Supabase anon key is safe to expose in client-side code (it's row-level security protected). Never bundle service role keys.
+**Security Note**: Firebase web config values are public client identifiers. Keep privileged credentials (service account keys/admin SDK secrets) out of the client and out of `.env`.
 
 ## Troubleshooting
 
@@ -131,3 +131,6 @@ Firebase Hosting serves static files only. Your Supabase credentials in `.env` a
 4. ✅ Test locally: `npm run preview`
 5. ✅ Deploy: `firebase deploy --only hosting`
 6. ✅ Verify: Visit `https://YOUR-PROJECT-ID.web.app`
+
+
+Now add proper navigation for andriod app, and alos the web app, the little things, the scrolling hide navigations and eveyrthing, when im clicking back in andriod app, the app is completely exiting, i dont want that, i want previous section back navigation in that, uodate all these, adn alos add proper UI and Ux for the profile Management.

@@ -1,4 +1,5 @@
-import { getSupabase, requireAuth } from '@/lib/supabase';
+import { deleteObject, getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+import { requireAuth, storage } from '@/lib/firebase';
 import type { Attachment } from '@/types';
 
 export const MEMORY_IMAGE_BUCKET = 'memory-images';
@@ -24,7 +25,6 @@ const getExtension = (name: string, mimeType: string): string => {
 
 export const storageService = {
   async uploadImage(file: File): Promise<Attachment> {
-    const supabase = getSupabase();
     const userId = await requireAuth();
 
     const ext = getExtension(file.name, file.type || 'application/octet-stream');
@@ -33,30 +33,20 @@ export const storageService = {
       ? crypto.randomUUID()
       : `${Math.random().toString(36).slice(2)}-${Date.now()}`;
     const objectName = `${Date.now()}-${uuid}.${ext}`;
-    const objectPath = `${userId}/${safeName}-${objectName}`;
+    const objectPath = `${MEMORY_IMAGE_BUCKET}/${userId}/${safeName}-${objectName}`;
 
-    const { error: uploadError } = await supabase
-      .storage
-      .from(MEMORY_IMAGE_BUCKET)
-      .upload(objectPath, file, {
-        upsert: false,
-        contentType: file.type || 'application/octet-stream',
-        cacheControl: '3600',
-      });
+    const imageRef = ref(storage, objectPath);
 
-    if (uploadError) {
-      throw new Error(`Image upload failed: ${uploadError.message}`);
-    }
+    await uploadBytes(imageRef, file, {
+      contentType: file.type || 'application/octet-stream',
+    });
 
-    const { data } = supabase
-      .storage
-      .from(MEMORY_IMAGE_BUCKET)
-      .getPublicUrl(objectPath);
+    const url = await getDownloadURL(imageRef);
 
     return {
       type: 'image',
       name: file.name,
-      url: data.publicUrl,
+      url,
       size: file.size,
       path: objectPath,
       bucket: MEMORY_IMAGE_BUCKET,
@@ -65,26 +55,16 @@ export const storageService = {
   },
 
   async removeAttachments(attachments: Attachment[]): Promise<void> {
-    const supabase = getSupabase();
+    const paths = attachments
+      .map((attachment) => attachment.path)
+      .filter((path): path is string => !!path);
 
-    const byBucket: Record<string, string[]> = {};
-
-    for (const attachment of attachments) {
-      if (!attachment.path || !attachment.bucket) continue;
-      if (!byBucket[attachment.bucket]) {
-        byBucket[attachment.bucket] = [];
+    await Promise.all(paths.map(async (path) => {
+      try {
+        await deleteObject(ref(storage, path));
+      } catch (error) {
+        console.warn(`Failed to remove storage object at ${path}:`, error);
       }
-      byBucket[attachment.bucket].push(attachment.path);
-    }
-
-    await Promise.all(
-      Object.entries(byBucket).map(async ([bucket, paths]) => {
-        if (paths.length === 0) return;
-        const { error } = await supabase.storage.from(bucket).remove(paths);
-        if (error) {
-          console.warn(`Failed to remove objects from bucket ${bucket}:`, error);
-        }
-      }),
-    );
+    }));
   },
 };

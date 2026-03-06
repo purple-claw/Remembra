@@ -108,7 +108,7 @@ export function Library() {
   };
 
   return (
-    <div className="fixed inset-0 bg-black flex flex-col" style={{ height: '100vh', maxHeight: '100vh' }}>
+    <div className="h-[100dvh] min-h-[100dvh] w-full overflow-hidden bg-black flex flex-col">
       {/* Item Detail Modal */}
       {selectedItem && (
         <ItemDetail item={selectedItem} onClose={() => setSelectedItem(null)} />
@@ -216,7 +216,8 @@ export function Library() {
 
       {/* Scrollable Content */}
       <div 
-        className="flex-1 overflow-y-auto overscroll-contain px-4 sm:px-5 py-4"
+        data-nav-scroll="true"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 sm:px-5 py-4"
         style={{ 
           WebkitOverflowScrolling: 'touch',
           overscrollBehavior: 'contain'
@@ -349,15 +350,15 @@ export function Library() {
           </div>
         )}
 
-        {/* Bottom padding for floating button */}
-        <div className="h-24" />
+        {/* Bottom padding for floating button and fixed nav */}
+        <div className="h-36" />
       </div>
 
       {/* Floating Quick Review Button */}
       {activeFilteredCount > 0 && (
         <div 
           className="fixed left-4 right-4 sm:left-5 sm:right-5 z-40"
-          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 5rem)' }}
+          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 5.5rem)' }}
         >
           <Button
             onClick={() => {

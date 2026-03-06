@@ -13,43 +13,165 @@ import { DatabaseTest } from '@/screens/DatabaseTest';
 import { Auth } from '@/screens/Auth';
 import { BottomNav } from '@/components/BottomNav';
 import { Toaster } from '@/components/ui/sonner';
+import { toast } from 'sonner';
+import { Capacitor } from '@capacitor/core';
 
 function AppContent() {
   const currentScreen = useStore(state => state.currentScreen);
+  const goBack = useStore(state => state.goBack);
+  const canGoBack = useStore(state => state.canGoBack);
   const isAuthenticated = useStore(state => state.isAuthenticated);
   const [navVisible, setNavVisible] = useState(true);
   const mainRef = useRef<HTMLElement | null>(null);
   const lastScrollY = useRef(0);
-  const scrollThreshold = 8;
+  const activeScrollElementRef = useRef<HTMLElement | null>(null);
+  const scrollRafRef = useRef<number | null>(null);
+  const skipNextHistoryPushRef = useRef(false);
+  const browserHistoryReadyRef = useRef(false);
+  const backPressTimestampRef = useRef(0);
 
   // If not authenticated, always show auth screen
   const activeScreen = isAuthenticated ? currentScreen : 'auth';
 
-  // Reset nav visibility when switching screens
+  const showNav = isAuthenticated && activeScreen !== 'review' && activeScreen !== 'create' && activeScreen !== 'auth';
+
+  // Reset nav visibility and scroll state when switching screens
   useEffect(() => {
     setNavVisible(true);
     lastScrollY.current = 0;
+    activeScrollElementRef.current = null;
     if (mainRef.current) {
-      mainRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+      mainRef.current.scrollTo({ top: 0, behavior: 'auto' });
     }
   }, [activeScreen]);
 
-  const handleScroll = useCallback((e: React.UIEvent<HTMLElement>) => {
-    const el = e.currentTarget;
-    const currentY = el.scrollTop;
-    const delta = currentY - lastScrollY.current;
-    
-    if (Math.abs(delta) > scrollThreshold) {
-      if (delta > 0 && currentY > 60) {
-        // Scrolling down — hide nav
-        setNavVisible(false);
-      } else {
-        // Scrolling up — show nav
-        setNavVisible(true);
-      }
+  const handleCapturedScroll = useCallback((event: Event) => {
+    if (!showNav) return;
+
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+
+    const hasExplicitNavScroll = target.dataset.navScroll === 'true';
+    const computedStyle = window.getComputedStyle(target);
+    const overflowY = computedStyle.overflowY;
+    const allowsVerticalScroll = overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay';
+    const verticalRange = target.scrollHeight - target.clientHeight;
+
+    if (!hasExplicitNavScroll && !allowsVerticalScroll) return;
+    if (verticalRange <= 24) return;
+
+    const currentY = Math.max(0, Math.min(target.scrollTop, verticalRange));
+
+    if (activeScrollElementRef.current !== target) {
+      activeScrollElementRef.current = target;
+      lastScrollY.current = currentY;
+      return;
     }
+
+    const delta = currentY - lastScrollY.current;
+    if (Math.abs(delta) < 8) return;
+
+    if (currentY <= 16) {
+      setNavVisible(true);
+    } else if (delta > 0) {
+      setNavVisible(false);
+    } else {
+      setNavVisible(true);
+    }
+
     lastScrollY.current = currentY;
+  }, [showNav]);
+
+  useEffect(() => {
+    const onScrollCapture = (event: Event) => {
+      if (scrollRafRef.current !== null) {
+        cancelAnimationFrame(scrollRafRef.current);
+      }
+
+      scrollRafRef.current = requestAnimationFrame(() => {
+        handleCapturedScroll(event);
+      });
+    };
+
+    document.addEventListener('scroll', onScrollCapture, { capture: true, passive: true });
+    return () => {
+      if (scrollRafRef.current !== null) {
+        cancelAnimationFrame(scrollRafRef.current);
+      }
+      document.removeEventListener('scroll', onScrollCapture, true);
+    };
+  }, [handleCapturedScroll]);
+
+  // Sync browser back button with in-app navigation stack.
+  useEffect(() => {
+    if (Capacitor.isNativePlatform()) return;
+    if (typeof window === 'undefined') return;
+
+    const state = { remembraScreen: activeScreen, t: Date.now() };
+    window.history.replaceState(state, '');
+    window.history.pushState(state, '');
+    skipNextHistoryPushRef.current = true;
+    browserHistoryReadyRef.current = true;
   }, []);
+
+  useEffect(() => {
+    if (Capacitor.isNativePlatform()) return;
+    if (!browserHistoryReadyRef.current) return;
+    if (skipNextHistoryPushRef.current) {
+      skipNextHistoryPushRef.current = false;
+      return;
+    }
+
+    window.history.pushState({ remembraScreen: activeScreen, t: Date.now() }, '');
+  }, [activeScreen]);
+
+  useEffect(() => {
+    if (Capacitor.isNativePlatform()) return;
+
+    const handlePopState = () => {
+      const handled = goBack('dashboard');
+      if (handled) {
+        skipNextHistoryPushRef.current = true;
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [goBack]);
+
+  // Handle Android hardware back button using app navigation stack first.
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    let removeListener: (() => void) | null = null;
+
+    const setupBackButton = async () => {
+      const { App: CapacitorApp } = await import('@capacitor/app');
+      const subscription = await CapacitorApp.addListener('backButton', () => {
+        if (goBack('dashboard')) return;
+        if (canGoBack()) return;
+
+        const now = Date.now();
+        if (now - backPressTimestampRef.current < 1400) {
+          CapacitorApp.exitApp();
+          return;
+        }
+
+        backPressTimestampRef.current = now;
+        toast('Press back again to exit');
+      });
+
+      removeListener = () => subscription.remove();
+    };
+
+    setupBackButton().catch((error) => {
+      console.error('Failed to set Android back handler:', error);
+    });
+
+    return () => {
+      removeListener?.();
+    };
+  }, [goBack, canGoBack]);
 
   const renderScreen = () => {
     switch (activeScreen) {
@@ -78,15 +200,12 @@ function AppContent() {
     }
   };
 
-  const showNav = isAuthenticated && activeScreen !== 'review' && activeScreen !== 'create' && activeScreen !== 'auth';
-
   return (
-    <div className="app-shell bg-black text-remembra-text-primary font-sans flex flex-col overflow-hidden">
+    <div className="app-shell bg-black text-remembra-text-primary font-sans overflow-hidden">
       <main 
         ref={mainRef}
-        className="app-scroll flex-1 overflow-y-auto overflow-x-hidden overscroll-contain" 
+        className="app-scroll h-[100dvh] overflow-y-auto overflow-x-hidden overscroll-contain" 
         id="main-scroll"
-        onScroll={handleScroll}
       >
         <div key={activeScreen} className="screen-shell animate-screen-enter">
           {renderScreen()}

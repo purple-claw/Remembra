@@ -1,20 +1,26 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useStore } from '@/store/useStore';
-import { 
-  User,
-  Mail,
-  LogOut,
-  ChevronRight,
-  Shield,
-  Bell,
-  Palette,
-  HelpCircle,
-  FileText,
-  Check,
+import type { NotificationPreferences } from '@/types';
+import {
   AlertTriangle,
-  RefreshCw
+  ArrowLeft,
+  Bell,
+  CheckCircle2,
+  Clock3,
+  Flame,
+  Globe2,
+  LogOut,
+  Mail,
+  RefreshCw,
+  Save,
+  ShieldCheck,
+  Sparkles,
+  User2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import { avatarService } from '@/services/avatarService';
 import {
@@ -26,36 +32,51 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+} from '@/components/ui/alert-dialog';
+
+const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
+  daily_reminder: true,
+  reminder_time: '09:00',
+  streak_reminder: true,
+  achievement_notifications: true,
+  ai_insights: true,
+};
 
 export function Profile() {
-  const { user, profile, signOut, memoryItems, categories, updateProfile } = useStore();
+  const {
+    user,
+    profile,
+    signOut,
+    memoryItems,
+    categories,
+    updateProfile,
+    updateNotificationPreferences,
+    goBack,
+  } = useStore();
+
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isGeneratingAvatar, setIsGeneratingAvatar] = useState(false);
   const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
   const [didAutoAvatarAttempt, setDidAutoAvatarAttempt] = useState(false);
 
-  const handleLogout = async () => {
-    setIsLoggingOut(true);
-    try {
-      await signOut();
-    } catch (error) {
-      console.error('Logout failed:', error);
-    } finally {
-      setIsLoggingOut(false);
-      setShowLogoutDialog(false);
-    }
-  };
+  const [usernameDraft, setUsernameDraft] = useState('');
+  const [timezoneDraft, setTimezoneDraft] = useState('UTC');
+  const [preferencesDraft, setPreferencesDraft] = useState<NotificationPreferences>(DEFAULT_NOTIFICATION_PREFERENCES);
+  const [isSaving, setIsSaving] = useState(false);
 
-  // Get user stats
-  const stats = {
-    totalItems: memoryItems.length,
-    masteredItems: memoryItems.filter(i => i.status === 'completed').length,
-    categories: categories.length,
-    streak: profile?.streak_count || 0,
-    totalReviews: profile?.total_reviews || 0,
-  };
+  const basePreferences = profile?.notification_preferences || DEFAULT_NOTIFICATION_PREFERENCES;
+
+  useEffect(() => {
+    setUsernameDraft(profile?.username || user?.email?.split('@')[0] || 'User');
+    setTimezoneDraft(profile?.timezone || 'UTC');
+    setPreferencesDraft(basePreferences);
+  }, [profile?.id, profile?.username, profile?.timezone, profile?.notification_preferences, user?.email]);
+
+  useEffect(() => {
+    setDidAutoAvatarAttempt(false);
+    setAvatarLoadFailed(false);
+  }, [profile?.id]);
 
   const displayName = profile?.username || user?.email?.split('@')[0] || 'User';
   const avatarUrl = profile?.avatar_url || '';
@@ -65,18 +86,49 @@ export function Profile() {
     return source.slice(0, 2).toUpperCase();
   }, [profile?.username, user?.email]);
 
+  const stats = useMemo(() => ({
+    totalItems: memoryItems.length,
+    completedItems: memoryItems.filter((item) => item.status === 'completed').length,
+    categories: categories.length,
+    streak: profile?.streak_count || 0,
+    totalReviews: profile?.total_reviews || 0,
+  }), [memoryItems, categories.length, profile?.streak_count, profile?.total_reviews]);
+
+  const hasProfileChanges = useMemo(() => {
+    if (!profile) return false;
+    const normalizedUsername = usernameDraft.trim();
+    const normalizedTimezone = timezoneDraft.trim() || 'UTC';
+    return profile.username !== normalizedUsername || profile.timezone !== normalizedTimezone;
+  }, [profile, usernameDraft, timezoneDraft]);
+
+  const hasPreferenceChanges = useMemo(() => {
+    const current = basePreferences;
+    const draft = preferencesDraft;
+
+    return current.daily_reminder !== draft.daily_reminder
+      || current.reminder_time !== draft.reminder_time
+      || current.streak_reminder !== draft.streak_reminder
+      || current.achievement_notifications !== draft.achievement_notifications
+      || current.ai_insights !== draft.ai_insights;
+  }, [basePreferences, preferencesDraft]);
+
+  const isDirty = hasProfileChanges || hasPreferenceChanges;
+
   const generateAvatar = useCallback(async (randomize: boolean) => {
     if (!profile || !user) return;
+
     setIsGeneratingAvatar(true);
     try {
       const url = avatarService.generateProfileAvatarUrl({
         username: profile.username,
-        email: user.email,
+        email: user.email || undefined,
         userId: profile.id,
         nonce: randomize ? Date.now().toString() : undefined,
       });
+
       await updateProfile({ avatar_url: url });
       setAvatarLoadFailed(false);
+
       if (randomize) {
         toast.success('Profile avatar refreshed');
       }
@@ -89,204 +141,364 @@ export function Profile() {
   }, [profile, updateProfile, user]);
 
   useEffect(() => {
-    setDidAutoAvatarAttempt(false);
-    setAvatarLoadFailed(false);
-  }, [profile?.id]);
-
-  useEffect(() => {
     if (!profile || !user || profile.avatar_url || isGeneratingAvatar) return;
     if (didAutoAvatarAttempt) return;
     setDidAutoAvatarAttempt(true);
     generateAvatar(false).catch(console.error);
   }, [profile, user, isGeneratingAvatar, generateAvatar, didAutoAvatarAttempt]);
 
-  const menuItems = [
-    {
-      id: 'notifications',
-      icon: Bell,
-      label: 'Notifications',
-      description: 'Manage reminders & alerts',
-      action: () => console.log('Notifications'),
-    },
-    {
-      id: 'appearance',
-      icon: Palette,
-      label: 'Appearance',
-      description: 'Theme & display settings',
-      action: () => console.log('Appearance'),
-    },
-    {
-      id: 'privacy',
-      icon: Shield,
-      label: 'Privacy & Security',
-      description: 'Account security options',
-      action: () => console.log('Privacy'),
-    },
-    {
-      id: 'help',
-      icon: HelpCircle,
-      label: 'Help & Support',
-      description: 'FAQs and contact support',
-      action: () => console.log('Help'),
-    },
-    {
-      id: 'terms',
-      icon: FileText,
-      label: 'Terms & Privacy Policy',
-      description: 'Legal information',
-      action: () => console.log('Terms'),
-    },
-  ];
+  const handleSave = async () => {
+    if (!profile) return;
+
+    const nextUsername = usernameDraft.trim();
+    const nextTimezone = timezoneDraft.trim() || 'UTC';
+
+    if (!nextUsername) {
+      toast.error('Username is required');
+      return;
+    }
+
+    if (nextUsername.length > 80) {
+      toast.error('Username must be under 80 characters');
+      return;
+    }
+
+    if (!isDirty) {
+      toast('No changes to save');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      if (hasProfileChanges) {
+        await updateProfile({
+          username: nextUsername,
+          timezone: nextTimezone,
+        });
+      }
+
+      if (hasPreferenceChanges) {
+        await updateNotificationPreferences(preferencesDraft);
+      }
+
+      toast.success('Profile updated');
+    } catch (error) {
+      console.error('Profile update failed:', error);
+      toast.error('Failed to update profile');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleReset = () => {
+    setUsernameDraft(profile?.username || user?.email?.split('@')[0] || 'User');
+    setTimezoneDraft(profile?.timezone || 'UTC');
+    setPreferencesDraft(basePreferences);
+    toast('Changes reset');
+  };
+
+  const handleLogout = async () => {
+    // Close the dialog immediately — avoids stale overlay while async work runs
+    setShowLogoutDialog(false);
+    setIsLoggingOut(true);
+    try {
+      await signOut();
+    } catch (error) {
+      console.error('Logout failed:', error);
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
+
+  const updatePreference = <K extends keyof NotificationPreferences>(key: K, value: NotificationPreferences[K]) => {
+    setPreferencesDraft((current) => ({
+      ...current,
+      [key]: value,
+    }));
+  };
 
   return (
-    <div className="fixed inset-0 bg-black flex flex-col" style={{ height: '100vh', maxHeight: '100vh' }}>
-      {/* Fixed Header */}
-      <header className="flex-shrink-0 px-4 sm:px-5 safe-top pb-4 bg-black border-b border-white/5">
-        <h1 className="text-2xl font-bold text-remembra-text-primary mb-1">Profile</h1>
-        <p className="text-sm text-remembra-text-muted">Manage your account</p>
+    <div className="h-[100dvh] min-h-[100dvh] w-full overflow-hidden bg-black flex flex-col">
+      <header className="flex-shrink-0 px-4 sm:px-6 safe-top pb-4 bg-black/70 border-b border-white/10 backdrop-blur-xl">
+        <div className="flex flex-wrap items-start gap-3 sm:items-center">
+          <button
+            onClick={() => goBack('dashboard')}
+            className="w-10 h-10 rounded-xl border border-white/10 bg-remembra-bg-secondary flex items-center justify-center text-remembra-text-secondary"
+            aria-label="Back"
+          >
+            <ArrowLeft size={18} />
+          </button>
+
+          <div className="flex-1 min-w-0">
+            <h1 className="text-2xl font-bold text-remembra-text-primary">Profile Management</h1>
+            <p className="text-sm text-remembra-text-muted">Account, reminders, and learning preferences</p>
+          </div>
+
+          <Button
+            onClick={handleSave}
+            disabled={!isDirty || isSaving}
+            className="ml-auto shrink-0 gradient-primary text-white"
+          >
+            <Save size={16} className="mr-2" />
+            {isSaving ? 'Saving' : 'Save'}
+          </Button>
+        </div>
       </header>
 
-      {/* Scrollable Content */}
-      <div 
-        className="flex-1 overflow-y-auto overscroll-contain px-4 sm:px-5 py-4"
+      <div
+        data-nav-scroll="true"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 sm:px-6 py-4 safe-bottom-nav"
         style={{ WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}
       >
-      {/* User Info Card */}
-      <div className="bg-remembra-bg-secondary rounded-2xl p-5 border border-white/5 mb-6 dynamic-container smooth-surface">
-        <div className="flex items-center gap-4">
-          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-remembra-accent-primary to-remembra-accent-secondary flex items-center justify-center flex-shrink-0">
-            {avatarUrl && !avatarLoadFailed ? (
-              <img
-                src={avatarUrl}
-                alt={`${displayName} avatar`}
-                onError={() => setAvatarLoadFailed(true)}
-                className="w-full h-full rounded-full object-cover bg-remembra-bg-secondary"
-              />
-            ) : (
-              <span className="text-xl font-bold text-white">{userInitials}</span>
-            )}
-          </div>
-          <div className="flex-1 min-w-0">
-            <h2 className="text-lg font-semibold text-remembra-text-primary truncate">
-              {displayName}
-            </h2>
-            <p className="text-sm text-remembra-text-muted truncate">
-              {user?.email || 'No email'}
+        <div className="max-w-4xl mx-auto space-y-5">
+          <section className="liquid-glass relative overflow-hidden rounded-3xl p-5">
+            <div className="relative flex items-center gap-4">
+              <div className="w-16 h-16 rounded-2xl bg-black/60 border border-white/15 overflow-hidden flex items-center justify-center shrink-0">
+                {avatarUrl && !avatarLoadFailed ? (
+                  <img
+                    src={avatarUrl}
+                    alt={`${displayName} avatar`}
+                    onError={() => setAvatarLoadFailed(true)}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <span className="text-xl font-bold text-remembra-accent-primary">{userInitials}</span>
+                )}
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <h2 className="text-xl font-semibold text-remembra-text-primary truncate">{displayName}</h2>
+                <p className="text-sm text-remembra-text-secondary truncate">{user?.email || 'No email'}</p>
+                <div className="mt-2 flex items-center gap-2 text-xs">
+                  <span className="px-2 py-1 rounded-full bg-remembra-bg-tertiary border border-white/10 text-remembra-text-secondary">
+                    {profile?.timezone || 'UTC'}
+                  </span>
+                  <span className={`px-2 py-1 rounded-full border ${user?.email_confirmed_at ? 'bg-remembra-success/15 border-remembra-success/30 text-remembra-success' : 'bg-remembra-warning/15 border-remembra-warning/30 text-remembra-warning'}`}>
+                    {user?.email_confirmed_at ? 'Email Verified' : 'Email Not Verified'}
+                  </span>
+                </div>
+              </div>
+
+              <Button
+                variant="outline"
+                onClick={() => generateAvatar(true)}
+                disabled={isGeneratingAvatar}
+                className="bg-remembra-bg-tertiary border-white/10"
+              >
+                <RefreshCw size={14} className={`mr-2 ${isGeneratingAvatar ? 'animate-spin' : ''}`} />
+                Avatar
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mt-5 pt-5 border-t border-white/10">
+              <div className="liquid-glass-soft rounded-xl p-3 text-center">
+                <p className="text-lg font-semibold text-remembra-text-primary">{stats.totalItems}</p>
+                <p className="text-xs text-remembra-text-muted">Items</p>
+              </div>
+              <div className="liquid-glass-soft rounded-xl p-3 text-center">
+                <p className="text-lg font-semibold text-remembra-text-primary">{stats.completedItems}</p>
+                <p className="text-xs text-remembra-text-muted">Completed</p>
+              </div>
+              <div className="liquid-glass-soft rounded-xl p-3 text-center">
+                <p className="text-lg font-semibold text-remembra-text-primary">{stats.categories}</p>
+                <p className="text-xs text-remembra-text-muted">Categories</p>
+              </div>
+              <div className="liquid-glass-soft rounded-xl p-3 text-center">
+                <p className="text-lg font-semibold text-remembra-accent-primary">{stats.streak}</p>
+                <p className="text-xs text-remembra-text-muted">Streak</p>
+              </div>
+              <div className="liquid-glass-soft rounded-xl p-3 text-center">
+                <p className="text-lg font-semibold text-remembra-text-primary">{stats.totalReviews}</p>
+                <p className="text-xs text-remembra-text-muted">Reviews</p>
+              </div>
+            </div>
+          </section>
+
+          <section className="grid gap-4 lg:grid-cols-2">
+            <div className="liquid-glass-soft rounded-2xl p-5 space-y-4">
+              <h3 className="text-base font-semibold text-remembra-text-primary">Account Details</h3>
+
+              <div className="space-y-2">
+                <Label htmlFor="profile-username" className="text-remembra-text-secondary">
+                  <User2 size={14} />
+                  Username
+                </Label>
+                <Input
+                  id="profile-username"
+                  value={usernameDraft}
+                  onChange={(event) => setUsernameDraft(event.target.value)}
+                  className="bg-remembra-bg-tertiary border-white/10 text-remembra-text-primary"
+                  maxLength={80}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="profile-email" className="text-remembra-text-secondary">
+                  <Mail size={14} />
+                  Email
+                </Label>
+                <Input
+                  id="profile-email"
+                  value={user?.email || ''}
+                  disabled
+                  className="bg-remembra-bg-tertiary border-white/10 text-remembra-text-muted"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="profile-timezone" className="text-remembra-text-secondary">
+                  <Globe2 size={14} />
+                  Timezone
+                </Label>
+                <Input
+                  id="profile-timezone"
+                  value={timezoneDraft}
+                  onChange={(event) => setTimezoneDraft(event.target.value)}
+                  className="bg-remembra-bg-tertiary border-white/10 text-remembra-text-primary"
+                  placeholder="UTC"
+                />
+              </div>
+            </div>
+
+            <div className="liquid-glass-soft rounded-2xl p-5 space-y-4">
+              <h3 className="text-base font-semibold text-remembra-text-primary">Reminder Preferences</h3>
+
+              <div className="flex items-center justify-between rounded-xl bg-remembra-bg-tertiary border border-white/10 px-3 py-3">
+                <div>
+                  <p className="text-sm text-remembra-text-primary">Daily Reminder</p>
+                  <p className="text-xs text-remembra-text-muted">Get your scheduled study reminder</p>
+                </div>
+                <Switch
+                  checked={preferencesDraft.daily_reminder}
+                  onCheckedChange={(value) => updatePreference('daily_reminder', value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="profile-reminder-time" className="text-remembra-text-secondary">
+                  <Clock3 size={14} />
+                  Reminder Time
+                </Label>
+                <Input
+                  id="profile-reminder-time"
+                  type="time"
+                  value={preferencesDraft.reminder_time}
+                  onChange={(event) => updatePreference('reminder_time', event.target.value)}
+                  disabled={!preferencesDraft.daily_reminder}
+                  className="bg-remembra-bg-tertiary border-white/10 text-remembra-text-primary disabled:opacity-50"
+                />
+              </div>
+
+              <div className="flex items-center justify-between rounded-xl bg-remembra-bg-tertiary border border-white/10 px-3 py-3">
+                <div>
+                  <p className="text-sm text-remembra-text-primary">Streak Reminder</p>
+                  <p className="text-xs text-remembra-text-muted">Nudge before you miss a streak day</p>
+                </div>
+                <Switch
+                  checked={preferencesDraft.streak_reminder}
+                  onCheckedChange={(value) => updatePreference('streak_reminder', value)}
+                />
+              </div>
+
+              <div className="flex items-center justify-between rounded-xl bg-remembra-bg-tertiary border border-white/10 px-3 py-3">
+                <div>
+                  <p className="text-sm text-remembra-text-primary">Achievement Alerts</p>
+                  <p className="text-xs text-remembra-text-muted">Notify when milestones unlock</p>
+                </div>
+                <Switch
+                  checked={preferencesDraft.achievement_notifications}
+                  onCheckedChange={(value) => updatePreference('achievement_notifications', value)}
+                />
+              </div>
+
+              <div className="flex items-center justify-between rounded-xl bg-remembra-bg-tertiary border border-white/10 px-3 py-3">
+                <div>
+                  <p className="text-sm text-remembra-text-primary">AI Insights</p>
+                  <p className="text-xs text-remembra-text-muted">Allow insight/reminder enhancements</p>
+                </div>
+                <Switch
+                  checked={preferencesDraft.ai_insights}
+                  onCheckedChange={(value) => updatePreference('ai_insights', value)}
+                />
+              </div>
+            </div>
+          </section>
+
+          <section className="liquid-glass-soft rounded-2xl p-5">
+            <h3 className="text-base font-semibold text-remembra-text-primary mb-4">Account Status</h3>
+            <div className="grid sm:grid-cols-3 gap-3">
+              <div className="rounded-xl border border-white/10 bg-black/25 p-3 flex items-start gap-2">
+                <ShieldCheck size={16} className="text-remembra-success mt-0.5" />
+                <div>
+                  <p className="text-sm text-remembra-text-primary">Security</p>
+                  <p className="text-xs text-remembra-text-muted">Firebase-authenticated account</p>
+                </div>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-black/25 p-3 flex items-start gap-2">
+                <Bell size={16} className="text-remembra-accent-primary mt-0.5" />
+                <div>
+                  <p className="text-sm text-remembra-text-primary">Reminders</p>
+                  <p className="text-xs text-remembra-text-muted">{preferencesDraft.daily_reminder ? `Enabled at ${preferencesDraft.reminder_time}` : 'Disabled'}</p>
+                </div>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-black/25 p-3 flex items-start gap-2">
+                <Sparkles size={16} className="text-remembra-warning mt-0.5" />
+                <div>
+                  <p className="text-sm text-remembra-text-primary">Learning Consistency</p>
+                  <p className="text-xs text-remembra-text-muted flex items-center gap-1">
+                    <Flame size={12} className="text-orange-500" />
+                    {stats.streak} day streak active
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                onClick={handleReset}
+                disabled={!isDirty || isSaving}
+                className="bg-remembra-bg-tertiary border-white/10"
+              >
+                Reset Changes
+              </Button>
+              {user?.email_confirmed_at && (
+                <div className="px-3 py-2 rounded-lg bg-remembra-success/15 border border-remembra-success/30 text-remembra-success text-xs flex items-center gap-2">
+                  <CheckCircle2 size={14} />
+                  Email is verified
+                </div>
+              )}
+            </div>
+          </section>
+
+          <section className="liquid-glass-soft rounded-2xl border border-remembra-danger/35 bg-remembra-danger/10 p-5">
+            <h3 className="text-base font-semibold text-remembra-danger mb-2">Danger Zone</h3>
+            <p className="text-sm text-remembra-text-secondary mb-4">
+              Signing out will clear this device session. Your Firebase data stays safe.
             </p>
-          </div>
-          <button
-            onClick={() => generateAvatar(true)}
-            disabled={isGeneratingAvatar}
-            className="h-10 px-3 rounded-xl bg-remembra-bg-tertiary border border-white/10 text-remembra-text-secondary text-xs font-medium hover:bg-white/10 transition-colors disabled:opacity-50 flex items-center gap-2"
-            title="Generate new avatar"
-          >
-            <RefreshCw size={13} className={isGeneratingAvatar ? 'animate-spin' : ''} />
-            Avatar
-          </button>
-        </div>
-
-        {/* Quick Stats */}
-        <div className="grid grid-cols-3 gap-3 mt-5 pt-5 border-t border-white/5">
-          <div className="text-center">
-            <p className="text-xl font-bold text-remembra-text-primary">{stats.totalItems}</p>
-            <p className="text-xs text-remembra-text-muted">Items</p>
-          </div>
-          <div className="text-center">
-            <p className="text-xl font-bold text-remembra-text-primary">{stats.masteredItems}</p>
-            <p className="text-xs text-remembra-text-muted">Completed</p>
-          </div>
-          <div className="text-center">
-            <p className="text-xl font-bold text-remembra-accent-primary">{stats.streak}</p>
-            <p className="text-xs text-remembra-text-muted">Day Streak</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Account Info */}
-      <div className="bg-remembra-bg-secondary rounded-2xl border border-white/5 mb-6 dynamic-container smooth-surface">
-        <div className="px-5 py-3 border-b border-white/5">
-          <h3 className="text-sm font-medium text-remembra-text-secondary">Account</h3>
-        </div>
-        <div className="p-5 space-y-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-remembra-bg-tertiary flex items-center justify-center">
-              <User size={18} className="text-remembra-text-muted" />
-            </div>
-            <div className="flex-1">
-              <p className="text-xs text-remembra-text-muted">Username</p>
-              <p className="text-sm text-remembra-text-primary">{profile?.username || 'Not set'}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-remembra-bg-tertiary flex items-center justify-center">
-              <Mail size={18} className="text-remembra-text-muted" />
-            </div>
-            <div className="flex-1">
-              <p className="text-xs text-remembra-text-muted">Email</p>
-              <p className="text-sm text-remembra-text-primary">{user?.email || 'Not set'}</p>
-            </div>
-            {user?.email_confirmed_at && (
-              <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-remembra-success/20">
-                <Check size={12} className="text-remembra-success" />
-                <span className="text-[10px] text-remembra-success">Verified</span>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Settings Menu */}
-      <div className="bg-remembra-bg-secondary rounded-2xl border border-white/5 mb-6 dynamic-container smooth-surface">
-        <div className="px-5 py-3 border-b border-white/5">
-          <h3 className="text-sm font-medium text-remembra-text-secondary">Settings</h3>
-        </div>
-        <div className="divide-y divide-white/5">
-          {menuItems.map((item) => (
-            <button
-              key={item.id}
-              onClick={item.action}
-              className="w-full flex items-center gap-4 p-4 hover:bg-white/5 transition-colors"
+            <Button
+              onClick={() => setShowLogoutDialog(true)}
+              variant="outline"
+              className="w-full sm:w-auto bg-remembra-danger/10 border-remembra-danger/40 text-remembra-danger hover:bg-remembra-danger/20"
             >
-              <div className="w-10 h-10 rounded-xl bg-remembra-bg-tertiary flex items-center justify-center">
-                <item.icon size={18} className="text-remembra-text-muted" />
-              </div>
-              <div className="flex-1 text-left">
-                <p className="text-sm font-medium text-remembra-text-primary">{item.label}</p>
-                <p className="text-xs text-remembra-text-muted">{item.description}</p>
-              </div>
-              <ChevronRight size={18} className="text-remembra-text-muted" />
-            </button>
-          ))}
+              <LogOut size={16} className="mr-2" />
+              Sign Out
+            </Button>
+          </section>
+
+          <p className="text-center text-xs text-remembra-text-muted pb-6">Remembra v1.0.0</p>
         </div>
       </div>
 
-      {/* Logout Button */}
-      <Button
-        onClick={() => setShowLogoutDialog(true)}
-        variant="outline"
-        className="w-full h-12 bg-remembra-error/10 border-remembra-error/30 text-remembra-error hover:bg-remembra-error/20"
-      >
-        <LogOut size={18} className="mr-2" />
-        Sign Out
-      </Button>
-
-      {/* App Version */}
-      <p className="text-center text-xs text-remembra-text-muted mt-6">
-        Remembra v1.0.0
-      </p>
-
-      {/* Logout Confirmation Dialog */}
       <AlertDialog open={showLogoutDialog} onOpenChange={setShowLogoutDialog}>
-        <AlertDialogContent className="bg-remembra-bg-secondary border-white/10 sm:max-w-md">
+        <AlertDialogContent className="liquid-glass w-[min(92vw,28rem)] max-h-[min(calc(100dvh-2rem),32rem)] overflow-y-auto border-white/10 mx-auto">
           <AlertDialogHeader>
-            <div className="w-12 h-12 rounded-full bg-remembra-error/20 flex items-center justify-center mx-auto mb-4">
-              <AlertTriangle size={24} className="text-remembra-error" />
+            <div className="w-12 h-12 rounded-full bg-remembra-danger/20 flex items-center justify-center mx-auto mb-4">
+              <AlertTriangle size={24} className="text-remembra-danger" />
             </div>
-            <AlertDialogTitle className="text-center text-remembra-text-primary">
-              Sign Out?
-            </AlertDialogTitle>
+            <AlertDialogTitle className="text-center text-remembra-text-primary">Sign Out?</AlertDialogTitle>
             <AlertDialogDescription className="text-center text-remembra-text-muted">
-              You'll need to sign in again to access your memories. Your data will be safely stored.
+              You can sign in again anytime. Your learning data remains in Firebase.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="flex-col sm:flex-row gap-2">
@@ -296,14 +508,13 @@ export function Profile() {
             <AlertDialogAction
               onClick={handleLogout}
               disabled={isLoggingOut}
-              className="bg-remembra-error hover:bg-remembra-error/90 text-white"
+              className="bg-remembra-danger hover:bg-remembra-danger/90 text-white"
             >
               {isLoggingOut ? 'Signing out...' : 'Sign Out'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      </div>
     </div>
   );
 }
