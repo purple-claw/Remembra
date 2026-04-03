@@ -6,7 +6,8 @@ export const REVIEW_INTERVALS_147 = [1, 4, 7] as const;
 export const OPTIONAL_REVIEW_DAY_30 = 30;
 export const DECISION_STAGE = REVIEW_INTERVALS_147.length; // after day-7 completion
 export const THIRTY_DAY_STAGE = DECISION_STAGE + 1;
-export const DELETE_AFTER_COMPLETION_DAYS = 20;
+// Auto-deletion is disabled to prevent data loss after inactivity.
+export const DELETE_AFTER_COMPLETION_DAYS = 0;
 export const MAX_ACTIVE_STAGE = THIRTY_DAY_STAGE;
 export const MASTERED_STAGE = MAX_ACTIVE_STAGE + 1; // logical terminal stage (not persisted)
 
@@ -99,7 +100,6 @@ export function process147Review(
       lapseCount: state.lapse_count || 0,
       intervalDays: 0,
       completedAt: now.toISOString(),
-      deleteAt: addDays(nowIso, DELETE_AFTER_COMPLETION_DAYS),
       requiresDeletionConfirmation: false,
       requiresSevenDayDecision: false,
     };
@@ -147,7 +147,6 @@ export function process147Review(
       lapseCount: state.lapse_count || 0,
       intervalDays: 0,
       completedAt,
-      deleteAt: addDays(nowIso, DELETE_AFTER_COMPLETION_DAYS),
       requiresDeletionConfirmation: false,
       requiresSevenDayDecision: false,
     };
@@ -219,7 +218,6 @@ export function applyPostSevenDayDecision(
     lapseCount: safeLapseCount,
     intervalDays: 0,
     completedAt,
-    deleteAt: addDays(nowIso, DELETE_AFTER_COMPLETION_DAYS),
     requiresDeletionConfirmation: false,
     requiresSevenDayDecision: false,
   };

@@ -13,11 +13,9 @@ import type {
 import { processReviewCompletion } from '@/types';
 import {
   DECISION_STAGE,
-  DELETE_AFTER_COMPLETION_DAYS,
   MAX_ACTIVE_STAGE,
   OPTIONAL_REVIEW_DAY_30,
   THIRTY_DAY_STAGE,
-  addDays,
   getScheduledDateForStage,
   toIsoDate,
 } from '@/domain/review147';
@@ -344,31 +342,8 @@ export const memoryItemService = {
   },
 
   async processLifecycle(): Promise<{ archived: number; deleted: number }> {
-    const userId = await requireAuth();
-    const today = new Date().toISOString().split('T')[0];
-
-    const items = await this.getMemoryItems();
-    const archivedToDelete = items.filter((item) => item.status === 'archived' && !!item.delete_at && item.delete_at <= today);
-    const completedToDelete = items.filter((item) => item.status === 'completed' && !!item.delete_at && item.delete_at <= today);
-
-    let deleted = 0;
-
-    for (const item of archivedToDelete) {
-      await deleteDoc(doc(db, 'users', userId, 'memory_items', item.id));
-      deleted += 1;
-    }
-
-    if (completedToDelete.length > 0) {
-      for (const item of completedToDelete) {
-        await deleteDoc(doc(db, 'users', userId, 'memory_items', item.id));
-        if (item.attachments.length > 0) {
-          await storageService.removeAttachments(item.attachments);
-        }
-        deleted += 1;
-      }
-    }
-
-    return { archived: 0, deleted };
+    // Intentionally no-op: keep user items indefinitely unless manually deleted.
+    return { archived: 0, deleted: 0 };
   },
 
   async scheduleThirtyDayReview(id: string): Promise<MemoryItem> {
@@ -394,9 +369,7 @@ export const memoryItemService = {
   },
 
   async completeTopic(id: string): Promise<MemoryItem> {
-    const now = new Date();
-    const completedAt = now.toISOString();
-    const deleteAt = addDays(toIsoDate(now), DELETE_AFTER_COMPLETION_DAYS);
+    const completedAt = new Date().toISOString();
 
     return this.updateMemoryItem(id, {
       status: 'completed',
@@ -407,7 +380,7 @@ export const memoryItemService = {
       next_review_date: '',
       completed_at: completedAt,
       mastered_at: completedAt,
-      delete_at: deleteAt,
+      delete_at: undefined,
       review_template: '1-4-7',
     });
   },

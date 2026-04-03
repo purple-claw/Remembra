@@ -29,8 +29,8 @@ export const QUALITY_MAP: Record<Performance, number> = {
 };
 
 export const LIFECYCLE_CONFIG = {
-  // Completed topics are retained for 20 days, then auto-deleted.
-  deleteAfterMasteredDays: 20,
+  // Auto-deletion is disabled; items remain until explicitly deleted by the user.
+  deleteAfterMasteredDays: 0,
 };
 
 export const GRADUATION_THRESHOLD_DAYS = REVIEW_INTERVALS_147[REVIEW_INTERVALS_147.length - 1];
