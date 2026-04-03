@@ -138,7 +138,11 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
     <div className="fixed inset-0 z-50 overflow-hidden bg-black">
       <div className="absolute inset-0 bg-[radial-gradient(1200px_500px_at_20%_-5%,rgba(255,128,0,0.22),transparent_60%),radial-gradient(900px_500px_at_90%_0%,rgba(0,210,106,0.15),transparent_65%)]" />
 
-      <div className="relative h-full overflow-y-auto custom-scrollbar px-4 py-4 sm:px-6">
+      <div
+        data-nav-scroll="true"
+        className="relative h-full overflow-y-auto overscroll-contain custom-scrollbar px-4 py-4 sm:px-6"
+        style={{ WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}
+      >
         <div className="mx-auto w-full max-w-6xl space-y-4 pb-6">
           <header className="rounded-3xl border border-white/10 bg-black/65 p-4 shadow-[0_0_0_1px_rgba(255,255,255,0.03)] backdrop-blur-xl sm:p-5">
             <div className="mb-4 flex items-start justify-between gap-3">
