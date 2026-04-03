@@ -1,0 +1,30 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    match /profiles/{userId} {
+      allow read, create, update, delete: if isOwner(userId);
+    }
+
+    // User-owned subcollections used by the app:
+    // categories, memory_items, reviews, achievements, streak_entries
+    match /users/{userId}/{subCollection}/{docId} {
+      allow read, create, update, delete: if isOwner(userId);
+    }
+
+    match /device_push_tokens/{token} {
+      allow create: if isSignedIn() && request.resource.data.user_id == request.auth.uid;
+      allow read: if isSignedIn() && resource.data.user_id == request.auth.uid;
+      allow update, delete: if isSignedIn()
+        && resource.data.user_id == request.auth.uid
+        && request.resource.data.user_id == resource.data.user_id;
+    }
+  }
+}

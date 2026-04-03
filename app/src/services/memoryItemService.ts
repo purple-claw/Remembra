@@ -7,8 +7,10 @@ import type {
   Difficulty,
   MemoryItem,
   Performance,
+  RecurringFrequency,
   ReviewHistory,
   ReviewStatus,
+  ScheduleType,
 } from '@/types';
 import { processReviewCompletion } from '@/types';
 import {
@@ -17,6 +19,7 @@ import {
   OPTIONAL_REVIEW_DAY_30,
   THIRTY_DAY_STAGE,
   getScheduledDateForStage,
+  getNextRecurringDate,
   toIsoDate,
 } from '@/domain/review147';
 import { storageService } from './storageService';
@@ -86,6 +89,8 @@ const transformItem = (id: string, item: any): MemoryItem => {
     attachments: (item.attachments || []) as Attachment[],
     difficulty: (item.difficulty || 'medium') as Difficulty,
     status,
+    schedule_type: (item.schedule_type || 'spaced') as ScheduleType,
+    recurring_frequency: (item.recurring_frequency || 'weekly') as RecurringFrequency,
     easiness_factor: item.easiness_factor ?? 2.5,
     interval: item.interval ?? (
       stage === 0 ? 1
@@ -96,7 +101,11 @@ const transformItem = (id: string, item: any): MemoryItem => {
     ),
     repetition: item.repetition ?? stage,
     lapse_count: item.lapse_count ?? 0,
-    next_review_date: item.next_review_date || (status === 'active' ? getScheduledDateForStage(cycleStartedAt, stage) : ''),
+    next_review_date: item.next_review_date || (status === 'active'
+      ? ((item.schedule_type || 'spaced') === 'recurring'
+        ? getNextRecurringDate(cycleStartedAt, (item.recurring_frequency || 'weekly') as RecurringFrequency)
+        : getScheduledDateForStage(cycleStartedAt, stage))
+      : ''),
     cycle_started_at: cycleStartedAt,
     last_reviewed_at: item.last_reviewed_at || undefined,
     review_history: normalizeReviewHistory(item.review_history),
@@ -198,8 +207,12 @@ export const memoryItemService = {
 
     const now = new Date().toISOString();
     const cycleStartedAt = toIsoDate(item.cycle_started_at || now);
+    const scheduleType: ScheduleType = item.schedule_type || 'spaced';
+    const recurringFrequency: RecurringFrequency = item.recurring_frequency || 'weekly';
     const reviewStage = 0;
-    const nextReviewDate = getScheduledDateForStage(cycleStartedAt, reviewStage);
+    const nextReviewDate = scheduleType === 'recurring'
+      ? getNextRecurringDate(cycleStartedAt, recurringFrequency)
+      : getScheduledDateForStage(cycleStartedAt, reviewStage);
 
     const collectionRef = userMemoryItemsCollection(userId);
     const itemRef = doc(collectionRef);
@@ -213,6 +226,8 @@ export const memoryItemService = {
       attachments: item.attachments || [],
       difficulty: item.difficulty,
       status: 'active',
+      schedule_type: scheduleType,
+      recurring_frequency: recurringFrequency,
       next_review_date: nextReviewDate,
       cycle_started_at: cycleStartedAt,
       review_stage: reviewStage,
@@ -286,6 +301,49 @@ export const memoryItemService = {
     const result = processReviewCompletion(item, performance);
     const now = new Date().toISOString();
     const eventDate = new Date().toISOString().split('T')[0];
+
+    if (item.schedule_type === 'recurring') {
+      const recurringFrequency: RecurringFrequency = item.recurring_frequency || 'weekly';
+      const nextReviewDate = getNextRecurringDate(eventDate, recurringFrequency);
+
+      const recurringHistory: ReviewHistory[] = [
+        ...item.review_history,
+        {
+          date: eventDate,
+          performance,
+          time_spent_seconds: timeSpentSeconds ?? 0,
+          stage_index: item.review_stage,
+          interval: recurringFrequency === 'daily' ? 1 : recurringFrequency === 'weekly' ? 7 : 30,
+          easiness_factor: item.easiness_factor,
+        },
+      ];
+
+      const recurringItem = await this.updateMemoryItem(id, {
+        status: 'active',
+        schedule_type: 'recurring',
+        recurring_frequency: recurringFrequency,
+        next_review_date: nextReviewDate,
+        last_reviewed_at: now,
+        review_history: recurringHistory,
+        review_template: `recurring-${recurringFrequency}`,
+      });
+
+      const recurringReviewRef = doc(userReviewsCollection(userId));
+      const recurringScheduledDate = scheduledDateOverride || item.next_review_date || eventDate;
+
+      await setDoc(recurringReviewRef, {
+        user_id: userId,
+        memory_item_id: id,
+        scheduled_date: recurringScheduledDate,
+        completed_date: now,
+        performance,
+        time_spent_seconds: timeSpentSeconds ?? 0,
+        notes: null,
+        created_at: now,
+      });
+
+      return recurringItem;
+    }
 
     const newReviewHistory: ReviewHistory[] = [
       ...item.review_history,

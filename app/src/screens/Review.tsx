@@ -23,7 +23,7 @@ import { saveSession } from '@/services/persistService';
 import { Button } from '@/components/ui/button';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { toast } from 'sonner';
-import { getStageDayLabel } from '@/domain/review147';
+import { getItemScheduleLabel } from '@/domain/review147';
 
 interface SessionStats {
   startedAt: number;
@@ -187,7 +187,7 @@ export function Review() {
     : 100;
 
   const sessionMinutes = Math.max(1, Math.round(sessionSeconds / 60));
-  const stageLabel = currentItem ? getStageDayLabel(currentItem.review_stage, currentItem.status) : '';
+  const stageLabel = currentItem ? getItemScheduleLabel(currentItem) : '';
 
   if (!currentItem) {
     return (

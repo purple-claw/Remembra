@@ -600,9 +600,35 @@ export const useStore = create<AppState>()(persist((set, get) => ({
   },
   
   deleteCategory: async (id) => {
+    const state = get();
+    const target = state.categories.find((category) => category.id === id);
+    if (!target) {
+      throw new Error('Category not found');
+    }
+
+    const remainingCategories = state.categories.filter((category) => category.id !== id);
+    if (remainingCategories.length === 0) {
+      throw new Error('At least one category is required');
+    }
+
+    const fallbackCategory = remainingCategories[0];
+    const affectedItems = state.memoryItems.filter((item) => item.category_id === id);
+
+    if (affectedItems.length > 0) {
+      await Promise.all(
+        affectedItems.map((item) =>
+          memoryItemService.updateMemoryItem(item.id, { category_id: fallbackCategory.id }),
+        ),
+      );
+    }
+
     await categoryService.deleteCategory(id);
-    set(state => ({
-      categories: state.categories.filter(cat => cat.id !== id),
+
+    set((currentState) => ({
+      categories: currentState.categories.filter((category) => category.id !== id),
+      memoryItems: currentState.memoryItems.map((item) =>
+        item.category_id === id ? { ...item, category_id: fallbackCategory.id } : item,
+      ),
     }));
   },
   

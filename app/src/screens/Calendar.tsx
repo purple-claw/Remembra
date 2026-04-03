@@ -16,7 +16,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import type { MemoryItem, Performance, Review } from '@/types';
-import { getStageDayLabel } from '@/domain/review147';
+import { getItemScheduleLabel } from '@/domain/review147';
 
 interface DayData {
   date: string;
@@ -312,7 +312,7 @@ export function Calendar() {
                           <div className="flex-1 min-w-0">
                             <p className="text-sm text-remembra-text-primary truncate">{item.title}</p>
                             <p className="text-xs text-remembra-text-muted">
-                              {getStageDayLabel(item.review_stage, item.status)} • {item.difficulty}
+                              {getItemScheduleLabel(item)} • {item.difficulty}
                             </p>
                           </div>
                           <div className="flex items-center gap-2">
@@ -395,7 +395,7 @@ export function Calendar() {
                         <div className="min-w-0">
                           <p className="text-sm text-remembra-text-primary truncate">{item?.title || 'Unknown item'}</p>
                           <p className="text-xs text-remembra-text-muted">
-                            {item ? getStageDayLabel(item.review_stage, item.status) : 'Stage unavailable'}
+                            {item ? getItemScheduleLabel(item) : 'Stage unavailable'}
                           </p>
                         </div>
                         <div className="flex items-center gap-2 text-xs">
@@ -439,7 +439,7 @@ export function Calendar() {
                       {dueItems.map((item) => (
                         <div key={item.id} className="p-2.5 bg-remembra-bg-tertiary rounded-xl flex items-center justify-between gap-2">
                           <span className="text-sm text-remembra-text-secondary truncate">{item.title}</span>
-                          <span className="text-[10px] text-remembra-text-muted">{getStageDayLabel(item.review_stage, item.status)}</span>
+                          <span className="text-[10px] text-remembra-text-muted">{getItemScheduleLabel(item)}</span>
                         </div>
                       ))}
                     </div>
@@ -473,7 +473,7 @@ export function Calendar() {
                     </p>
                   </div>
                   <div className="text-right">
-                    <p className="text-xs text-remembra-accent-primary">{getStageDayLabel(item.review_stage, item.status)}</p>
+                    <p className="text-xs text-remembra-accent-primary">{getItemScheduleLabel(item)}</p>
                     <p className="text-[10px] text-remembra-text-muted">{item.status}</p>
                   </div>
                 </div>

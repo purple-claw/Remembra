@@ -1,7 +1,7 @@
 import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { useStore } from '@/store/useStore';
 import type { ReviewStatus, MemoryItem } from '@/types';
-import { getStageDayLabel } from '@/domain/review147';
+import { getItemScheduleLabel } from '@/domain/review147';
 import { 
   Search, 
   Grid3X3, 
@@ -279,7 +279,7 @@ export function Library() {
                         {item.status}
                       </div>
                       <span className="text-[10px] text-remembra-text-muted">
-                        {getStageDayLabel(item.review_stage, item.status)}
+                        {getItemScheduleLabel(item)}
                       </span>
                     </div>
                   </div>
@@ -331,7 +331,7 @@ export function Library() {
                 
                 <div className="flex items-center justify-between text-[10px]">
                   <span className="text-remembra-text-muted font-medium">
-                    {getStageDayLabel(item.review_stage, item.status)}
+                    {getItemScheduleLabel(item)}
                   </span>
 
                   <div className="flex items-center gap-1.5">

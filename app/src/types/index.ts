@@ -18,6 +18,8 @@ export type ContentType = 'text' | 'code' | 'image' | 'document' | 'mixed';
 export type ReviewStatus = 'active' | 'completed' | 'archived';
 export type Difficulty = 'easy' | 'medium' | 'hard';
 export type Performance = 'again' | 'hard' | 'good' | 'easy';
+export type ScheduleType = 'spaced' | 'recurring';
+export type RecurringFrequency = 'daily' | 'weekly' | 'monthly';
 
 // ─── Pure 1-4-7 Retention Model ───
 // pass/fail mapping only: good/easy => pass, again/hard => fail
@@ -101,6 +103,8 @@ export interface MemoryItem {
   attachments: Attachment[];
   difficulty: Difficulty;
   status: ReviewStatus;
+  schedule_type?: ScheduleType;
+  recurring_frequency?: RecurringFrequency;
   // ─── 1-4-7 Scheduling State ───
   easiness_factor: number;         // compatibility field
   interval: number;                // next target interval in days

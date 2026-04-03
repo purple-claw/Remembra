@@ -3,6 +3,8 @@ import { collection, deleteDoc, doc, getDoc, getDocs, setDoc, writeBatch } from 
 import { db, requireAuth } from '@/lib/firebase';
 import type { Category } from '@/types';
 
+const ALLOWED_CATEGORY_ICONS = new Set(['folder', 'briefcase', 'user']);
+
 const transformCategory = (id: string, data: any): Category => ({
   id,
   user_id: data.user_id,
@@ -55,11 +57,12 @@ export const categoryService = {
     const categoryRef = doc(collectionRef);
     const now = new Date().toISOString();
 
+    const icon = (category.icon || 'folder').slice(0, 50);
     const insertData = {
       user_id: userId,
       name,
       color: (category.color || '#6366F1').slice(0, 7),
-      icon: (category.icon || 'folder').slice(0, 50),
+      icon: ALLOWED_CATEGORY_ICONS.has(icon) ? icon : 'folder',
       order_index: Math.max(0, category.order_index || 0),
       is_default: category.is_default ?? false,
       created_at: now,

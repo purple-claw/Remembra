@@ -28,7 +28,7 @@ import { Badge } from '@/components/ui/badge';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { MermaidDiagram } from '@/components/MermaidDiagram';
 import { toast } from 'sonner';
-import { getStageDayLabel } from '@/domain/review147';
+import { getItemScheduleLabel } from '@/domain/review147';
 
 interface ItemDetailProps {
   item: MemoryItem;
@@ -126,154 +126,169 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
       : 0,
   };
 
+  const contentTypeLabel = item.content_type === 'code'
+    ? 'Code'
+    : item.content_type.charAt(0).toUpperCase() + item.content_type.slice(1);
+
+  const updatedLabel = item.updated_at
+    ? new Date(item.updated_at).toLocaleDateString()
+    : 'Unknown';
+
   return (
-    <div className="fixed inset-0 z-50 bg-black">
-      {/* Backdrop blur overlay */}
-      <div className="absolute inset-0 bg-gradient-to-br from-remembra-accent-primary/5 via-transparent to-remembra-accent-secondary/5" />
-      
-      <div className="relative h-full flex flex-col overflow-hidden smooth-scroll-content">
-        {/* Header */}
-        <header className="glass-panel border-b border-white/5 px-4 py-4 flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={onClose}
-              className="glass-button p-2 rounded-xl"
-            >
-              <ArrowLeft size={20} className="text-white" />
-            </button>
-            
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
-                <div 
-                  className="w-6 h-6 rounded-md flex items-center justify-center"
-                  style={{ backgroundColor: `${category?.color}30` }}
+    <div className="fixed inset-0 z-50 overflow-hidden bg-black">
+      <div className="absolute inset-0 bg-[radial-gradient(1200px_500px_at_20%_-5%,rgba(255,128,0,0.22),transparent_60%),radial-gradient(900px_500px_at_90%_0%,rgba(0,210,106,0.15),transparent_65%)]" />
+
+      <div className="relative h-full overflow-y-auto custom-scrollbar px-4 py-4 sm:px-6">
+        <div className="mx-auto w-full max-w-6xl space-y-4 pb-6">
+          <header className="rounded-3xl border border-white/10 bg-black/65 p-4 shadow-[0_0_0_1px_rgba(255,255,255,0.03)] backdrop-blur-xl sm:p-5">
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <button
+                onClick={onClose}
+                className="rounded-xl border border-white/10 bg-white/[0.04] p-2.5 text-white"
+              >
+                <ArrowLeft size={18} />
+              </button>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  onClick={() => startReviewSession([item])}
+                  size="sm"
+                  className="gradient-primary text-white gap-1.5"
                 >
-                  <span className="text-xs" style={{ color: category?.color }}>
-                    {item.content_type === 'code' ? '</>' : item.content_type.charAt(0).toUpperCase()}
-                  </span>
-                </div>
-                <Badge variant="outline" className={`text-[10px] ${getStatusColor(item.status)}`}>
+                  <Play size={14} />
+                  Review
+                </Button>
+
+                <button
+                  onClick={() => {
+                    if (!confirmDelete) {
+                      setConfirmDelete(true);
+                      setTimeout(() => setConfirmDelete(false), 3000);
+                      return;
+                    }
+                    setIsDeleting(true);
+                    deleteMemoryItem(item.id)
+                      .then(() => {
+                        toast.success('Item deleted');
+                        onClose();
+                      })
+                      .catch(() => toast.error('Failed to delete'))
+                      .finally(() => setIsDeleting(false));
+                  }}
+                  disabled={isDeleting}
+                  className={`rounded-xl border p-2.5 transition-colors ${
+                    confirmDelete
+                      ? 'border-red-500/50 bg-red-500/20 text-red-400'
+                      : 'border-white/10 bg-white/[0.04] text-remembra-text-muted hover:text-red-400 hover:border-red-500/30'
+                  }`}
+                  title={confirmDelete ? 'Tap again to confirm' : 'Delete item'}
+                >
+                  {isDeleting ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline" className={`text-[10px] uppercase tracking-wide ${getStatusColor(item.status)}`}>
                   {item.status}
                 </Badge>
                 <Badge variant="outline" className="text-[10px] border-remembra-accent-primary/40 text-remembra-accent-primary">
-                  {getStageDayLabel(item.review_stage, item.status)}
+                  {getItemScheduleLabel(item)}
+                </Badge>
+                <Badge variant="outline" className="text-[10px] border-white/15 text-remembra-text-secondary">
+                  {contentTypeLabel}
+                </Badge>
+                <Badge variant="outline" className="text-[10px] border-white/15 text-remembra-text-secondary">
+                  Updated {updatedLabel}
                 </Badge>
               </div>
-              <h1 className="text-lg font-bold text-white truncate">{item.title}</h1>
+
+              <div className="flex items-start gap-3">
+                <div
+                  className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10"
+                  style={{ backgroundColor: `${category?.color}20` }}
+                >
+                  <span className="text-sm font-semibold" style={{ color: category?.color || '#ffffff' }}>
+                    {item.content_type === 'code' ? '</>' : item.content_type.charAt(0).toUpperCase()}
+                  </span>
+                </div>
+
+                <div className="min-w-0">
+                  <h1 className="text-balance text-2xl font-semibold leading-tight text-white sm:text-3xl">
+                    {item.title}
+                  </h1>
+                  <p className="mt-1 text-sm text-remembra-text-muted">
+                    {category?.name || 'Uncategorized'}
+                  </p>
+                </div>
+              </div>
             </div>
-            
-            <Button
-              onClick={() => startReviewSession([item])}
-              size="sm"
-              className="gradient-primary text-white gap-1"
-            >
-              <Play size={14} />
-              Review
-            </Button>
+          </header>
 
-            <button
-              onClick={() => {
-                if (!confirmDelete) {
-                  setConfirmDelete(true);
-                  setTimeout(() => setConfirmDelete(false), 3000);
-                  return;
-                }
-                setIsDeleting(true);
-                deleteMemoryItem(item.id)
-                  .then(() => {
-                    toast.success('Item deleted');
-                    onClose();
-                  })
-                  .catch(() => toast.error('Failed to delete'))
-                  .finally(() => setIsDeleting(false));
-              }}
-              disabled={isDeleting}
-              className={`p-2 rounded-xl border transition-colors ${
-                confirmDelete
-                  ? 'border-red-500/40 bg-red-500/15 text-red-400'
-                  : 'border-white/10 bg-white/[0.04] text-remembra-text-muted hover:text-red-400 hover:border-red-500/30'
-              }`}
-              title={confirmDelete ? 'Tap again to confirm' : 'Delete item'}
-            >
-              {isDeleting
-                ? <Loader2 size={16} className="animate-spin" />
-                : <Trash2 size={16} />
-              }
-            </button>
-          </div>
-        </header>
-
-        {/* Stats Bar */}
-        <div className="glass-card mx-4 mt-4 p-3 rounded-2xl flex-shrink-0">
-          <div className="flex items-center justify-around">
-            <div className="text-center">
-              <div className="flex items-center justify-center gap-1 text-remembra-accent-primary mb-1">
+          <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-2xl border border-white/10 bg-black/50 p-4">
+              <div className="mb-1 flex items-center gap-2 text-remembra-accent-primary">
                 <Target size={14} />
-                <span className="text-lg font-bold">{reviewStats.totalReviews}</span>
+                <span className="text-xs uppercase tracking-wide">Reviews</span>
               </div>
-              <span className="text-[10px] text-remembra-text-muted">Reviews</span>
+              <p className="text-2xl font-semibold text-white">{reviewStats.totalReviews}</p>
             </div>
-            <div className="w-px h-8 bg-white/10" />
-            <div className="text-center">
-              <div className="flex items-center justify-center gap-1 text-remembra-success mb-1">
+            <div className="rounded-2xl border border-white/10 bg-black/50 p-4">
+              <div className="mb-1 flex items-center gap-2 text-remembra-success">
                 <TrendingUp size={14} />
-                <span className="text-lg font-bold">{reviewStats.successRate}%</span>
+                <span className="text-xs uppercase tracking-wide">Success</span>
               </div>
-              <span className="text-[10px] text-remembra-text-muted">Success</span>
+              <p className="text-2xl font-semibold text-white">{reviewStats.successRate}%</p>
             </div>
-            <div className="w-px h-8 bg-white/10" />
-            <div className="text-center">
-              <div className="flex items-center justify-center gap-1 text-remembra-warning mb-1">
+            <div className="rounded-2xl border border-white/10 bg-black/50 p-4">
+              <div className="mb-1 flex items-center gap-2 text-remembra-warning">
                 <Clock size={14} />
-                <span className="text-lg font-bold">{reviewStats.avgTime}s</span>
+                <span className="text-xs uppercase tracking-wide">Avg Time</span>
               </div>
-              <span className="text-[10px] text-remembra-text-muted">Avg Time</span>
+              <p className="text-2xl font-semibold text-white">{reviewStats.avgTime}s</p>
             </div>
-            <div className="w-px h-8 bg-white/10" />
-            <div className="text-center">
-              <div className="flex items-center justify-center gap-1 text-remembra-accent-secondary mb-1">
+            <div className="rounded-2xl border border-white/10 bg-black/50 p-4">
+              <div className="mb-1 flex items-center gap-2 text-remembra-accent-secondary">
                 <Brain size={14} />
-                <span className="text-lg font-bold">{item.repetition}</span>
+                <span className="text-xs uppercase tracking-wide">Repetitions</span>
               </div>
-              <span className="text-[10px] text-remembra-text-muted">Reps</span>
+              <p className="text-2xl font-semibold text-white">{item.repetition}</p>
             </div>
-          </div>
-        </div>
+          </section>
 
-        {/* Tab Navigation */}
-        <div className="flex gap-2 px-4 mt-4 overflow-x-auto scrollbar-hide flex-shrink-0">
-          {tabs.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
-              className={`
-                flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap
-                transition-all duration-300
-                ${activeTab === tab.id 
-                  ? 'glass-card text-white border-remembra-accent-primary/50' 
-                  : 'glass-button text-remembra-text-secondary hover:text-white'
-                }
-              `}
-            >
-              <tab.icon size={16} />
-              {tab.label}
-            </button>
-          ))}
-        </div>
+          <nav className="rounded-2xl border border-white/10 bg-black/50 p-1.5">
+            <div className="flex gap-1 overflow-x-auto scrollbar-hide">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id as any)}
+                  className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-colors ${
+                    activeTab === tab.id
+                      ? 'bg-gradient-to-r from-remembra-accent-primary/30 to-remembra-accent-secondary/20 text-white border border-remembra-accent-primary/30'
+                      : 'text-remembra-text-secondary hover:text-white'
+                  }`}
+                >
+                  <tab.icon size={16} />
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          </nav>
 
-        {/* Content Area */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar px-4 py-4">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr),300px]">
+            <div className="min-w-0 space-y-4">
           {/* Content Tab */}
           {activeTab === 'content' && (
             <div className="space-y-4 animate-fade-in">
-              <div className="glass-card p-4 rounded-2xl dynamic-container">
+              <div className="rounded-3xl border border-white/10 bg-black/60 p-5 shadow-[0_10px_40px_rgba(0,0,0,0.35)] dynamic-container">
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-semibold text-white">
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-remembra-text-secondary">
                     {item.content_type === 'code' ? 'Code Snippet' : 'Content'}
                   </h3>
                   <button
                     onClick={handleCopyContent}
-                    className="glass-button px-3 py-1.5 rounded-lg flex items-center gap-1.5 text-xs"
+                    className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-remembra-text-secondary flex items-center gap-1.5"
                   >
                     {copied ? <Check size={12} /> : <Copy size={12} />}
                     {copied ? 'Copied' : 'Copy'}
@@ -293,11 +308,11 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
 
               {/* Attachments */}
               {item.attachments.length > 0 && (
-                <div className="glass-card p-4 rounded-2xl">
-                  <h3 className="text-sm font-semibold text-white mb-3">Attachments</h3>
+                <div className="rounded-3xl border border-white/10 bg-black/55 p-5">
+                  <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-remembra-text-secondary">Attachments</h3>
                   <div className="space-y-2">
                     {item.attachments.map((att, idx) => (
-                      <div key={idx} className="flex items-center gap-3 glass-button p-3 rounded-xl">
+                      <div key={idx} className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-3">
                         <FileText size={18} className="text-remembra-accent-primary" />
                         <span className="text-sm text-white flex-1">{att.name}</span>
                         <ChevronRight size={16} className="text-remembra-text-muted" />
@@ -313,7 +328,7 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
           {activeTab === 'summary' && (
             <div className="space-y-4 animate-fade-in">
               {/* Summary Section */}
-              <div className="glass-card p-4 rounded-2xl dynamic-container">
+              <div className="rounded-3xl border border-white/10 bg-black/60 p-5 dynamic-container">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-semibold text-white flex items-center gap-2">
                     <Sparkles size={16} className="text-remembra-accent-primary" />
@@ -322,7 +337,7 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
                   <button
                     onClick={() => handleGenerateAI('summary')}
                     disabled={isGeneratingAI}
-                    className="glass-button px-3 py-1.5 rounded-lg flex items-center gap-1.5 text-xs disabled:opacity-50"
+                    className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-remembra-text-secondary flex items-center gap-1.5 disabled:opacity-50"
                   >
                     {isGeneratingAI ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
                     {aiSummary ? 'Regenerate' : 'Generate'}
@@ -346,7 +361,7 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
               </div>
 
               {/* Bullet Points Section */}
-              <div className="glass-card p-4 rounded-2xl dynamic-container">
+              <div className="rounded-3xl border border-white/10 bg-black/60 p-5 dynamic-container">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-semibold text-white flex items-center gap-2">
                     <ListChecks size={16} className="text-remembra-success" />
@@ -355,7 +370,7 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
                   <button
                     onClick={() => handleGenerateAI('bullets')}
                     disabled={isGeneratingAI}
-                    className="glass-button px-3 py-1.5 rounded-lg flex items-center gap-1.5 text-xs disabled:opacity-50"
+                    className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-remembra-text-secondary flex items-center gap-1.5 disabled:opacity-50"
                   >
                     {isGeneratingAI ? <Loader2 size={12} className="animate-spin" /> : <ListChecks size={12} />}
                     {aiBulletPoints.length > 0 ? 'Regenerate' : 'Generate'}
@@ -388,7 +403,7 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
           {/* Flowchart Tab */}
           {activeTab === 'flowchart' && (
             <div className="space-y-4 animate-fade-in">
-              <div className="glass-card p-4 rounded-2xl dynamic-container">
+              <div className="rounded-3xl border border-white/10 bg-black/60 p-5 dynamic-container">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-semibold text-white flex items-center gap-2">
                     <GitBranch size={16} className="text-remembra-accent-secondary" />
@@ -397,7 +412,7 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
                   <button
                     onClick={() => handleGenerateAI('flowchart')}
                     disabled={isGeneratingAI}
-                    className="glass-button px-3 py-1.5 rounded-lg flex items-center gap-1.5 text-xs disabled:opacity-50"
+                    className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-remembra-text-secondary flex items-center gap-1.5 disabled:opacity-50"
                   >
                     {isGeneratingAI ? <Loader2 size={12} className="animate-spin" /> : <GitBranch size={12} />}
                     {aiFlowchart ? 'Regenerate' : 'Generate'}
@@ -428,7 +443,7 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
           {/* Notes Tab */}
           {activeTab === 'notes' && (
             <div className="space-y-4 animate-fade-in">
-              <div className="glass-card p-4 rounded-2xl dynamic-container">
+              <div className="rounded-3xl border border-white/10 bg-black/60 p-5 dynamic-container">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-semibold text-white flex items-center gap-2">
                     <StickyNote size={16} className="text-remembra-warning" />
@@ -438,7 +453,7 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
                     <button
                       onClick={handleSaveNotes}
                       disabled={isSaving}
-                      className="glass-button px-3 py-1.5 rounded-lg flex items-center gap-1.5 text-xs text-remembra-success disabled:opacity-50"
+                      className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-remembra-success flex items-center gap-1.5 disabled:opacity-50"
                     >
                       {isSaving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
                       Save
@@ -446,7 +461,7 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
                   ) : (
                     <button
                       onClick={() => setIsEditingNotes(true)}
-                      className="glass-button px-3 py-1.5 rounded-lg flex items-center gap-1.5 text-xs"
+                      className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-remembra-text-secondary flex items-center gap-1.5"
                     >
                       <Edit3 size={12} />
                       Edit
@@ -482,7 +497,7 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
               </div>
 
               {/* Review History */}
-              <div className="glass-card p-4 rounded-2xl">
+              <div className="rounded-3xl border border-white/10 bg-black/55 p-5">
                 <h3 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
                   <Clock size={16} className="text-remembra-text-muted" />
                   Review History
@@ -522,6 +537,52 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
               </div>
             </div>
           )}
+            </div>
+
+            <aside className="space-y-4 lg:sticky lg:top-4 h-fit">
+              <div className="rounded-3xl border border-white/10 bg-black/55 p-5">
+                <h3 className="mb-3 text-xs uppercase tracking-widest text-remembra-text-muted">Quick Actions</h3>
+                <div className="space-y-2">
+                  <button
+                    onClick={() => startReviewSession([item])}
+                    className="w-full rounded-xl bg-gradient-to-r from-remembra-accent-primary to-remembra-accent-secondary px-3 py-2.5 text-sm font-medium text-white flex items-center justify-center gap-2"
+                  >
+                    <Play size={14} />
+                    Start Review
+                  </button>
+                  <button
+                    onClick={handleCopyContent}
+                    className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-sm text-remembra-text-secondary flex items-center justify-center gap-2"
+                  >
+                    <Copy size={14} />
+                    Copy Content
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-3xl border border-white/10 bg-black/55 p-5">
+                <h3 className="mb-3 text-xs uppercase tracking-widest text-remembra-text-muted">Item Facts</h3>
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
+                    <span className="text-remembra-text-muted">Category</span>
+                    <span className="text-white">{category?.name || 'Uncategorized'}</span>
+                  </div>
+                  <div className="flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
+                    <span className="text-remembra-text-muted">Schedule</span>
+                    <span className="text-white">{getItemScheduleLabel(item)}</span>
+                  </div>
+                  <div className="flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
+                    <span className="text-remembra-text-muted">Status</span>
+                    <span className="text-white capitalize">{item.status}</span>
+                  </div>
+                  <div className="flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
+                    <span className="text-remembra-text-muted">Attachments</span>
+                    <span className="text-white">{item.attachments.length}</span>
+                  </div>
+                </div>
+              </div>
+            </aside>
+          </div>
         </div>
       </div>
     </div>

@@ -1,6 +1,7 @@
 export type ReviewPerformance = 'again' | 'hard' | 'good' | 'easy';
 export type ReviewOutcome = 'pass' | 'fail';
 export type PostSevenDayAction = 'schedule30' | 'complete';
+export type RecurringFrequency = 'daily' | 'weekly' | 'monthly';
 
 export const REVIEW_INTERVALS_147 = [1, 4, 7] as const;
 export const OPTIONAL_REVIEW_DAY_30 = 30;
@@ -53,6 +54,22 @@ export function toIsoDate(input: string | Date): string {
 export function addDays(dateIso: string, days: number): string {
   const base = new Date(`${toIsoDate(dateIso)}T00:00:00.000Z`);
   base.setUTCDate(base.getUTCDate() + days);
+  return base.toISOString().split('T')[0];
+}
+
+export function getNextRecurringDate(fromDateIso: string, frequency: RecurringFrequency): string {
+  const fromIso = toIsoDate(fromDateIso);
+
+  if (frequency === 'daily') {
+    return addDays(fromIso, 1);
+  }
+
+  if (frequency === 'weekly') {
+    return addDays(fromIso, 7);
+  }
+
+  const base = new Date(`${fromIso}T00:00:00.000Z`);
+  base.setUTCMonth(base.getUTCMonth() + 1);
   return base.toISOString().split('T')[0];
 }
 
@@ -231,4 +248,20 @@ export function getStageDayLabel(stage: number, status?: 'active' | 'completed' 
   if (stage === DECISION_STAGE) return 'Choose 30 Day or Complete';
   if (stage === THIRTY_DAY_STAGE) return 'Day 30';
   return 'Day 1';
+}
+
+export function getItemScheduleLabel(item: {
+  review_stage: number;
+  status?: 'active' | 'completed' | 'archived';
+  schedule_type?: 'spaced' | 'recurring';
+  recurring_frequency?: RecurringFrequency;
+}): string {
+  if (item.schedule_type === 'recurring') {
+    if (item.status === 'completed') return 'Completed';
+    if (item.recurring_frequency === 'daily') return 'Daily';
+    if (item.recurring_frequency === 'monthly') return 'Monthly';
+    return 'Weekly';
+  }
+
+  return getStageDayLabel(item.review_stage, item.status);
 }

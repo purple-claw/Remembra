@@ -1,4 +1,7 @@
 {
+  "firestore": {
+    "rules": "app/firestore.rules"
+  },
   "hosting": {
     "public": "app/dist",
     "ignore": [

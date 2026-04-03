@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { useStore } from '@/store/useStore';
-import type { ContentType, Difficulty } from '@/types';
+import type { ContentType, Difficulty, RecurringFrequency, ScheduleType } from '@/types';
 import {
   ArrowLeft,
   Type,
@@ -25,13 +25,16 @@ import {
   Eye,
   Edit,
   Plus,
+  Pencil,
+  Trash2,
+  Repeat,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { toast } from 'sonner';
-import { OPTIONAL_REVIEW_DAY_30, REVIEW_INTERVALS_147, getScheduledDateForStage, toIsoDate } from '@/domain/review147';
+import { OPTIONAL_REVIEW_DAY_30, REVIEW_INTERVALS_147, getScheduledDateForStage, getNextRecurringDate, toIsoDate } from '@/domain/review147';
 import { storageService } from '@/services/storageService';
 
 const contentTypes: { id: ContentType; icon: React.ElementType; label: string; description: string }[] = [
@@ -61,7 +64,7 @@ interface UploadedFile {
 }
 
 export function Create() {
-  const { categories, addMemoryItem, addCategory, setScreen, goBack } = useStore();
+  const { categories, addMemoryItem, addCategory, updateCategory, deleteCategory, memoryItems, setScreen, goBack } = useStore();
 
   const [contentType, setContentType] = useState<ContentType>('text');
   const [title, setTitle] = useState('');
@@ -75,6 +78,11 @@ export function Create() {
   const [isDragging, setIsDragging] = useState(false);
   const [showNewCategory, setShowNewCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
+  const [editingCategoryName, setEditingCategoryName] = useState('');
+  const [processingCategoryId, setProcessingCategoryId] = useState<string | null>(null);
+  const [scheduleType, setScheduleType] = useState<ScheduleType>('spaced');
+  const [recurringFrequency, setRecurringFrequency] = useState<RecurringFrequency>('weekly');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -94,6 +102,65 @@ export function Create() {
     goBack('dashboard');
   };
 
+  const startCategoryEdit = (id: string, name: string) => {
+    setEditingCategoryId(id);
+    setEditingCategoryName(name);
+  };
+
+  const cancelCategoryEdit = () => {
+    setEditingCategoryId(null);
+    setEditingCategoryName('');
+  };
+
+  const saveCategoryEdit = async () => {
+    if (!editingCategoryId) return;
+
+    const name = editingCategoryName.trim();
+    if (!name) {
+      toast.error('Category name is required');
+      return;
+    }
+
+    setProcessingCategoryId(editingCategoryId);
+    try {
+      await updateCategory(editingCategoryId, { name });
+      toast.success('Category updated');
+      cancelCategoryEdit();
+    } catch (error) {
+      console.error('Category update failed:', error);
+      toast.error('Failed to update category');
+    } finally {
+      setProcessingCategoryId(null);
+    }
+  };
+
+  const removeCategory = async (id: string, name: string) => {
+    if (categories.length <= 1) {
+      toast.error('At least one category is required');
+      return;
+    }
+
+    const confirmed = window.confirm(`Delete category "${name}"? Items in this category will be moved to another category.`);
+    if (!confirmed) return;
+
+    setProcessingCategoryId(id);
+    try {
+      await deleteCategory(id);
+      if (categoryId === id) {
+        const fallback = categories.find((category) => category.id !== id);
+        if (fallback) {
+          setCategoryId(fallback.id);
+        }
+      }
+      toast.success('Category deleted');
+    } catch (error) {
+      console.error('Category delete failed:', error);
+      toast.error('Failed to delete category');
+    } finally {
+      setProcessingCategoryId(null);
+    }
+  };
+
   const createNewCategory = async () => {
     if (!newCategoryName.trim()) {
       toast.error('Category name is required');
@@ -102,7 +169,8 @@ export function Create() {
 
     try {
       const colors = ['#FF8000', '#FF4500', '#E81224', '#00D26A', '#6366F1', '#FFB800', '#06B6D4'];
-      const icons = ['code', 'book-open', 'flask', 'languages', 'calculator'];
+      // Keep icon values aligned with backend-safe defaults.
+      const icons = ['folder', 'briefcase', 'user'];
 
       const newCategory = {
         name: newCategoryName.trim(),
@@ -119,6 +187,21 @@ export function Create() {
       toast.success('Category created');
     } catch (error) {
       console.error('Category creation failed:', error);
+      const maybeCode = typeof error === 'object' && error !== null && 'code' in error
+        ? String((error as { code?: unknown }).code || '')
+        : '';
+      const maybeMessage = error instanceof Error ? error.message : '';
+
+      if (maybeCode.includes('permission-denied')) {
+        toast.error('Category creation blocked by Firebase rules. Please check Firestore rules.');
+        return;
+      }
+
+      if (maybeMessage.includes('Authentication required')) {
+        toast.error('Session expired. Please sign in again.');
+        return;
+      }
+
       toast.error('Failed to create category. Try again.');
     }
   };
@@ -139,6 +222,10 @@ export function Create() {
     setIsCreating(true);
 
     const cycleStartedAt = toIsoDate(new Date());
+    const initialNextReviewDate = scheduleType === 'recurring'
+      ? getNextRecurringDate(cycleStartedAt, recurringFrequency)
+      : getScheduledDateForStage(cycleStartedAt, 0);
+
     const newItem = {
       category_id: categoryId,
       title: title.trim(),
@@ -155,13 +242,17 @@ export function Create() {
       })),
       difficulty,
       status: 'active' as const,
-      next_review_date: getScheduledDateForStage(cycleStartedAt, 0),
+      schedule_type: scheduleType,
+      recurring_frequency: recurringFrequency,
+      next_review_date: initialNextReviewDate,
       cycle_started_at: cycleStartedAt,
       review_stage: 0,
-      review_template: '1-4-7',
+      review_template: scheduleType === 'recurring' ? `recurring-${recurringFrequency}` : '1-4-7',
       current_stage_index: 0,
       easiness_factor: 2.5,
-      interval: REVIEW_INTERVALS_147[0],
+      interval: scheduleType === 'recurring'
+        ? (recurringFrequency === 'daily' ? 1 : recurringFrequency === 'weekly' ? 7 : 30)
+        : REVIEW_INTERVALS_147[0],
       repetition: 0,
       lapse_count: 0,
       review_history: [],
@@ -191,6 +282,14 @@ export function Create() {
   };
 
   const getReviewDates = () => {
+    if (scheduleType === 'recurring') {
+      const next = getNextRecurringDate(toIsoDate(new Date()), recurringFrequency);
+      return [{
+        day: recurringFrequency === 'daily' ? 1 : recurringFrequency === 'weekly' ? 7 : 30,
+        label: new Date(`${next}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      }];
+    }
+
     const dates = [];
     const intervals = [...REVIEW_INTERVALS_147, OPTIONAL_REVIEW_DAY_30];
 
@@ -579,22 +678,123 @@ export function Create() {
 
           <aside className="space-y-4 xl:sticky xl:top-5 h-fit">
             <div className="glass-card rounded-2xl p-4">
+              <p className="text-xs uppercase tracking-wider text-remembra-text-muted mb-3">Schedule Mode</p>
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                <button
+                  onClick={() => setScheduleType('spaced')}
+                  className={`rounded-xl border p-3 text-sm font-medium transition-colors ${
+                    scheduleType === 'spaced'
+                      ? 'bg-remembra-accent-primary/15 border-remembra-accent-primary/35 text-remembra-accent-primary'
+                      : 'bg-remembra-bg-tertiary border-white/10 text-remembra-text-muted'
+                  }`}
+                >
+                  1-4-7 Review
+                </button>
+                <button
+                  onClick={() => setScheduleType('recurring')}
+                  className={`rounded-xl border p-3 text-sm font-medium transition-colors flex items-center justify-center gap-1.5 ${
+                    scheduleType === 'recurring'
+                      ? 'bg-remembra-accent-primary/15 border-remembra-accent-primary/35 text-remembra-accent-primary'
+                      : 'bg-remembra-bg-tertiary border-white/10 text-remembra-text-muted'
+                  }`}
+                >
+                  <Repeat size={14} />
+                  Recurring
+                </button>
+              </div>
+
+              {scheduleType === 'recurring' && (
+                <div className="grid grid-cols-3 gap-2 mb-3">
+                  {(['daily', 'weekly', 'monthly'] as const).map((frequency) => (
+                    <button
+                      key={frequency}
+                      onClick={() => setRecurringFrequency(frequency)}
+                      className={`rounded-lg border px-2 py-2 text-xs font-medium capitalize ${
+                        recurringFrequency === frequency
+                          ? 'border-remembra-accent-primary/40 bg-remembra-accent-primary/15 text-remembra-accent-primary'
+                          : 'border-white/10 bg-remembra-bg-tertiary text-remembra-text-muted'
+                      }`}
+                    >
+                      {frequency}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               <p className="text-xs uppercase tracking-wider text-remembra-text-muted mb-3">Category</p>
 
-              <div className="flex flex-wrap gap-2 mb-3">
+              <div className="space-y-2 mb-3 max-h-52 overflow-y-auto custom-scrollbar pr-1">
                 {categories.map((category) => (
-                  <button
-                    key={category.id}
-                    onClick={() => setCategoryId(category.id)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${
-                      categoryId === category.id
-                        ? 'text-white border-transparent'
-                        : 'text-remembra-text-muted border-white/10 bg-remembra-bg-tertiary'
-                    }`}
-                    style={categoryId === category.id ? { backgroundColor: category.color } : {}}
-                  >
-                    {category.name}
-                  </button>
+                  <div key={category.id} className="flex items-center gap-2">
+                    {editingCategoryId === category.id ? (
+                      <Input
+                        value={editingCategoryName}
+                        onChange={(event) => setEditingCategoryName(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault();
+                            saveCategoryEdit();
+                          }
+                          if (event.key === 'Escape') {
+                            cancelCategoryEdit();
+                          }
+                        }}
+                        className="h-9 bg-remembra-bg-tertiary border-white/10 text-remembra-text-primary"
+                        autoFocus
+                      />
+                    ) : (
+                      <button
+                        onClick={() => setCategoryId(category.id)}
+                        className={`flex-1 text-left px-3 py-2 rounded-lg text-xs font-medium border ${
+                          categoryId === category.id
+                            ? 'text-white border-transparent'
+                            : 'text-remembra-text-muted border-white/10 bg-remembra-bg-tertiary'
+                        }`}
+                        style={categoryId === category.id ? { backgroundColor: category.color } : {}}
+                      >
+                        {category.name}
+                        {memoryItems.some((item) => item.category_id === category.id) && (
+                          <span className="ml-2 opacity-80">({memoryItems.filter((item) => item.category_id === category.id).length})</span>
+                        )}
+                      </button>
+                    )}
+
+                    {editingCategoryId === category.id ? (
+                      <>
+                        <button
+                          onClick={saveCategoryEdit}
+                          disabled={processingCategoryId === category.id}
+                          className="w-9 h-9 rounded-lg gradient-primary text-white flex items-center justify-center"
+                        >
+                          <Check size={13} />
+                        </button>
+                        <button
+                          onClick={cancelCategoryEdit}
+                          className="w-9 h-9 rounded-lg border border-white/10 bg-remembra-bg-tertiary text-remembra-text-muted flex items-center justify-center"
+                        >
+                          <X size={13} />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => startCategoryEdit(category.id, category.name)}
+                          className="w-9 h-9 rounded-lg border border-white/10 bg-remembra-bg-tertiary text-remembra-text-muted flex items-center justify-center"
+                          title="Edit category"
+                        >
+                          <Pencil size={13} />
+                        </button>
+                        <button
+                          onClick={() => removeCategory(category.id, category.name)}
+                          disabled={categories.length <= 1 || processingCategoryId === category.id}
+                          className="w-9 h-9 rounded-lg border border-red-500/25 bg-red-500/10 text-red-400 disabled:opacity-40 flex items-center justify-center"
+                          title="Delete category"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </>
+                    )}
+                  </div>
                 ))}
               </div>
 
@@ -682,10 +882,12 @@ export function Create() {
                 <p className="text-xs uppercase tracking-wider text-remembra-text-muted">Review Plan</p>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className={`grid gap-2 ${scheduleType === 'recurring' ? 'grid-cols-1' : 'grid-cols-2'}`}>
                 {getReviewDates().map((entry) => (
                   <div key={entry.day} className="rounded-lg border border-white/10 bg-black/20 p-2.5">
-                    <p className="text-xs text-remembra-text-muted">Day {entry.day}</p>
+                    <p className="text-xs text-remembra-text-muted">
+                      {scheduleType === 'recurring' ? `${recurringFrequency} cadence` : `Day ${entry.day}`}
+                    </p>
                     <p className="text-sm font-medium text-remembra-text-primary mt-0.5">{entry.label}</p>
                   </div>
                 ))}
