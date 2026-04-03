@@ -226,34 +226,34 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
             </div>
           </header>
 
-          <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="rounded-2xl border border-white/10 bg-black/50 p-4">
-              <div className="mb-1 flex items-center gap-2 text-remembra-accent-primary">
-                <Target size={14} />
-                <span className="text-xs uppercase tracking-wide">Reviews</span>
+          <section className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
+            <div className="rounded-xl border border-white/10 bg-black/45 px-3 py-2.5">
+              <div className="mb-0.5 flex items-center gap-1.5 text-remembra-accent-primary">
+                <Target size={12} />
+                <span className="text-[10px] uppercase tracking-wide text-remembra-text-muted">Reviews</span>
               </div>
-              <p className="text-2xl font-semibold text-white">{reviewStats.totalReviews}</p>
+              <p className="text-lg font-semibold leading-tight text-white">{reviewStats.totalReviews}</p>
             </div>
-            <div className="rounded-2xl border border-white/10 bg-black/50 p-4">
-              <div className="mb-1 flex items-center gap-2 text-remembra-success">
-                <TrendingUp size={14} />
-                <span className="text-xs uppercase tracking-wide">Success</span>
+            <div className="rounded-xl border border-white/10 bg-black/45 px-3 py-2.5">
+              <div className="mb-0.5 flex items-center gap-1.5 text-remembra-success">
+                <TrendingUp size={12} />
+                <span className="text-[10px] uppercase tracking-wide text-remembra-text-muted">Success</span>
               </div>
-              <p className="text-2xl font-semibold text-white">{reviewStats.successRate}%</p>
+              <p className="text-lg font-semibold leading-tight text-white">{reviewStats.successRate}%</p>
             </div>
-            <div className="rounded-2xl border border-white/10 bg-black/50 p-4">
-              <div className="mb-1 flex items-center gap-2 text-remembra-warning">
-                <Clock size={14} />
-                <span className="text-xs uppercase tracking-wide">Avg Time</span>
+            <div className="rounded-xl border border-white/10 bg-black/45 px-3 py-2.5">
+              <div className="mb-0.5 flex items-center gap-1.5 text-remembra-warning">
+                <Clock size={12} />
+                <span className="text-[10px] uppercase tracking-wide text-remembra-text-muted">Avg Time</span>
               </div>
-              <p className="text-2xl font-semibold text-white">{reviewStats.avgTime}s</p>
+              <p className="text-lg font-semibold leading-tight text-white">{reviewStats.avgTime}s</p>
             </div>
-            <div className="rounded-2xl border border-white/10 bg-black/50 p-4">
-              <div className="mb-1 flex items-center gap-2 text-remembra-accent-secondary">
-                <Brain size={14} />
-                <span className="text-xs uppercase tracking-wide">Repetitions</span>
+            <div className="rounded-xl border border-white/10 bg-black/45 px-3 py-2.5">
+              <div className="mb-0.5 flex items-center gap-1.5 text-remembra-accent-secondary">
+                <Brain size={12} />
+                <span className="text-[10px] uppercase tracking-wide text-remembra-text-muted">Reps</span>
               </div>
-              <p className="text-2xl font-semibold text-white">{item.repetition}</p>
+              <p className="text-lg font-semibold leading-tight text-white">{item.repetition}</p>
             </div>
           </section>
 
