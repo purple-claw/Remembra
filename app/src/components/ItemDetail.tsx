@@ -5,6 +5,7 @@ import {
   ArrowLeft, 
   Brain, 
   Code, 
+  Code2,
   FileText, 
   ListChecks,
   GitBranch,
@@ -20,7 +21,16 @@ import {
   Play,
   Loader2,
   StickyNote,
-  Trash2
+  Trash2,
+  Folder,
+  Briefcase,
+  User,
+  BookOpen,
+  FlaskConical,
+  Languages,
+  Calculator,
+  Image as ImageIcon,
+  Files,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -134,6 +144,44 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
     ? new Date(item.updated_at).toLocaleDateString()
     : 'Unknown';
 
+  const contentTypeIconMap = {
+    text: FileText,
+    code: Code2,
+    image: ImageIcon,
+    document: BookOpen,
+    mixed: Files,
+  } as const;
+
+  const categoryIconMap: Record<string, React.ElementType> = {
+    folder: Folder,
+    briefcase: Briefcase,
+    user: User,
+    code: Code2,
+    'book-open': BookOpen,
+    flask: FlaskConical,
+    languages: Languages,
+    calculator: Calculator,
+  };
+
+  const fallbackIcons: React.ElementType[] = [
+    Brain,
+    Sparkles,
+    Target,
+    BookOpen,
+    Code2,
+    FileText,
+    GitBranch,
+    Clock,
+  ];
+
+  const hashSeed = `${item.id}-${item.title}`;
+  const hashValue = hashSeed.split('').reduce((acc, char) => ((acc * 31) + char.charCodeAt(0)) >>> 0, 0);
+  const fallbackIcon = fallbackIcons[hashValue % fallbackIcons.length];
+
+  const IconBadge = category?.icon
+    ? (categoryIconMap[category.icon] || contentTypeIconMap[item.content_type] || fallbackIcon)
+    : (contentTypeIconMap[item.content_type] || fallbackIcon);
+
   return (
     <div className="fixed inset-0 z-50 overflow-hidden bg-black">
       <div className="absolute inset-0 bg-[radial-gradient(1200px_500px_at_20%_-5%,rgba(255,128,0,0.22),transparent_60%),radial-gradient(900px_500px_at_90%_0%,rgba(0,210,106,0.15),transparent_65%)]" />
@@ -213,9 +261,7 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
                   className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10"
                   style={{ backgroundColor: `${category?.color}20` }}
                 >
-                  <span className="text-sm font-semibold" style={{ color: category?.color || '#ffffff' }}>
-                    {item.content_type === 'code' ? '</>' : item.content_type.charAt(0).toUpperCase()}
-                  </span>
+                  <IconBadge size={18} style={{ color: category?.color || '#ffffff' }} />
                 </div>
 
                 <div className="min-w-0">

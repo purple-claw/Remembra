@@ -11,7 +11,11 @@ import {
   BookOpen,
   Archive,
   Sparkles,
-  Loader2
+  Loader2,
+  Code2,
+  FileText,
+  Image as ImageIcon,
+  Files,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -122,6 +126,18 @@ export function Library() {
       case 'active': return 'bg-remembra-warning/20 text-remembra-warning';
       case 'completed': return 'bg-remembra-success/20 text-remembra-success';
       case 'archived': return 'bg-remembra-text-muted/20 text-remembra-text-muted';
+    }
+  };
+
+  const getContentTypeIcon = (contentType: MemoryItem['content_type']) => {
+    switch (contentType) {
+      case 'code': return Code2;
+      case 'image': return ImageIcon;
+      case 'mixed': return Files;
+      case 'document': return BookOpen;
+      case 'text':
+      default:
+        return FileText;
     }
   };
 
@@ -248,6 +264,7 @@ export function Library() {
           {visibleItems.map((item, index) => {
             const category = getCategoryById(item.category_id);
             const StatusIcon = getStatusIcon(item.status);
+            const TypeIcon = getContentTypeIcon(item.content_type);
             
             if (viewMode === 'list') {
               return (
@@ -261,9 +278,7 @@ export function Library() {
                     className="w-14 h-14 rounded-xl flex items-center justify-center flex-shrink-0 border border-white/10"
                     style={{ backgroundColor: `${category?.color}15` }}
                   >
-                    <span className="text-xl font-semibold" style={{ color: category?.color }}>
-                      {item.content_type === 'code' ? '</>' : item.content_type.charAt(0).toUpperCase()}
-                    </span>
+                    <TypeIcon size={22} style={{ color: category?.color || '#ffffff' }} />
                   </div>
                   
                   <div className="flex-1 min-w-0">
@@ -311,9 +326,7 @@ export function Library() {
                     className="w-10 h-10 rounded-xl flex items-center justify-center border border-white/10"
                     style={{ backgroundColor: `${category?.color}15` }}
                   >
-                    <span className="text-base font-semibold" style={{ color: category?.color }}>
-                      {item.content_type === 'code' ? '</>' : item.content_type.charAt(0).toUpperCase()}
-                    </span>
+                    <TypeIcon size={16} style={{ color: category?.color || '#ffffff' }} />
                   </div>
                   
                   <div className={`px-2 py-1 rounded-lg text-[10px] font-medium ${getStatusColor(item.status)}`}>

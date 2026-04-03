@@ -12,6 +12,11 @@ import {
   AlertCircle,
   Play,
   Check,
+  Code2,
+  FileText,
+  Image as ImageIcon,
+  Files,
+  BookOpen,
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
@@ -146,6 +151,18 @@ export function Calendar() {
   const selectedDueItems = getDueItemsForDateStr(selectedDateStr);
   const selectedCompletedLogs = getCompletedReviewsForDateStr(selectedDateStr);
   const completedItemIds = new Set(selectedCompletedLogs.map((r) => r.memory_item_id));
+
+  const getContentTypeIcon = (contentType: MemoryItem['content_type']) => {
+    switch (contentType) {
+      case 'code': return Code2;
+      case 'image': return ImageIcon;
+      case 'mixed': return Files;
+      case 'document': return BookOpen;
+      case 'text':
+      default:
+        return FileText;
+    }
+  };
 
   const getReviewStatus = (item: MemoryItem, dateStr: string): 'completed' | 'overdue' | 'pending' | 'scheduled' => {
     if (completedItemIds.has(item.id) && dateStr === selectedDateStr) return 'completed';
@@ -297,6 +314,7 @@ export function Calendar() {
                   {selectedDueItems.map((item) => {
                     const status = getReviewStatus(item, selectedDateStr);
                     const isReviewing = reviewingItemId === item.id;
+                    const TypeIcon = getContentTypeIcon(item.content_type);
 
                     return (
                       <div key={item.id} className="rounded-xl border border-white/5 bg-remembra-bg-tertiary/40 overflow-hidden">
@@ -305,9 +323,7 @@ export function Calendar() {
                             className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
                             style={{ backgroundColor: `${categories.find((c) => c.id === item.category_id)?.color || '#FF8000'}20` }}
                           >
-                            <span className="text-sm">
-                              {item.content_type === 'code' ? '</>' : item.content_type === 'text' ? 'T' : '?'}
-                            </span>
+                            <TypeIcon size={15} color={categories.find((c) => c.id === item.category_id)?.color || '#FF8000'} />
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-sm text-remembra-text-primary truncate">{item.title}</p>
