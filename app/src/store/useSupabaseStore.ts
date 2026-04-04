@@ -50,7 +50,9 @@ interface AppState extends AuthState {
   // Navigation
   currentScreen: Screen;
   navigationHistory: Screen[];
+  libraryCategoryFilter: string | 'all';
   setScreen: (screen: Screen, options?: { replace?: boolean }) => void;
+  setLibraryCategoryFilter: (categoryId: string | 'all') => void;
   goBack: (fallback?: Screen) => boolean;
   canGoBack: () => boolean;
   resetNavigation: (screen?: Screen) => void;
@@ -116,6 +118,7 @@ export const useStore = create<AppState>()(persist((set, get) => ({
   // Navigation
   currentScreen: 'auth',
   navigationHistory: [],
+  libraryCategoryFilter: 'all',
   setScreen: (screen, options) => set((state) => {
     if (state.currentScreen === screen) {
       return state;
@@ -134,6 +137,7 @@ export const useStore = create<AppState>()(persist((set, get) => ({
       navigationHistory,
     };
   }),
+  setLibraryCategoryFilter: (categoryId) => set({ libraryCategoryFilter: categoryId }),
   goBack: (fallback = 'dashboard') => {
     const state = get();
     const history = [...state.navigationHistory];

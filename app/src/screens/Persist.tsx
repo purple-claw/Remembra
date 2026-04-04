@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useStore } from '@/store/useStore';
 import {
   Archive,
@@ -6,13 +6,16 @@ import {
   ChevronDown,
   ChevronRight,
   Layers,
+  Plus,
   RefreshCw,
+  Search,
   Trash2,
 } from 'lucide-react';
 import {
   listSessions,
   getSession,
   deleteSession,
+  saveSession,
 } from '@/services/persistService';
 import type {
   PersistRecord,
@@ -20,6 +23,7 @@ import type {
   PersistCategoryBucket,
   PersistItem,
 } from '@/services/persistService';
+import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -42,7 +46,7 @@ function formatDate(iso: string): string {
 // ─── Persist Screen ───────────────────────────────────────────────────────────
 
 export function Persist() {
-  const { setScreen } = useStore();
+  const { setScreen, memoryItems, categories, getCategoryById } = useStore();
 
   const [records, setRecords] = useState<PersistRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -50,6 +54,23 @@ export function Persist() {
   const [expandedData, setExpandedData] = useState<PersistRecordFull | null>(null);
   const [isExpanding, setIsExpanding] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const [pickerQuery, setPickerQuery] = useState('');
+  const [addingItemId, setAddingItemId] = useState<string | null>(null);
+
+  const filteredLibraryItems = useMemo(() => {
+    const normalized = pickerQuery.trim().toLowerCase();
+    const sorted = [...memoryItems].sort(
+      (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
+    );
+
+    if (!normalized) return sorted;
+
+    return sorted.filter((item) => {
+      const haystack = `${item.title}\n${item.content}`.toLowerCase();
+      return haystack.includes(normalized);
+    });
+  }, [memoryItems, pickerQuery]);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -100,6 +121,25 @@ export function Persist() {
     }
   };
 
+  const handleAddItemToPersist = async (itemId: string) => {
+    if (addingItemId) return;
+    const item = memoryItems.find((memoryItem) => memoryItem.id === itemId);
+    if (!item) return;
+
+    setAddingItemId(itemId);
+    try {
+      await saveSession([item], categories, item.title || undefined);
+      await load();
+      toast.success('Saved to Persist');
+      setIsPickerOpen(false);
+      setPickerQuery('');
+    } catch {
+      toast.error('Failed to save to Persist');
+    } finally {
+      setAddingItemId(null);
+    }
+  };
+
   return (
     <div className="h-[100dvh] min-h-[100dvh] w-full overflow-hidden bg-black flex flex-col">
 
@@ -121,6 +161,13 @@ export function Persist() {
               {isLoading ? 'Loading…' : `${records.length} archived ${records.length === 1 ? 'session' : 'sessions'}`}
             </p>
           </div>
+          <button
+            onClick={() => setIsPickerOpen(true)}
+            className="w-10 h-10 rounded-xl border border-white/10 bg-remembra-bg-secondary flex items-center justify-center text-remembra-text-secondary shrink-0"
+            title="Add item to Persist"
+          >
+            <Plus size={16} />
+          </button>
           <button
             onClick={load}
             disabled={isLoading}
@@ -164,6 +211,76 @@ export function Persist() {
           </div>
         )}
       </div>
+
+      {isPickerOpen && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 p-0 sm:p-6">
+          <div className="w-full max-w-2xl max-h-[88dvh] rounded-t-3xl sm:rounded-3xl border border-white/10 bg-black/95 p-4 sm:p-5 overflow-hidden flex flex-col">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-remembra-text-primary">Add From Library</h2>
+                <p className="text-xs text-remembra-text-muted">Pick an item to archive into Persist</p>
+              </div>
+              <button
+                onClick={() => {
+                  setIsPickerOpen(false);
+                  setPickerQuery('');
+                }}
+                className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-remembra-text-secondary"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="relative mb-3">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-remembra-text-muted" size={16} />
+              <Input
+                value={pickerQuery}
+                onChange={(event) => setPickerQuery(event.target.value)}
+                placeholder="Search library items..."
+                className="pl-9 bg-remembra-bg-secondary border-white/10 text-remembra-text-primary"
+              />
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto custom-scrollbar space-y-2 pr-1">
+              {filteredLibraryItems.length === 0 ? (
+                <div className="rounded-2xl border border-white/10 bg-remembra-bg-secondary/40 p-4 text-center text-sm text-remembra-text-muted">
+                  No matching items found.
+                </div>
+              ) : (
+                filteredLibraryItems.map((item) => {
+                  const category = getCategoryById(item.category_id);
+                  return (
+                    <div
+                      key={item.id}
+                      className="rounded-2xl border border-white/10 bg-remembra-bg-secondary/35 p-3 flex items-center gap-3"
+                    >
+                      <div
+                        className="w-2.5 h-2.5 rounded-full shrink-0"
+                        style={{ backgroundColor: category?.color || '#888888' }}
+                      />
+
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-remembra-text-primary truncate">{item.title}</p>
+                        <p className="text-[11px] text-remembra-text-muted truncate">
+                          {category?.name || 'Uncategorized'} • {item.status}
+                        </p>
+                      </div>
+
+                      <button
+                        onClick={() => handleAddItemToPersist(item.id)}
+                        disabled={addingItemId === item.id}
+                        className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-remembra-text-secondary disabled:opacity-50"
+                      >
+                        {addingItemId === item.id ? 'Adding...' : 'Add'}
+                      </button>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

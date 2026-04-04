@@ -19,7 +19,7 @@ import { Button } from '@/components/ui/button';
 import { useEffect, useMemo, useState } from 'react';
 
 export function Dashboard() {
-  const { profile, categories, memoryItems, setScreen, startReviewSession, getItemsDueToday } = useStore();
+  const { profile, categories, memoryItems, setScreen, setLibraryCategoryFilter, startReviewSession, getItemsDueToday } = useStore();
   const [greeting, setGreeting] = useState('Good morning');
   const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
 
@@ -250,7 +250,10 @@ export function Dashboard() {
               <div className="mb-4 flex items-center justify-between">
                 <h3 className="text-base font-semibold text-remembra-text-primary">Categories</h3>
                 <button
-                  onClick={() => setScreen('library')}
+                  onClick={() => {
+                    setLibraryCategoryFilter('all');
+                    setScreen('library');
+                  }}
                   className="text-xs text-remembra-accent-primary active:opacity-70 transition-opacity"
                   style={{ WebkitTapHighlightColor: 'transparent' }}
                 >
@@ -265,7 +268,10 @@ export function Dashboard() {
                       key={category.id}
                       category={category}
                       style={{ animationDelay: `${index * 50}ms` }}
-                      onClick={() => setScreen('library')}
+                      onClick={() => {
+                        setLibraryCategoryFilter(category.id);
+                        setScreen('library');
+                      }}
                     />
                   ))
                 ) : (

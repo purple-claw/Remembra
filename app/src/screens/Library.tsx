@@ -33,10 +33,12 @@ export function Library() {
   const categories = useStore((state) => state.categories);
   const getCategoryById = useStore((state) => state.getCategoryById);
   const startReviewSession = useStore((state) => state.startReviewSession);
+  const libraryCategoryFilter = useStore((state) => state.libraryCategoryFilter);
+  const setLibraryCategoryFilter = useStore((state) => state.setLibraryCategoryFilter);
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list' | 'masonry'>('grid');
   const [statusFilter, setStatusFilter] = useState<ReviewStatus | 'all'>('all');
-  const [selectedCategory, setSelectedCategory] = useState<string | 'all'>('all');
+  const [selectedCategory, setSelectedCategory] = useState<string | 'all'>(libraryCategoryFilter);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(INITIAL_RENDER_COUNT);
   const [persistingItemId, setPersistingItemId] = useState<string | null>(null);
@@ -110,6 +112,10 @@ export function Library() {
   useEffect(() => {
     setVisibleCount(INITIAL_RENDER_COUNT);
   }, [statusFilter, selectedCategory, normalizedSearch, viewMode]);
+
+  useEffect(() => {
+    setSelectedCategory(libraryCategoryFilter);
+  }, [libraryCategoryFilter]);
 
   const statusTabs: { value: ReviewStatus | 'all'; label: string; count: number }[] = [
     { value: 'all', label: 'All', count: statusCounts.all },
@@ -204,7 +210,10 @@ export function Library() {
         <div className="flex items-center justify-between gap-3">
           <div className="flex gap-2 overflow-x-auto scrollbar-hide flex-1 -mx-1 px-1">
             <button
-              onClick={() => setSelectedCategory('all')}
+              onClick={() => {
+                setSelectedCategory('all');
+                setLibraryCategoryFilter('all');
+              }}
               className={`
                 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap
                 ${selectedCategory === 'all' 
@@ -219,7 +228,10 @@ export function Library() {
             {categories.map(cat => (
               <button
                 key={cat.id}
-                onClick={() => setSelectedCategory(cat.id)}
+                onClick={() => {
+                  setSelectedCategory(cat.id);
+                  setLibraryCategoryFilter(cat.id);
+                }}
                 className={`
                   px-3 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap
                   ${selectedCategory === cat.id 
