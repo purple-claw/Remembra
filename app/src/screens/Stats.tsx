@@ -181,8 +181,8 @@ export function Stats() {
   const formatStudyTime = () => (computedStats.studyMinutes < 60 ? `${computedStats.studyMinutes}m` : `${computedStats.studyHours}h`);
 
   return (
-    <div className="h-[100dvh] min-h-[100dvh] w-full overflow-hidden bg-black flex flex-col">
-      <header className="flex-shrink-0 px-4 sm:px-5 safe-top pb-4 bg-black/80 border-b border-white/[0.06] backdrop-blur-xl">
+    <div className="h-[100dvh] min-h-[100dvh] w-full overflow-hidden bg-black flex flex-col animate-screen-enter">
+      <header className="flex-shrink-0 px-4 sm:px-5 safe-top pb-4 bg-black/80 border-b border-white/[0.06] backdrop-blur-xl transition-smooth relative z-30 animate-slide-up">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
             <h1 className="text-2xl font-bold text-remembra-text-primary">Insights</h1>
@@ -190,7 +190,7 @@ export function Stats() {
           </div>
           <button
             onClick={() => setScreen('profile')}
-            className="h-9 w-9 rounded-xl border border-white/10 bg-white/[0.04] flex items-center justify-center transition-colors hover:bg-white/[0.08] flex-shrink-0"
+            className="h-9 w-9 rounded-xl border border-white/10 bg-white/[0.04] flex items-center justify-center transition-colors hover:bg-white/[0.08] flex-shrink-0 tap-ripple press-glow"
             style={{ WebkitTapHighlightColor: 'transparent' }}
             aria-label="Open settings"
           >
@@ -201,7 +201,7 @@ export function Stats() {
 
       <div
         data-nav-scroll="true"
-        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 sm:px-5 py-4 custom-scrollbar"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 sm:px-5 py-4 custom-scrollbar fluid-scroll-zone smooth-scroll-content relative z-0"
         style={{ WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}
       >
         <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as StatsTab)} className="mx-auto w-full max-w-6xl safe-bottom-nav space-y-5">
@@ -221,7 +221,7 @@ export function Stats() {
           {/* ── OVERVIEW ── */}
           <TabsContent value="overview" className="mt-0 space-y-5">
             {/* Weekly hero */}
-            <section className="liquid-glass rounded-3xl p-5 sm:p-6">
+            <section className="widget-surface inertia-card smooth-surface stagger-enter liquid-glass rounded-3xl p-5 sm:p-6" style={{ animationDelay: '40ms' }}>
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div>
                   <p className="text-xs uppercase tracking-wider text-remembra-text-muted mb-1">This Week</p>
@@ -252,7 +252,7 @@ export function Stats() {
 
             {/* 4 stat chips */}
             <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <div className="liquid-glass-soft rounded-2xl p-4">
+              <div className="widget-surface inertia-card smooth-surface stagger-enter liquid-glass-soft rounded-2xl p-4" style={{ animationDelay: '80ms' }}>
                 <div className="mb-2 flex items-center gap-2 text-remembra-text-muted">
                   <Flame size={15} className="text-orange-400" />
                   <span className="text-xs uppercase tracking-wide">Streak</span>
@@ -260,7 +260,7 @@ export function Stats() {
                 <p className="text-2xl font-bold text-remembra-text-primary">{profile?.streak_count || 0}</p>
                 <p className="text-xs text-remembra-text-muted mt-0.5">days</p>
               </div>
-              <div className="liquid-glass-soft rounded-2xl p-4">
+              <div className="widget-surface inertia-card smooth-surface stagger-enter liquid-glass-soft rounded-2xl p-4" style={{ animationDelay: '120ms' }}>
                 <div className="mb-2 flex items-center gap-2 text-remembra-text-muted">
                   <Brain size={15} className="text-remembra-accent-primary" />
                   <span className="text-xs uppercase tracking-wide">Mastered</span>
@@ -268,7 +268,7 @@ export function Stats() {
                 <p className="text-2xl font-bold text-remembra-text-primary">{masteredItems}</p>
                 <p className="text-xs text-remembra-text-muted mt-0.5">items</p>
               </div>
-              <div className="liquid-glass-soft rounded-2xl p-4">
+              <div className="widget-surface inertia-card smooth-surface stagger-enter liquid-glass-soft rounded-2xl p-4" style={{ animationDelay: '160ms' }}>
                 <div className="mb-2 flex items-center gap-2 text-remembra-text-muted">
                   <Target size={15} className="text-remembra-success" />
                   <span className="text-xs uppercase tracking-wide">Accuracy</span>
@@ -276,7 +276,7 @@ export function Stats() {
                 <p className="text-2xl font-bold text-remembra-text-primary">{computedStats.accuracy}%</p>
                 <p className="text-xs text-remembra-text-muted mt-0.5">30-day</p>
               </div>
-              <div className="liquid-glass-soft rounded-2xl p-4">
+              <div className="widget-surface inertia-card smooth-surface stagger-enter liquid-glass-soft rounded-2xl p-4" style={{ animationDelay: '200ms' }}>
                 <div className="mb-2 flex items-center gap-2 text-remembra-text-muted">
                   <Clock size={15} className="text-remembra-warning" />
                   <span className="text-xs uppercase tracking-wide">Study</span>
@@ -287,7 +287,7 @@ export function Stats() {
             </section>
 
             {/* Learning status bars */}
-            <section className="liquid-glass-soft rounded-3xl p-5">
+            <section className="widget-surface inertia-card smooth-surface stagger-enter liquid-glass-soft rounded-3xl p-5" style={{ animationDelay: '240ms' }}>
               <div className="mb-4 flex items-center justify-between">
                 <h3 className="text-base font-semibold text-remembra-text-primary">Learning Status</h3>
                 <span className="text-xs text-remembra-text-muted">{memoryItems.length} items total</span>
@@ -318,7 +318,7 @@ export function Stats() {
             </section>
 
             {/* Activity Heatmap — horizontally scrollable on mobile */}
-            <section className="liquid-glass-soft rounded-3xl p-5">
+            <section className="widget-surface inertia-card smooth-surface stagger-enter liquid-glass-soft rounded-3xl p-5" style={{ animationDelay: '280ms' }}>
               <div className="mb-4 flex items-center justify-between">
                 <h3 className="text-base font-semibold text-remembra-text-primary">Activity</h3>
                 <span className="text-xs text-remembra-text-muted">Last 12 weeks</span>

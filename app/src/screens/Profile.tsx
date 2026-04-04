@@ -14,7 +14,6 @@ import {
   RefreshCw,
   Save,
   ShieldCheck,
-  Sparkles,
   User2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -23,6 +22,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import { avatarService } from '@/services/avatarService';
+import { toFriendlyErrorMessage } from '@/lib/uiError';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -39,7 +39,6 @@ const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   reminder_time: '09:00',
   streak_reminder: true,
   achievement_notifications: true,
-  ai_insights: true,
 };
 
 export function Profile() {
@@ -108,8 +107,7 @@ export function Profile() {
     return current.daily_reminder !== draft.daily_reminder
       || current.reminder_time !== draft.reminder_time
       || current.streak_reminder !== draft.streak_reminder
-      || current.achievement_notifications !== draft.achievement_notifications
-      || current.ai_insights !== draft.ai_insights;
+      || current.achievement_notifications !== draft.achievement_notifications;
   }, [basePreferences, preferencesDraft]);
 
   const isDirty = hasProfileChanges || hasPreferenceChanges;
@@ -133,8 +131,7 @@ export function Profile() {
         toast.success('Profile avatar refreshed');
       }
     } catch (error) {
-      console.error('Avatar generation failed:', error);
-      toast.error('Failed to update avatar');
+      toast.error(toFriendlyErrorMessage(error, 'Failed to update avatar'));
     } finally {
       setIsGeneratingAvatar(false);
     }
@@ -144,7 +141,7 @@ export function Profile() {
     if (!profile || !user || profile.avatar_url || isGeneratingAvatar) return;
     if (didAutoAvatarAttempt) return;
     setDidAutoAvatarAttempt(true);
-    generateAvatar(false).catch(console.error);
+    void generateAvatar(false);
   }, [profile, user, isGeneratingAvatar, generateAvatar, didAutoAvatarAttempt]);
 
   const handleSave = async () => {
@@ -183,8 +180,7 @@ export function Profile() {
 
       toast.success('Profile updated');
     } catch (error) {
-      console.error('Profile update failed:', error);
-      toast.error('Failed to update profile');
+      toast.error(toFriendlyErrorMessage(error, 'Failed to update profile'));
     } finally {
       setIsSaving(false);
     }
@@ -204,7 +200,7 @@ export function Profile() {
     try {
       await signOut();
     } catch (error) {
-      console.error('Logout failed:', error);
+      toast.error(toFriendlyErrorMessage(error, 'Failed to log out'));
     } finally {
       setIsLoggingOut(false);
     }
@@ -218,12 +214,12 @@ export function Profile() {
   };
 
   return (
-    <div className="h-[100dvh] min-h-[100dvh] w-full overflow-hidden bg-black flex flex-col">
-      <header className="flex-shrink-0 px-4 sm:px-6 safe-top pb-4 bg-black/70 border-b border-white/10 backdrop-blur-xl">
+    <div className="h-[100dvh] min-h-[100dvh] w-full overflow-hidden bg-black flex flex-col animate-screen-enter">
+      <header className="flex-shrink-0 px-4 sm:px-6 safe-top pb-4 bg-black/70 border-b border-white/10 backdrop-blur-xl transition-smooth relative z-30 animate-slide-up">
         <div className="flex flex-wrap items-start gap-3 sm:items-center">
           <button
             onClick={() => goBack('dashboard')}
-            className="w-10 h-10 rounded-xl border border-white/10 bg-remembra-bg-secondary flex items-center justify-center text-remembra-text-secondary"
+            className="w-10 h-10 rounded-xl border border-white/10 bg-remembra-bg-secondary flex items-center justify-center text-remembra-text-secondary tap-ripple press-glow"
             aria-label="Back"
           >
             <ArrowLeft size={18} />
@@ -247,11 +243,11 @@ export function Profile() {
 
       <div
         data-nav-scroll="true"
-        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 sm:px-6 py-4 safe-bottom-nav"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 sm:px-6 py-4 safe-bottom-nav fluid-scroll-zone smooth-scroll-content relative z-0"
         style={{ WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}
       >
         <div className="max-w-4xl mx-auto space-y-5">
-          <section className="liquid-glass relative overflow-hidden rounded-3xl p-5">
+          <section className="widget-surface inertia-card smooth-surface stagger-enter liquid-glass relative overflow-hidden rounded-3xl p-5" style={{ animationDelay: '40ms' }}>
             <div className="relative flex items-center gap-4">
               <div className="w-16 h-16 rounded-2xl bg-black/60 border border-white/15 overflow-hidden flex items-center justify-center shrink-0">
                 {avatarUrl && !avatarLoadFailed ? (
@@ -291,23 +287,23 @@ export function Profile() {
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mt-5 pt-5 border-t border-white/10">
-              <div className="liquid-glass-soft rounded-xl p-3 text-center">
+              <div className="widget-surface inertia-card smooth-surface stagger-enter liquid-glass-soft rounded-xl p-3 text-center" style={{ animationDelay: '80ms' }}>
                 <p className="text-lg font-semibold text-remembra-text-primary">{stats.totalItems}</p>
                 <p className="text-xs text-remembra-text-muted">Items</p>
               </div>
-              <div className="liquid-glass-soft rounded-xl p-3 text-center">
+              <div className="widget-surface inertia-card smooth-surface stagger-enter liquid-glass-soft rounded-xl p-3 text-center" style={{ animationDelay: '120ms' }}>
                 <p className="text-lg font-semibold text-remembra-text-primary">{stats.completedItems}</p>
                 <p className="text-xs text-remembra-text-muted">Completed</p>
               </div>
-              <div className="liquid-glass-soft rounded-xl p-3 text-center">
+              <div className="widget-surface inertia-card smooth-surface stagger-enter liquid-glass-soft rounded-xl p-3 text-center" style={{ animationDelay: '160ms' }}>
                 <p className="text-lg font-semibold text-remembra-text-primary">{stats.categories}</p>
                 <p className="text-xs text-remembra-text-muted">Categories</p>
               </div>
-              <div className="liquid-glass-soft rounded-xl p-3 text-center">
+              <div className="widget-surface inertia-card smooth-surface stagger-enter liquid-glass-soft rounded-xl p-3 text-center" style={{ animationDelay: '200ms' }}>
                 <p className="text-lg font-semibold text-remembra-accent-primary">{stats.streak}</p>
                 <p className="text-xs text-remembra-text-muted">Streak</p>
               </div>
-              <div className="liquid-glass-soft rounded-xl p-3 text-center">
+              <div className="widget-surface inertia-card smooth-surface stagger-enter liquid-glass-soft rounded-xl p-3 text-center" style={{ animationDelay: '240ms' }}>
                 <p className="text-lg font-semibold text-remembra-text-primary">{stats.totalReviews}</p>
                 <p className="text-xs text-remembra-text-muted">Reviews</p>
               </div>
@@ -315,7 +311,7 @@ export function Profile() {
           </section>
 
           <section className="grid gap-4 lg:grid-cols-2">
-            <div className="liquid-glass-soft rounded-2xl p-5 space-y-4">
+            <div className="widget-surface inertia-card smooth-surface stagger-enter liquid-glass-soft rounded-2xl p-5 space-y-4" style={{ animationDelay: '280ms' }}>
               <h3 className="text-base font-semibold text-remembra-text-primary">Account Details</h3>
 
               <div className="space-y-2">
@@ -411,16 +407,6 @@ export function Profile() {
                 />
               </div>
 
-              <div className="flex items-center justify-between rounded-xl bg-remembra-bg-tertiary border border-white/10 px-3 py-3">
-                <div>
-                  <p className="text-sm text-remembra-text-primary">AI Insights</p>
-                  <p className="text-xs text-remembra-text-muted">Allow insight/reminder enhancements</p>
-                </div>
-                <Switch
-                  checked={preferencesDraft.ai_insights}
-                  onCheckedChange={(value) => updatePreference('ai_insights', value)}
-                />
-              </div>
             </div>
           </section>
 
@@ -442,7 +428,7 @@ export function Profile() {
                 </div>
               </div>
               <div className="rounded-xl border border-white/10 bg-black/25 p-3 flex items-start gap-2">
-                <Sparkles size={16} className="text-remembra-warning mt-0.5" />
+                <Flame size={16} className="text-remembra-warning mt-0.5" />
                 <div>
                   <p className="text-sm text-remembra-text-primary">Learning Consistency</p>
                   <p className="text-xs text-remembra-text-muted flex items-center gap-1">

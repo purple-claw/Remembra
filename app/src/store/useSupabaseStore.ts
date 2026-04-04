@@ -34,7 +34,22 @@ const sortByDueThenCreated = (a: MemoryItem, b: MemoryItem) => {
 const isAwaitingSevenDayDecision = (item: MemoryItem) =>
   item.status === 'active' && item.review_stage === DECISION_STAGE && !item.next_review_date;
 
-export type Screen = 'dashboard' | 'calendar' | 'review' | 'library' | 'create' | 'ai-tools' | 'stats' | 'profile' | 'persist' | 'test' | 'auth';
+const runNotification = (
+  operation: Promise<{ success: boolean; error?: { message?: string } }>,
+  label: string,
+) => {
+  operation
+    .then((result) => {
+      if (!result.success) {
+        console.warn(`[Store] ${label} failed:`, result.error?.message || 'unknown notification error');
+      }
+    })
+    .catch((error) => {
+      console.warn(`[Store] ${label} failed:`, error);
+    });
+};
+
+export type Screen = 'dashboard' | 'calendar' | 'review' | 'library' | 'create' | 'stats' | 'profile' | 'persist' | 'test' | 'auth';
 
 const MAX_NAV_HISTORY = 40;
 const NON_HISTORY_SCREENS: Screen[] = ['auth'];
@@ -211,7 +226,11 @@ export const useStore = create<AppState>()(persist((set, get) => ({
       }
       
       // Get current session
-      const session = await authService.getSession();
+      const sessionResult = await authService.getSession();
+      if (!sessionResult.success) {
+        throw sessionResult.error;
+      }
+      const session = sessionResult.data;
       const user = session?.user ?? null;
       
       if (user) {
@@ -232,12 +251,22 @@ export const useStore = create<AppState>()(persist((set, get) => ({
         }
         
         // Initialize notifications in background (non-blocking)
-        notificationService.createChannel().then(() => {
+        notificationService.createChannel().then((channelResult) => {
+          if (!channelResult.success) {
+            throw channelResult.error;
+          }
           return notificationService.initialize();
-        }).then(() => {
+        }).then((initResult) => {
+          if (!initResult.success) {
+            throw initResult.error;
+          }
           const state = get();
           const reminderTime = state.profile?.notification_preferences?.reminder_time || '09:00';
           return notificationService.scheduleDailySummary(state.memoryItems, reminderTime);
+        }).then((summaryResult) => {
+          if (!summaryResult.success) {
+            throw summaryResult.error;
+          }
         }).catch(e => {
           console.warn('[Store] Background notification setup failed:', e);
         });
@@ -276,10 +305,17 @@ export const useStore = create<AppState>()(persist((set, get) => ({
             console.warn('[Store] loadUserData after sign-in failed:', e);
           }
           // Non-blocking notification setup
-          notificationService.initialize().then(() => {
+          notificationService.initialize().then((initResult) => {
+            if (!initResult.success) {
+              throw initResult.error;
+            }
             const state = get();
             const reminderTime = state.profile?.notification_preferences?.reminder_time || '09:00';
             return notificationService.scheduleDailySummary(state.memoryItems, reminderTime);
+          }).then((summaryResult) => {
+            if (!summaryResult.success) {
+              throw summaryResult.error;
+            }
           }).catch(e => {
             console.warn('[Store] Notification setup after sign-in failed:', e);
           });
@@ -306,25 +342,28 @@ export const useStore = create<AppState>()(persist((set, get) => ({
   
   // Sign in
   signIn: async (email, password) => {
-    const { error } = await authService.signIn(email, password);
-    return { error };
+    const result = await authService.signIn(email, password);
+    return { error: result.success ? null : result.error };
   },
   
   // Sign up
   signUp: async (email, password, username) => {
-    const { error } = await authService.signUp(email, password, username);
-    return { error };
+    const result = await authService.signUp(email, password, username);
+    return { error: result.success ? null : result.error };
   },
   
   // Sign out
   signOut: async () => {
     // Always clear local state even if Firebase call fails
     try {
-      await authService.signOut();
+      const result = await authService.signOut();
+      if (!result.success) {
+        console.warn('[Store] Firebase signOut error:', result.error.message);
+      }
     } catch (error) {
       console.warn('[Store] Firebase signOut error (clearing local state anyway):', error);
     }
-    notificationService.cancelAll().catch(console.warn);
+    runNotification(notificationService.cancelAll(), 'cancelAll');
     set({
       user: null,
       session: null,
@@ -348,9 +387,15 @@ export const useStore = create<AppState>()(persist((set, get) => ({
       // Ensure user setup (profile, default categories, achievements) exists
       if (user) {
         const username = user.user_metadata?.username || user.email?.split('@')[0] || 'User';
-        await authService.ensureUserSetup(user.id, username, user.email);
+        const setupResult = await authService.ensureUserSetup(user.id, username, user.email);
+        if (!setupResult.success) {
+          console.warn('User setup failed:', setupResult.error.message);
+        }
         try {
-          await memoryItemService.processLifecycle();
+          const lifecycleResult = await memoryItemService.processLifecycle();
+          if (!lifecycleResult.success) {
+            console.warn('Lifecycle processing during load failed:', lifecycleResult.error.message);
+          }
         } catch (e) {
           console.warn('Lifecycle processing during load failed:', e);
         }
@@ -364,10 +409,22 @@ export const useStore = create<AppState>()(persist((set, get) => ({
         achievementService.getAchievements(),
       ]);
       
-      const profile = results[0].status === 'fulfilled' ? results[0].value : null;
-      const categories = results[1].status === 'fulfilled' ? results[1].value : [];
-      const memoryItems = results[2].status === 'fulfilled' ? results[2].value : [];
-      const achievements = results[3].status === 'fulfilled' ? results[3].value : [];
+      const profile =
+        results[0].status === 'fulfilled' && results[0].value.success
+          ? results[0].value.data
+          : null;
+      const categories =
+        results[1].status === 'fulfilled' && results[1].value.success
+          ? results[1].value.data
+          : [];
+      const memoryItems =
+        results[2].status === 'fulfilled' && results[2].value.success
+          ? results[2].value.data
+          : [];
+      const achievements =
+        results[3].status === 'fulfilled' && results[3].value.success
+          ? results[3].value.data
+          : [];
       
       // Log any failures
       results.forEach((r, i) => {
@@ -391,7 +448,6 @@ export const useStore = create<AppState>()(persist((set, get) => ({
           reminder_time: '09:00',
           streak_reminder: true,
           achievement_notifications: true,
-          ai_insights: true,
         },
         streak_count: 0,
         total_reviews: 0,
@@ -407,10 +463,15 @@ export const useStore = create<AppState>()(persist((set, get) => ({
         const endDate = new Date(today);
         endDate.setDate(today.getDate() + 14);
         
-        calendarData = await statsService.getCalendarData(
+        const calendarResult = await statsService.getCalendarData(
           startDate.toISOString().split('T')[0],
           endDate.toISOString().split('T')[0]
         );
+        if (calendarResult.success) {
+          calendarData = calendarResult.data;
+        } else {
+          console.warn('Failed to load calendar data:', calendarResult.error.message);
+        }
       } catch (e) {
         console.warn('Failed to load calendar data:', e);
       }
@@ -476,7 +537,11 @@ export const useStore = create<AppState>()(persist((set, get) => ({
     
     try {
       // Update item in Firebase using strict 1-4-7 engine
-      let updatedItem = await memoryItemService.completeReview(currentItem.id, performance, timeSpentSeconds);
+      const completeResult = await memoryItemService.completeReview(currentItem.id, performance, timeSpentSeconds);
+      if (!completeResult.success) {
+        throw completeResult.error;
+      }
+      let updatedItem = completeResult.data;
       
       // Update local state
       if (updatedItem) {
@@ -499,9 +564,13 @@ export const useStore = create<AppState>()(persist((set, get) => ({
           `"${updatedItem.title}" completed Day 7.\n\nOK = Add Day 30 review\nCancel = Complete topic`,
         );
 
-        updatedItem = schedule30
+        const decisionResult = schedule30
           ? await memoryItemService.scheduleThirtyDayReview(updatedItem.id)
           : await memoryItemService.completeTopic(updatedItem.id);
+        if (!decisionResult.success) {
+          throw decisionResult.error;
+        }
+        updatedItem = decisionResult.data;
 
         const resolvedItem = updatedItem;
         set(state => ({
@@ -513,12 +582,18 @@ export const useStore = create<AppState>()(persist((set, get) => ({
       
       // Record streak and update profile
       try {
-        await streakService.recordReviewCompletion();
-        await profileService.incrementTotalReviews();
+        const streakResult = await streakService.recordReviewCompletion();
+        if (!streakResult.success) {
+          throw streakResult.error;
+        }
+        const incrementResult = await profileService.incrementTotalReviews();
+        if (!incrementResult.success) {
+          throw incrementResult.error;
+        }
         
-        const updatedProfile = await profileService.getProfile();
-        if (updatedProfile) {
-          set({ profile: updatedProfile });
+        const updatedProfileResult = await profileService.getProfile();
+        if (updatedProfileResult.success && updatedProfileResult.data) {
+          set({ profile: updatedProfileResult.data });
         }
       } catch (e) {
         console.warn('Failed to update streak/profile:', e);
@@ -526,20 +601,23 @@ export const useStore = create<AppState>()(persist((set, get) => ({
       
       // Run legacy lifecycle cleanup
       try {
-        await memoryItemService.processLifecycle();
+        const lifecycleResult = await memoryItemService.processLifecycle();
+        if (!lifecycleResult.success) {
+          console.warn('Lifecycle processing failed:', lifecycleResult.error);
+        }
       } catch (e) {
         console.warn('Lifecycle processing failed:', e);
       }
       
       // Keep notifications in sync with current item state
       if (updatedItem?.status === 'active') {
-        notificationService.scheduleNextReview(updatedItem).catch(console.warn);
+        runNotification(notificationService.scheduleNextReview(updatedItem), 'scheduleNextReview');
       } else if (updatedItem) {
-        notificationService.cancelItemNotifications(updatedItem.id).catch(console.warn);
+        runNotification(notificationService.cancelItemNotifications(updatedItem.id), 'cancelItemNotifications');
       }
 
       const reminderTime = get().profile?.notification_preferences?.reminder_time || '09:00';
-      notificationService.scheduleDailySummary(get().memoryItems, reminderTime).catch(console.warn);
+      runNotification(notificationService.scheduleDailySummary(get().memoryItems, reminderTime), 'scheduleDailySummary');
       
       // Advance to next item only on success
       get().nextReviewItem();
@@ -552,50 +630,59 @@ export const useStore = create<AppState>()(persist((set, get) => ({
   
   // Memory Item CRUD
   addMemoryItem: async (item) => {
-    const newItem = await memoryItemService.createMemoryItem(item);
+    const result = await memoryItemService.createMemoryItem(item);
+    if (!result.success) throw result.error;
+    const newItem = result.data;
     set(state => ({ memoryItems: [newItem, ...state.memoryItems] }));
     // Schedule review notifications for this item
-    notificationService.scheduleReviewNotifications(newItem).catch(console.warn);
+    runNotification(notificationService.scheduleReviewNotifications(newItem), 'scheduleReviewNotifications');
     const reminderTime = get().profile?.notification_preferences?.reminder_time || '09:00';
-    notificationService.scheduleDailySummary(get().memoryItems, reminderTime).catch(console.warn);
+    runNotification(notificationService.scheduleDailySummary(get().memoryItems, reminderTime), 'scheduleDailySummary');
     return newItem;
   },
   
   updateMemoryItem: async (id, updates) => {
-    const updatedItem = await memoryItemService.updateMemoryItem(id, updates);
+    const result = await memoryItemService.updateMemoryItem(id, updates);
+    if (!result.success) throw result.error;
+    const updatedItem = result.data;
     set(state => ({
       memoryItems: state.memoryItems.map(item =>
         item.id === id ? updatedItem : item
       ),
     }));
     if (updatedItem.status === 'active') {
-      notificationService.scheduleNextReview(updatedItem).catch(console.warn);
+      runNotification(notificationService.scheduleNextReview(updatedItem), 'scheduleNextReview');
     } else {
-      notificationService.cancelItemNotifications(updatedItem.id).catch(console.warn);
+      runNotification(notificationService.cancelItemNotifications(updatedItem.id), 'cancelItemNotifications');
     }
     const reminderTime = get().profile?.notification_preferences?.reminder_time || '09:00';
-    notificationService.scheduleDailySummary(get().memoryItems, reminderTime).catch(console.warn);
+    runNotification(notificationService.scheduleDailySummary(get().memoryItems, reminderTime), 'scheduleDailySummary');
   },
   
   deleteMemoryItem: async (id) => {
-    await memoryItemService.deleteMemoryItem(id);
+    const result = await memoryItemService.deleteMemoryItem(id);
+    if (!result.success) throw result.error;
     set(state => ({
       memoryItems: state.memoryItems.filter(item => item.id !== id),
     }));
-    notificationService.cancelItemNotifications(id).catch(console.warn);
+    runNotification(notificationService.cancelItemNotifications(id), 'cancelItemNotifications');
     const reminderTime = get().profile?.notification_preferences?.reminder_time || '09:00';
-    notificationService.scheduleDailySummary(get().memoryItems, reminderTime).catch(console.warn);
+    runNotification(notificationService.scheduleDailySummary(get().memoryItems, reminderTime), 'scheduleDailySummary');
   },
   
   // Category CRUD
   addCategory: async (category) => {
-    const newCategory = await categoryService.createCategory(category);
+    const result = await categoryService.createCategory(category);
+    if (!result.success) throw result.error;
+    const newCategory = result.data;
     set(state => ({ categories: [...state.categories, newCategory] }));
     return newCategory;
   },
   
   updateCategory: async (id, updates) => {
-    const updatedCategory = await categoryService.updateCategory(id, updates);
+    const result = await categoryService.updateCategory(id, updates);
+    if (!result.success) throw result.error;
+    const updatedCategory = result.data;
     set(state => ({
       categories: state.categories.map(cat =>
         cat.id === id ? updatedCategory : cat
@@ -620,13 +707,15 @@ export const useStore = create<AppState>()(persist((set, get) => ({
 
     if (affectedItems.length > 0) {
       await Promise.all(
-        affectedItems.map((item) =>
-          memoryItemService.updateMemoryItem(item.id, { category_id: fallbackCategory.id }),
-        ),
+        affectedItems.map(async (item) => {
+          const result = await memoryItemService.updateMemoryItem(item.id, { category_id: fallbackCategory.id });
+          if (!result.success) throw result.error;
+        }),
       );
     }
 
-    await categoryService.deleteCategory(id);
+    const deleteResult = await categoryService.deleteCategory(id);
+    if (!deleteResult.success) throw deleteResult.error;
 
     set((currentState) => ({
       categories: currentState.categories.filter((category) => category.id !== id),
@@ -638,14 +727,16 @@ export const useStore = create<AppState>()(persist((set, get) => ({
   
   // Profile Updates
   updateProfile: async (updates) => {
-    const updatedProfile = await profileService.updateProfile(updates);
-    set({ profile: updatedProfile });
+    const result = await profileService.updateProfile(updates);
+    if (!result.success) throw result.error;
+    set({ profile: result.data });
   },
   
   updateNotificationPreferences: async (prefs) => {
-    const updatedProfile = await profileService.updateNotificationPreferences(prefs);
-    set({ profile: updatedProfile });
-    notificationService.scheduleDailySummary(get().memoryItems, prefs.reminder_time).catch(console.warn);
+    const result = await profileService.updateNotificationPreferences(prefs);
+    if (!result.success) throw result.error;
+    set({ profile: result.data });
+    runNotification(notificationService.scheduleDailySummary(get().memoryItems, prefs.reminder_time), 'scheduleDailySummary');
   },
   
   // Helper functions
@@ -671,7 +762,11 @@ export const useStore = create<AppState>()(persist((set, get) => ({
   // Mark a review as complete from calendar (uses strict 1-4-7) — persists to Firebase
   markReviewComplete: async (itemId, date, performance) => {
     try {
-      let updatedItem = await memoryItemService.completeReview(itemId, performance, 0, date);
+      const completeResult = await memoryItemService.completeReview(itemId, performance, 0, date);
+      if (!completeResult.success) {
+        throw completeResult.error;
+      }
+      let updatedItem = completeResult.data;
       if (!updatedItem) return;
       
       const initialUpdatedItem = updatedItem;
@@ -687,11 +782,17 @@ export const useStore = create<AppState>()(persist((set, get) => ({
       }));
 
       try {
-        await streakService.recordReviewCompletion();
-        await profileService.incrementTotalReviews();
-        const updatedProfile = await profileService.getProfile();
-        if (updatedProfile) {
-          set({ profile: updatedProfile });
+        const streakResult = await streakService.recordReviewCompletion();
+        if (!streakResult.success) {
+          throw streakResult.error;
+        }
+        const incrementResult = await profileService.incrementTotalReviews();
+        if (!incrementResult.success) {
+          throw incrementResult.error;
+        }
+        const updatedProfileResult = await profileService.getProfile();
+        if (updatedProfileResult.success && updatedProfileResult.data) {
+          set({ profile: updatedProfileResult.data });
         }
       } catch (e) {
         console.warn('Failed to update streak/profile from calendar review:', e);
@@ -702,9 +803,13 @@ export const useStore = create<AppState>()(persist((set, get) => ({
           `"${updatedItem.title}" completed Day 7.\n\nOK = Add Day 30 review\nCancel = Complete topic`,
         );
 
-        updatedItem = schedule30
+        const decisionResult = schedule30
           ? await memoryItemService.scheduleThirtyDayReview(updatedItem.id)
           : await memoryItemService.completeTopic(updatedItem.id);
+        if (!decisionResult.success) {
+          throw decisionResult.error;
+        }
+        updatedItem = decisionResult.data;
 
         const resolvedItem = updatedItem;
         set(state => ({
@@ -715,13 +820,16 @@ export const useStore = create<AppState>()(persist((set, get) => ({
       }
 
       if (updatedItem.status === 'completed') {
-        await notificationService.cancelItemNotifications(updatedItem.id);
+        const cancelResult = await notificationService.cancelItemNotifications(updatedItem.id);
+        if (!cancelResult.success) {
+          console.warn('Failed to cancel item notifications:', cancelResult.error?.message);
+        }
       } else {
-        notificationService.scheduleNextReview(updatedItem).catch(console.warn);
+        runNotification(notificationService.scheduleNextReview(updatedItem), 'scheduleNextReview');
       }
 
       const reminderTime = get().profile?.notification_preferences?.reminder_time || '09:00';
-      notificationService.scheduleDailySummary(get().memoryItems, reminderTime).catch(console.warn);
+      runNotification(notificationService.scheduleDailySummary(get().memoryItems, reminderTime), 'scheduleDailySummary');
     } catch (error) {
       console.error('Error persisting review to Firebase:', error);
     }

@@ -1,4 +1,4 @@
-import type { Category, MemoryItem, Achievement, AITool, DaySchedule, StatsData, Profile } from '@/types';
+import type { Category, MemoryItem, Achievement, DaySchedule, StatsData, Profile } from '@/types';
 
 // Default profile for new/unauthenticated users
 export const mockProfile: Profile = {
@@ -11,7 +11,6 @@ export const mockProfile: Profile = {
     reminder_time: '09:00',
     streak_reminder: true,
     achievement_notifications: true,
-    ai_insights: true,
   },
   streak_count: 0,
   total_reviews: 0,
@@ -22,15 +21,6 @@ export const mockProfile: Profile = {
 export const mockCategories: Category[] = [];
 export const mockMemoryItems: MemoryItem[] = [];
 export const mockAchievements: Achievement[] = [];
-
-// AI Tools configuration - used for AI Studio screen
-export const mockAITools: AITool[] = [
-  { id: 'summarizer', name: 'Smart Summary', description: 'Generate concise bullet points from any content', icon: 'file-text', color: '#FF8000' },
-  { id: 'flowchart', name: 'Visual Mapper', description: 'Create interactive flowcharts from text', icon: 'git-branch', color: '#FF6B00' },
-  { id: 'quiz', name: 'Quiz Generator', description: 'Generate practice questions automatically', icon: 'help-circle', color: '#00D26A' },
-  { id: 'memory-palace', name: 'Memory Palace', description: 'Create visual memory journeys', icon: 'home', color: '#FFB800' },
-  { id: 'chat', name: 'Study Buddy', description: 'AI tutor for your learning materials', icon: 'message-circle', color: '#FF4500' },
-];
 
 // Generate empty calendar data
 export const generateCalendarData = (): DaySchedule[] => {

@@ -1,5 +1,7 @@
 import { deleteObject, getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { requireAuth, storage } from '@/lib/firebase';
+import { ErrorCode, createAppError, failure, success, type Result } from '@/lib/errors';
+import { logger } from '@/lib/logger';
 import type { Attachment } from '@/types';
 
 export const MEMORY_IMAGE_BUCKET = 'memory-images';
@@ -24,47 +26,69 @@ const getExtension = (name: string, mimeType: string): string => {
 };
 
 export const storageService = {
-  async uploadImage(file: File): Promise<Attachment> {
-    const userId = await requireAuth();
+  async uploadImage(file: File): Promise<Result<Attachment>> {
+    try {
+      const userId = await requireAuth();
 
-    const ext = getExtension(file.name, file.type || 'application/octet-stream');
-    const safeName = sanitizeFileName(file.name.replace(/\.[^.]+$/, ''));
-    const uuid = typeof crypto !== 'undefined' && crypto.randomUUID
-      ? crypto.randomUUID()
-      : `${Math.random().toString(36).slice(2)}-${Date.now()}`;
-    const objectName = `${Date.now()}-${uuid}.${ext}`;
-    const objectPath = `${MEMORY_IMAGE_BUCKET}/${userId}/${safeName}-${objectName}`;
+      const ext = getExtension(file.name, file.type || 'application/octet-stream');
+      const safeName = sanitizeFileName(file.name.replace(/\.[^.]+$/, ''));
+      const uuid = typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `${Math.random().toString(36).slice(2)}-${Date.now()}`;
+      const objectName = `${Date.now()}-${uuid}.${ext}`;
+      const objectPath = `${MEMORY_IMAGE_BUCKET}/${userId}/${safeName}-${objectName}`;
 
-    const imageRef = ref(storage, objectPath);
+      const imageRef = ref(storage, objectPath);
 
-    await uploadBytes(imageRef, file, {
-      contentType: file.type || 'application/octet-stream',
-    });
+      await uploadBytes(imageRef, file, {
+        contentType: file.type || 'application/octet-stream',
+      });
 
-    const url = await getDownloadURL(imageRef);
+      const url = await getDownloadURL(imageRef);
 
-    return {
-      type: 'image',
-      name: file.name,
-      url,
-      size: file.size,
-      path: objectPath,
-      bucket: MEMORY_IMAGE_BUCKET,
-      mime_type: file.type,
-    };
+      return success({
+        type: 'image',
+        name: file.name,
+        url,
+        size: file.size,
+        path: objectPath,
+        bucket: MEMORY_IMAGE_BUCKET,
+        mime_type: file.type,
+      });
+    } catch (error) {
+      const appError = createAppError(error, {
+        code: ErrorCode.STORAGE_ERROR,
+        message: 'Failed to upload image',
+      });
+      logger.error('storageService.uploadImage failed', appError as Error);
+      return failure(appError);
+    }
   },
 
-  async removeAttachments(attachments: Attachment[]): Promise<void> {
-    const paths = attachments
-      .map((attachment) => attachment.path)
-      .filter((path): path is string => !!path);
+  async removeAttachments(attachments: Attachment[]): Promise<Result<void>> {
+    try {
+      const paths = attachments
+        .map((attachment) => attachment.path)
+        .filter((path): path is string => !!path);
 
-    await Promise.all(paths.map(async (path) => {
-      try {
-        await deleteObject(ref(storage, path));
-      } catch (error) {
-        console.warn(`Failed to remove storage object at ${path}:`, error);
-      }
-    }));
+      await Promise.all(paths.map(async (path) => {
+        try {
+          await deleteObject(ref(storage, path));
+        } catch (error) {
+          logger.warn(`Failed to remove storage object at ${path}`, {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }));
+
+      return success(undefined);
+    } catch (error) {
+      const appError = createAppError(error, {
+        code: ErrorCode.STORAGE_ERROR,
+        message: 'Failed to remove attachments',
+      });
+      logger.error('storageService.removeAttachments failed', appError as Error);
+      return failure(appError);
+    }
   },
 };

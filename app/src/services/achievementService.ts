@@ -1,6 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { collection, doc, getDoc, getDocs, query, setDoc, where } from 'firebase/firestore';
 import { db, requireAuth } from '@/lib/firebase';
+import { AppError, ErrorCode, createAppError, failure, success, type Result } from '@/lib/errors';
+import { logger } from '@/lib/logger';
 import type { Achievement } from '@/types';
 
 const DEFAULT_ACHIEVEMENTS = [
@@ -27,114 +29,190 @@ const transformAchievement = (id: string, data: any): Achievement => ({
 });
 
 export const achievementService = {
-  async getAchievements(): Promise<Achievement[]> {
-    const userId = await requireAuth();
-    const snapshot = await getDocs(userAchievementsCollection(userId));
-
-    return snapshot.docs
-      .map((achievementDoc) => transformAchievement(achievementDoc.id, achievementDoc.data()))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  },
-
-  async getUnlockedAchievements(): Promise<Achievement[]> {
-    const achievements = await this.getAchievements();
-    return achievements
-      .filter((achievement) => !!achievement.unlocked_at)
-      .sort((a, b) => String(b.unlocked_at || '').localeCompare(String(a.unlocked_at || '')));
-  },
-
-  async updateProgress(id: string, progress: number): Promise<Achievement> {
-    const userId = await requireAuth();
-    const achievementRef = doc(db, 'users', userId, 'achievements', id);
-    const current = await getDoc(achievementRef);
-
-    if (!current.exists()) {
-      throw new Error('Achievement not found');
-    }
-
-    const currentData = current.data() as any;
-    const updates: Record<string, any> = { progress };
-
-    if (progress >= currentData.max_progress && !currentData.unlocked_at) {
-      updates.unlocked_at = new Date().toISOString();
-    }
-
-    await setDoc(achievementRef, updates, { merge: true });
-    const updated = await getDoc(achievementRef);
-
-    if (!updated.exists()) {
-      throw new Error('Achievement not found after update');
-    }
-
-    return transformAchievement(updated.id, updated.data());
-  },
-
-  async incrementProgress(name: string, amount: number = 1): Promise<Achievement | null> {
-    const userId = await requireAuth();
-    const achievementQuery = query(userAchievementsCollection(userId), where('name', '==', name));
-    const snapshot = await getDocs(achievementQuery);
-
-    if (snapshot.empty) {
-      return null;
-    }
-
-    const achievementDoc = snapshot.docs[0];
-    const data = achievementDoc.data() as any;
-    const newProgress = Math.min((data.progress || 0) + amount, data.max_progress || 0);
-
-    return this.updateProgress(achievementDoc.id, newProgress);
-  },
-
-  async createDefaultAchievements(): Promise<Achievement[]> {
-    const userId = await requireAuth();
-    const now = new Date().toISOString();
-    const collectionRef = userAchievementsCollection(userId);
-
-    const created: Achievement[] = [];
-    for (const achievement of DEFAULT_ACHIEVEMENTS) {
-      const achievementRef = doc(collectionRef);
-      const payload = {
-        user_id: userId,
-        ...achievement,
-        unlocked_at: null,
-        progress: 0,
-        created_at: now,
-      };
-
-      await setDoc(achievementRef, payload);
-      created.push(transformAchievement(achievementRef.id, payload));
-    }
-
-    return created;
-  },
-
-  async checkStreakAchievements(streakCount: number): Promise<void> {
+  async getAchievements(): Promise<Result<Achievement[]>> {
     try {
-      const achievements = await this.getAchievements();
+      const userId = await requireAuth();
+      const snapshot = await getDocs(userAchievementsCollection(userId));
+      const achievements = snapshot.docs
+        .map((achievementDoc) => transformAchievement(achievementDoc.id, achievementDoc.data()))
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+      return success(achievements);
+    } catch (error) {
+      const appError = createAppError(error, {
+        code: ErrorCode.DATABASE_ERROR,
+        message: 'Failed to load achievements',
+      });
+      logger.error('achievementService.getAchievements failed', appError as Error);
+      return failure(appError);
+    }
+  },
+
+  async getUnlockedAchievements(): Promise<Result<Achievement[]>> {
+    const achievementsResult = await this.getAchievements();
+    if (!achievementsResult.success) {
+      return achievementsResult;
+    }
+
+    return success(
+      achievementsResult.data
+        .filter((achievement) => !!achievement.unlocked_at)
+        .sort((a, b) => String(b.unlocked_at || '').localeCompare(String(a.unlocked_at || ''))),
+    );
+  },
+
+  async updateProgress(id: string, progress: number): Promise<Result<Achievement>> {
+    try {
+      const userId = await requireAuth();
+      const achievementRef = doc(db, 'users', userId, 'achievements', id);
+      const current = await getDoc(achievementRef);
+
+      if (!current.exists()) {
+        return failure(new AppError({
+          code: ErrorCode.NOT_FOUND,
+          message: 'Achievement not found',
+          statusCode: 404,
+        }));
+      }
+
+      const currentData = current.data() as any;
+      const updates: Record<string, any> = { progress };
+
+      if (progress >= currentData.max_progress && !currentData.unlocked_at) {
+        updates.unlocked_at = new Date().toISOString();
+      }
+
+      await setDoc(achievementRef, updates, { merge: true });
+      const updated = await getDoc(achievementRef);
+
+      if (!updated.exists()) {
+        return failure(new AppError({
+          code: ErrorCode.NOT_FOUND,
+          message: 'Achievement not found after update',
+          statusCode: 404,
+        }));
+      }
+
+      return success(transformAchievement(updated.id, updated.data()));
+    } catch (error) {
+      const appError = createAppError(error, {
+        code: ErrorCode.DATABASE_ERROR,
+        message: 'Failed to update achievement progress',
+        context: { id, progress },
+      });
+      logger.error('achievementService.updateProgress failed', appError as Error, { id, progress });
+      return failure(appError);
+    }
+  },
+
+  async incrementProgress(name: string, amount: number = 1): Promise<Result<Achievement | null>> {
+    try {
+      const userId = await requireAuth();
+      const achievementQuery = query(userAchievementsCollection(userId), where('name', '==', name));
+      const snapshot = await getDocs(achievementQuery);
+
+      if (snapshot.empty) {
+        return success(null);
+      }
+
+      const achievementDoc = snapshot.docs[0];
+      const data = achievementDoc.data() as any;
+      const newProgress = Math.min((data.progress || 0) + amount, data.max_progress || 0);
+
+      return this.updateProgress(achievementDoc.id, newProgress);
+    } catch (error) {
+      const appError = createAppError(error, {
+        code: ErrorCode.DATABASE_ERROR,
+        message: 'Failed to increment achievement progress',
+        context: { name, amount },
+      });
+      logger.error('achievementService.incrementProgress failed', appError as Error, { name, amount });
+      return failure(appError);
+    }
+  },
+
+  async createDefaultAchievements(): Promise<Result<Achievement[]>> {
+    try {
+      const userId = await requireAuth();
+      const now = new Date().toISOString();
+      const collectionRef = userAchievementsCollection(userId);
+
+      const created: Achievement[] = [];
+      for (const achievement of DEFAULT_ACHIEVEMENTS) {
+        const achievementRef = doc(collectionRef);
+        const payload = {
+          user_id: userId,
+          ...achievement,
+          unlocked_at: null,
+          progress: 0,
+          created_at: now,
+        };
+
+        await setDoc(achievementRef, payload);
+        created.push(transformAchievement(achievementRef.id, payload));
+      }
+
+      return success(created);
+    } catch (error) {
+      const appError = createAppError(error, {
+        code: ErrorCode.DATABASE_ERROR,
+        message: 'Failed to create default achievements',
+      });
+      logger.error('achievementService.createDefaultAchievements failed', appError as Error);
+      return failure(appError);
+    }
+  },
+
+  async checkStreakAchievements(streakCount: number): Promise<Result<void>> {
+    try {
+      const achievementsResult = await this.getAchievements();
+      if (!achievementsResult.success) {
+        return achievementsResult;
+      }
+      const achievements = achievementsResult.data;
 
       const streak7 = achievements.find((achievement) => achievement.name === '7 Day Streak');
       if (streak7) {
-        await this.updateProgress(streak7.id, Math.min(streakCount, streak7.max_progress));
+        const result = await this.updateProgress(streak7.id, Math.min(streakCount, streak7.max_progress));
+        if (!result.success) return result;
       }
 
       const streak30 = achievements.find((achievement) => achievement.name === '30 Day Streak');
       if (streak30) {
-        await this.updateProgress(streak30.id, Math.min(streakCount, streak30.max_progress));
+        const result = await this.updateProgress(streak30.id, Math.min(streakCount, streak30.max_progress));
+        if (!result.success) return result;
       }
+      return success(undefined);
     } catch (error) {
-      console.warn('Failed to update streak achievements:', error);
+      const appError = createAppError(error, {
+        code: ErrorCode.DATABASE_ERROR,
+        message: 'Failed to update streak achievements',
+      });
+      logger.warn('achievementService.checkStreakAchievements failed', { error: appError.message });
+      return failure(appError);
     }
   },
 
-  async checkReviewAchievements(totalReviews: number): Promise<void> {
+  async checkReviewAchievements(totalReviews: number): Promise<Result<void>> {
     try {
-      const achievements = await this.getAchievements();
+      const achievementsResult = await this.getAchievements();
+      if (!achievementsResult.success) {
+        return achievementsResult;
+      }
+      const achievements = achievementsResult.data;
       const target = achievements.find((achievement) => achievement.name === '100 Reviews');
       if (target) {
-        await this.updateProgress(target.id, Math.min(totalReviews, target.max_progress));
+        const result = await this.updateProgress(target.id, Math.min(totalReviews, target.max_progress));
+        if (!result.success) return result;
       }
+      return success(undefined);
     } catch (error) {
-      console.warn('Failed to update review achievements:', error);
+      const appError = createAppError(error, {
+        code: ErrorCode.DATABASE_ERROR,
+        message: 'Failed to update review achievements',
+      });
+      logger.warn('achievementService.checkReviewAchievements failed', { error: appError.message });
+      return failure(appError);
     }
   },
 };

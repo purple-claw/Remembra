@@ -7,9 +7,6 @@ import {
   Code, 
   Code2,
   FileText, 
-  ListChecks,
-  GitBranch,
-  Sparkles,
   Edit3,
   Save,
   Clock,
@@ -37,7 +34,6 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
-import { MermaidDiagram } from '@/components/MermaidDiagram';
 import { toast } from 'sonner';
 import { getItemScheduleLabel } from '@/domain/review147';
 
@@ -50,7 +46,7 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
   const { getCategoryById, updateMemoryItem, startReviewSession, deleteMemoryItem } = useStore();
   const category = getCategoryById(item.category_id);
   
-  const [activeTab, setActiveTab] = useState<'content' | 'summary' | 'flowchart' | 'notes'>('content');
+  const [activeTab, setActiveTab] = useState<'content' | 'notes'>('content');
   const [notes, setNotes] = useState(item.notes || '');
   const [isEditingNotes, setIsEditingNotes] = useState(false);
   const [contentDraft, setContentDraft] = useState(item.content);
@@ -58,19 +54,11 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
   const [isEditingContent, setIsEditingContent] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [isGeneratingAI, setIsGeneratingAI] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  
-  // AI-generated content states
-  const [aiSummary, setAiSummary] = useState(item.ai_summary || '');
-  const [aiBulletPoints, setAiBulletPoints] = useState<string[]>(item.ai_bullet_points || []);
-  const [aiFlowchart, setAiFlowchart] = useState(item.ai_flowchart || '');
 
   const tabs = [
     { id: 'content', label: 'Content', icon: item.content_type === 'code' ? Code : FileText },
-    { id: 'summary', label: 'AI Summary', icon: Sparkles },
-    { id: 'flowchart', label: 'Flowchart', icon: GitBranch },
     { id: 'notes', label: 'Notes', icon: StickyNote },
   ];
 
@@ -114,34 +102,6 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
     setCopied(true);
     toast.success('Copied to clipboard');
     setTimeout(() => setCopied(false), 2000);
-  };
-
-  const handleGenerateAI = async (type: 'summary' | 'bullets' | 'flowchart') => {
-    setIsGeneratingAI(true);
-    try {
-      // This will call the AI service (to be implemented)
-      const { aiService } = await import('@/services/aiService');
-      
-      if (type === 'summary') {
-        const summary = await aiService.generateSummary(item.content, item.title);
-        setAiSummary(summary);
-        await updateMemoryItem(item.id, { ai_summary: summary });
-      } else if (type === 'bullets') {
-        const bullets = await aiService.generateBulletPoints(item.content, item.title);
-        setAiBulletPoints(bullets);
-        await updateMemoryItem(item.id, { ai_bullet_points: bullets });
-      } else if (type === 'flowchart') {
-        const flowchart = await aiService.generateFlowchart(item.content, item.title);
-        setAiFlowchart(flowchart);
-        await updateMemoryItem(item.id, { ai_flowchart: flowchart });
-      }
-      
-      toast.success('AI content generated');
-    } catch (error) {
-      console.error('AI generation error:', error);
-      toast.error('Failed to generate AI content');
-    }
-    setIsGeneratingAI(false);
   };
 
   const getStatusColor = (status: string) => {
@@ -192,12 +152,10 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
 
   const fallbackIcons: React.ElementType[] = [
     Brain,
-    Sparkles,
     Target,
     BookOpen,
     Code2,
     FileText,
-    GitBranch,
     Clock,
   ];
 
@@ -470,122 +428,6 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
                   </div>
                 </div>
               )}
-            </div>
-          )}
-
-          {/* AI Summary Tab */}
-          {activeTab === 'summary' && (
-            <div className="space-y-4 animate-fade-in">
-              {/* Summary Section */}
-              <div className="rounded-3xl border border-white/10 bg-black/60 p-5 dynamic-container">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                    <Sparkles size={16} className="text-remembra-accent-primary" />
-                    AI Summary
-                  </h3>
-                  <button
-                    onClick={() => handleGenerateAI('summary')}
-                    disabled={isGeneratingAI}
-                    className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-remembra-text-secondary flex items-center gap-1.5 disabled:opacity-50"
-                  >
-                    {isGeneratingAI ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
-                    {aiSummary ? 'Regenerate' : 'Generate'}
-                  </button>
-                </div>
-                
-                {aiSummary ? (
-                  <div className="prose prose-invert prose-sm max-w-none prose-headings:text-white prose-p:text-remembra-text-secondary prose-p:leading-relaxed">
-                    <MarkdownRenderer content={aiSummary} />
-                  </div>
-                ) : (
-                  <div className="text-center py-8">
-                    <div className="w-16 h-16 rounded-full glass-card mx-auto mb-3 flex items-center justify-center">
-                      <Sparkles size={24} className="text-remembra-accent-primary" />
-                    </div>
-                    <p className="text-sm text-remembra-text-muted">
-                      Generate an AI summary for quick review
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* Bullet Points Section */}
-              <div className="rounded-3xl border border-white/10 bg-black/60 p-5 dynamic-container">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                    <ListChecks size={16} className="text-remembra-success" />
-                    Key Points
-                  </h3>
-                  <button
-                    onClick={() => handleGenerateAI('bullets')}
-                    disabled={isGeneratingAI}
-                    className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-remembra-text-secondary flex items-center gap-1.5 disabled:opacity-50"
-                  >
-                    {isGeneratingAI ? <Loader2 size={12} className="animate-spin" /> : <ListChecks size={12} />}
-                    {aiBulletPoints.length > 0 ? 'Regenerate' : 'Generate'}
-                  </button>
-                </div>
-                
-                {aiBulletPoints.length > 0 ? (
-                  <ul className="space-y-2 max-h-[40dvh] overflow-y-auto custom-scrollbar pr-1">
-                    {aiBulletPoints.map((point, idx) => (
-                      <li key={idx} className="flex items-start gap-2 text-sm text-remembra-text-secondary">
-                        <span className="w-1.5 h-1.5 rounded-full bg-remembra-success mt-2 flex-shrink-0" />
-                        {point}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <div className="text-center py-8">
-                    <div className="w-16 h-16 rounded-full glass-card mx-auto mb-3 flex items-center justify-center">
-                      <ListChecks size={24} className="text-remembra-success" />
-                    </div>
-                    <p className="text-sm text-remembra-text-muted">
-                      Extract key bullet points for easy memorization
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Flowchart Tab */}
-          {activeTab === 'flowchart' && (
-            <div className="space-y-4 animate-fade-in">
-              <div className="rounded-3xl border border-white/10 bg-black/60 p-5 dynamic-container">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                    <GitBranch size={16} className="text-remembra-accent-secondary" />
-                    Concept Flowchart
-                  </h3>
-                  <button
-                    onClick={() => handleGenerateAI('flowchart')}
-                    disabled={isGeneratingAI}
-                    className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-remembra-text-secondary flex items-center gap-1.5 disabled:opacity-50"
-                  >
-                    {isGeneratingAI ? <Loader2 size={12} className="animate-spin" /> : <GitBranch size={12} />}
-                    {aiFlowchart ? 'Regenerate' : 'Generate'}
-                  </button>
-                </div>
-                
-                {aiFlowchart ? (
-                  <div className="max-h-[56dvh] overflow-auto custom-scrollbar rounded-xl border border-white/5 bg-black/20 p-2">
-                    <MermaidDiagram chart={aiFlowchart} className="my-2" />
-                  </div>
-                ) : (
-                  <div className="text-center py-12">
-                    <div className="w-20 h-20 rounded-full glass-card mx-auto mb-4 flex items-center justify-center">
-                      <GitBranch size={32} className="text-remembra-accent-secondary" />
-                    </div>
-                    <p className="text-sm text-remembra-text-muted mb-2">
-                      Generate a visual flowchart of the concepts
-                    </p>
-                    <p className="text-xs text-remembra-text-muted">
-                      AI will create an ASCII diagram showing relationships
-                    </p>
-                  </div>
-                )}
-              </div>
             </div>
           )}
 

@@ -25,6 +25,7 @@ import type {
 } from '@/services/persistService';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
+import { toFriendlyErrorMessage } from '@/lib/uiError';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -75,11 +76,14 @@ export function Persist() {
   const load = useCallback(async () => {
     setIsLoading(true);
     try {
-      const list = await listSessions();
-      setRecords(list);
-    } catch (err) {
-      console.error('[Persist] load error', err);
-      toast.error('Failed to load archived sessions');
+      const result = await listSessions();
+      if (result.success) {
+        setRecords(result.data);
+      } else {
+        toast.error(toFriendlyErrorMessage(result.error, 'Failed to load archived sessions'));
+      }
+    } catch (error) {
+      toast.error(toFriendlyErrorMessage(error, 'Failed to load archived sessions'));
     } finally {
       setIsLoading(false);
     }
@@ -98,10 +102,14 @@ export function Persist() {
     setExpandedData(null);
     setIsExpanding(true);
     try {
-      const full = await getSession(id);
-      setExpandedData(full);
-    } catch {
-      toast.error('Failed to decompress session');
+      const result = await getSession(id);
+      if (result.success) {
+        setExpandedData(result.data);
+      } else {
+        toast.error(toFriendlyErrorMessage(result.error, 'Failed to open session'));
+      }
+    } catch (error) {
+      toast.error(toFriendlyErrorMessage(error, 'Failed to open session'));
     } finally {
       setIsExpanding(false);
     }
@@ -110,12 +118,16 @@ export function Persist() {
   const handleDelete = async (id: number) => {
     setDeletingId(id);
     try {
-      await deleteSession(id);
-      if (expandedId === id) { setExpandedId(null); setExpandedData(null); }
-      setRecords(prev => prev.filter(r => r.id !== id));
-      toast.success('Session deleted');
-    } catch {
-      toast.error('Failed to delete session');
+      const result = await deleteSession(id);
+      if (result.success) {
+        if (expandedId === id) { setExpandedId(null); setExpandedData(null); }
+        setRecords(prev => prev.filter(r => r.id !== id));
+        toast.success('Session deleted');
+      } else {
+        toast.error(toFriendlyErrorMessage(result.error, 'Failed to delete session'));
+      }
+    } catch (error) {
+      toast.error(toFriendlyErrorMessage(error, 'Failed to delete session'));
     } finally {
       setDeletingId(null);
     }
@@ -128,23 +140,27 @@ export function Persist() {
 
     setAddingItemId(itemId);
     try {
-      await saveSession([item], categories, item.title || undefined);
-      await load();
-      toast.success('Saved to Persist');
-      setIsPickerOpen(false);
-      setPickerQuery('');
-    } catch {
-      toast.error('Failed to save to Persist');
+      const result = await saveSession([item], categories, item.title || undefined);
+      if (result.success) {
+        await load();
+        toast.success('Saved to Persist');
+        setIsPickerOpen(false);
+        setPickerQuery('');
+      } else {
+        toast.error(toFriendlyErrorMessage(result.error, 'Failed to save to Persist'));
+      }
+    } catch (error) {
+      toast.error(toFriendlyErrorMessage(error, 'Failed to save to Persist'));
     } finally {
       setAddingItemId(null);
     }
   };
 
   return (
-    <div className="h-[100dvh] min-h-[100dvh] w-full overflow-hidden bg-black flex flex-col">
+    <div className="h-[100dvh] min-h-[100dvh] w-full overflow-hidden bg-black flex flex-col animate-screen-enter">
 
       {/* ── Fixed Header ── */}
-      <header className="flex-shrink-0 px-4 sm:px-5 safe-top pb-4 bg-black/80 border-b border-white/[0.06] backdrop-blur-xl">
+      <header className="flex-shrink-0 px-4 sm:px-5 safe-top pb-4 bg-black/80 border-b border-white/[0.06] backdrop-blur-xl transition-smooth relative z-30 animate-slide-up">
         <div className="flex items-center gap-3">
           <button
             onClick={() => setScreen('dashboard')}
@@ -181,13 +197,13 @@ export function Persist() {
       {/* ── Scrollable body ── */}
       <div
         data-nav-scroll="true"
-        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 sm:px-5 py-4 custom-scrollbar safe-bottom-nav"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 sm:px-5 py-4 custom-scrollbar safe-bottom-nav fluid-scroll-zone smooth-scroll-content relative z-0"
         style={{ WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' } as React.CSSProperties}
       >
         {isLoading ? (
           <div className="flex flex-col gap-3">
             {[1, 2, 3].map(i => (
-              <div key={i} className="glass-card rounded-2xl h-20 animate-pulse" />
+                <div key={i} className="widget-surface inertia-card smooth-surface stagger-enter glass-card rounded-2xl h-20 animate-pulse" />
             ))}
           </div>
 
@@ -319,11 +335,11 @@ function SessionCard({
   const sizeBytes = record.compressedData?.length ?? 0;
 
   return (
-    <div className="glass-card rounded-2xl overflow-hidden">
+    <div className="widget-surface inertia-card smooth-surface stagger-enter glass-card rounded-2xl overflow-hidden">
 
       {/* Header row — always visible */}
       <div
-        className="flex items-center gap-3 p-4 cursor-pointer"
+        className="flex items-center gap-3 p-4 cursor-pointer tap-ripple press-glow"
         onClick={onToggle}
       >
         <div className="w-10 h-10 rounded-xl bg-remembra-accent-primary/10 flex items-center justify-center shrink-0">
@@ -347,7 +363,7 @@ function SessionCard({
           <button
             onClick={(e) => { e.stopPropagation(); onDelete(); }}
             disabled={isDeleting}
-            className="w-8 h-8 rounded-lg border border-red-500/20 text-red-400/70 hover:text-red-400 hover:border-red-500/40 flex items-center justify-center transition-colors"
+            className="w-8 h-8 rounded-lg border border-red-500/20 text-red-400/70 hover:text-red-400 hover:border-red-500/40 flex items-center justify-center transition-colors tap-ripple press-glow"
           >
             {isDeleting
               ? <RefreshCw size={12} className="animate-spin" />
@@ -388,10 +404,10 @@ function CategoryBucketView({ bucket }: { bucket: PersistCategoryBucket }) {
   const [open, setOpen] = useState(true);
 
   return (
-    <div className="rounded-xl border border-white/[0.07] overflow-hidden">
+    <div className="widget-surface inertia-card smooth-surface stagger-enter rounded-xl border border-white/[0.07] overflow-hidden">
       <button
         onClick={() => setOpen(v => !v)}
-        className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left"
+        className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left tap-ripple press-glow"
         style={{ backgroundColor: `${bucket.categoryColor}18` }}
       >
         <span

@@ -11,6 +11,8 @@
 
 import { openDB, type IDBPDatabase } from 'idb';
 import LZString from 'lz-string';
+import { logger } from '@/lib/logger';
+import { success, failure, type Result, AppError } from '@/lib/errors';
 import type { MemoryItem, Category } from '@/types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -164,38 +166,59 @@ export async function saveSession(
   reviewedItems: MemoryItem[],
   categories: Category[],
   customLabel?: string,
-): Promise<number> {
-  const buckets = buildBuckets(reviewedItems, categories);
-  const compressedData = compress(buckets);
-
-  const record: Omit<PersistRecord, 'id'> = {
-    savedAt: new Date().toISOString(),
-    label: customLabel ?? makeLabel(),
-    itemCount: reviewedItems.length,
-    compressedData,
-  };
-
-  if (canUseIndexedDb()) {
-    try {
-      const db = await getDb();
-      // `add` returns the auto-incremented key
-      const id = await db.add(STORE_NAME, record);
-
-      // Prune old sessions in the background (fire-and-forget)
-      pruneOldSessions(50).catch((err) => console.warn('[Persist] prune failed', err));
-
-      return id as number;
-    } catch (err) {
-      console.warn('[Persist] IndexedDB save failed, using local fallback', err);
+): Promise<Result<number>> {
+  try {
+    if (!Array.isArray(reviewedItems) || !Array.isArray(categories)) {
+      throw new AppError({
+        code: 'VALIDATION_ERROR',
+        message: 'reviewedItems and categories must be arrays',
+        statusCode: 400,
+      });
     }
-  }
 
-  const existing = readFallbackRecords();
-  const nextId = existing.reduce((max, current) => Math.max(max, current.id), 0) + 1;
-  existing.push({ ...record, id: nextId });
-  writeFallbackRecords(existing);
-  await pruneOldSessions(50);
-  return nextId;
+    const buckets = buildBuckets(reviewedItems, categories);
+    const compressedData = compress(buckets);
+
+    const record: Omit<PersistRecord, 'id'> = {
+      savedAt: new Date().toISOString(),
+      label: customLabel ?? makeLabel(),
+      itemCount: reviewedItems.length,
+      compressedData,
+    };
+
+    if (canUseIndexedDb()) {
+      try {
+        const db = await getDb();
+        // `add` returns the auto-incremented key
+        const id = await db.add(STORE_NAME, record);
+
+        // Prune old sessions in the background (fire-and-forget)
+        pruneOldSessions(50).catch((err) => logger.warn('Session prune failed', { error: (err as any)?.message }));
+
+        logger.info('Session saved successfully', { sessionId: id as number, itemCount: reviewedItems.length });
+        return success(id as number);
+      } catch (err) {
+        logger.warn('IndexedDB save failed, using localStorage fallback', { error: (err as any)?.message });
+      }
+    }
+
+    const existing = readFallbackRecords();
+    const nextId = existing.reduce((max, current) => Math.max(max, current.id), 0) + 1;
+    existing.push({ ...record, id: nextId });
+    writeFallbackRecords(existing);
+    await pruneOldSessions(50);
+    logger.info('Session saved to localStorage fallback', { sessionId: nextId, itemCount: reviewedItems.length });
+    return success(nextId);
+  } catch (error) {
+    const appError = error instanceof AppError ? error : new AppError({
+      code: 'STORAGE_ERROR',
+      message: error instanceof Error ? error.message : 'Failed to save session',
+      statusCode: 500,
+      context: { operation: 'saveSession' },
+    });
+    logger.error('Failed to save session', appError as any);
+    return failure(appError);
+  }
 }
 
 // ─── Auto-prune ──────────────────────────────────────────────────────────────
@@ -204,84 +227,163 @@ export async function saveSession(
  * Delete all sessions beyond the newest `maxToKeep` records.
  * Called automatically inside saveSession.
  */
-export async function pruneOldSessions(maxToKeep = 50): Promise<void> {
-  if (canUseIndexedDb()) {
-    try {
-      const db = await getDb();
-      const all = (await db.getAll(STORE_NAME)) as PersistRecord[];
-      if (all.length <= maxToKeep) return;
+export async function pruneOldSessions(maxToKeep = 50): Promise<Result<void>> {
+  try {
+    if (canUseIndexedDb()) {
+      try {
+        const db = await getDb();
+        const all = (await db.getAll(STORE_NAME)) as PersistRecord[];
+        if (all.length <= maxToKeep) return success(undefined);
 
-      // Sort oldest-first, then delete the tail beyond the limit
-      all.sort((a, b) => new Date(a.savedAt).getTime() - new Date(b.savedAt).getTime());
-      const toDelete = all.slice(0, all.length - maxToKeep);
-      const tx = db.transaction(STORE_NAME, 'readwrite');
-      await Promise.all(toDelete.map((r) => tx.store.delete(r.id!)));
-      await tx.done;
-      return;
-    } catch (err) {
-      console.warn('[Persist] IndexedDB prune failed, using local fallback', err);
+        // Sort oldest-first, then delete the tail beyond the limit
+        all.sort((a, b) => new Date(a.savedAt).getTime() - new Date(b.savedAt).getTime());
+        const toDelete = all.slice(0, all.length - maxToKeep);
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        await Promise.all(toDelete.map((r) => tx.store.delete(r.id!)));
+        await tx.done;
+        logger.info('Sessions pruned successfully', { deletedCount: toDelete.length, remainingCount: maxToKeep });
+        return success(undefined);
+      } catch (err) {
+        logger.warn('IndexedDB prune failed, using localStorage fallback', { error: (err as any)?.message });
+      }
     }
-  }
 
-  const all = readFallbackRecords();
-  if (all.length <= maxToKeep) return;
-  all.sort((a, b) => new Date(a.savedAt).getTime() - new Date(b.savedAt).getTime());
-  writeFallbackRecords(all.slice(all.length - maxToKeep));
+    const all = readFallbackRecords();
+    if (all.length <= maxToKeep) return success(undefined);
+    all.sort((a, b) => new Date(a.savedAt).getTime() - new Date(b.savedAt).getTime());
+    const deletedCount = all.length - maxToKeep;
+    writeFallbackRecords(all.slice(all.length - maxToKeep));
+    logger.info('Sessions pruned from localStorage', { deletedCount, remainingCount: maxToKeep });
+    return success(undefined);
+  } catch (error) {
+    const appError = error instanceof AppError ? error : new AppError({
+      code: 'STORAGE_ERROR',
+      message: error instanceof Error ? error.message : 'Failed to prune sessions',
+      statusCode: 500,
+      context: { operation: 'pruneOldSessions', maxToKeep },
+    });
+    logger.error('Failed to prune sessions', appError as any);
+    return failure(appError);
+  }
 }
 
 /**
  * Return all persisted sessions, most recent first (metadata only, not decompressed).
  */
-export async function listSessions(): Promise<PersistRecord[]> {
-  if (canUseIndexedDb()) {
-    try {
-      const db = await getDb();
-      const all = (await db.getAll(STORE_NAME)) as PersistRecord[];
-      return sortNewestFirst(all);
-    } catch (err) {
-      console.warn('[Persist] IndexedDB list failed, using local fallback', err);
+export async function listSessions(): Promise<Result<PersistRecord[]>> {
+  try {
+    if (canUseIndexedDb()) {
+      try {
+        const db = await getDb();
+        const all = (await db.getAll(STORE_NAME)) as PersistRecord[];
+        const sorted = sortNewestFirst(all);
+        logger.info('Sessions listed from IndexedDB', { count: sorted.length });
+        return success(sorted);
+      } catch (err) {
+        logger.warn('IndexedDB list failed, using localStorage fallback', { error: (err as any)?.message });
+      }
     }
-  }
 
-  return sortNewestFirst(readFallbackRecords());
+    const fallback = sortNewestFirst(readFallbackRecords());
+    logger.info('Sessions listed from localStorage', { count: fallback.length });
+    return success(fallback);
+  } catch (error) {
+    const appError = error instanceof AppError ? error : new AppError({
+      code: 'STORAGE_ERROR',
+      message: error instanceof Error ? error.message : 'Failed to list sessions',
+      statusCode: 500,
+      context: { operation: 'listSessions' },
+    });
+    logger.error('Failed to list sessions', appError as any);
+    return failure(appError);
+  }
 }
 
 /**
  * Return one session, fully decompressed.
  */
-export async function getSession(id: number): Promise<PersistRecordFull | null> {
-  if (canUseIndexedDb()) {
-    try {
-      const db = await getDb();
-      const record = (await db.get(STORE_NAME, id)) as PersistRecord | undefined;
-      if (!record) return null;
-      const { compressedData, ...meta } = record;
-      return { ...meta, buckets: decompress(compressedData) };
-    } catch (err) {
-      console.warn('[Persist] IndexedDB get failed, using local fallback', err);
+export async function getSession(id: number): Promise<Result<PersistRecordFull | null>> {
+  try {
+    if (typeof id !== 'number' || id < 1) {
+      throw new AppError({
+        code: 'VALIDATION_ERROR',
+        message: 'Session ID must be a positive number',
+        statusCode: 400,
+      });
     }
-  }
 
-  const fallback = readFallbackRecords().find((record) => record.id === id);
-  if (!fallback) return null;
-  const { compressedData, ...meta } = fallback;
-  return { ...meta, buckets: decompress(compressedData) };
+    if (canUseIndexedDb()) {
+      try {
+        const db = await getDb();
+        const record = (await db.get(STORE_NAME, id)) as PersistRecord | undefined;
+        if (!record) {
+          logger.info('Session not found in IndexedDB', { sessionId: id });
+          return success(null);
+        }
+        const { compressedData, ...meta } = record;
+        logger.info('Session retrieved from IndexedDB', { sessionId: id });
+        return success({ ...meta, buckets: decompress(compressedData) });
+      } catch (err) {
+        logger.warn('IndexedDB get failed, using localStorage fallback', { sessionId: id, error: (err as any)?.message });
+      }
+    }
+
+    const fallback = readFallbackRecords().find((record) => record.id === id);
+    if (!fallback) {
+      logger.info('Session not found in localStorage', { sessionId: id });
+      return success(null);
+    }
+    const { compressedData, ...meta } = fallback;
+    logger.info('Session retrieved from localStorage', { sessionId: id });
+    return success({ ...meta, buckets: decompress(compressedData) });
+  } catch (error) {
+    const appError = error instanceof AppError ? error : new AppError({
+      code: 'STORAGE_ERROR',
+      message: error instanceof Error ? error.message : 'Failed to get session',
+      statusCode: 500,
+      context: { operation: 'getSession', sessionId: id },
+    });
+    logger.error('Failed to get session', appError as any);
+    return failure(appError);
+  }
 }
 
 /**
  * Delete a persisted session.
  */
-export async function deleteSession(id: number): Promise<void> {
-  if (canUseIndexedDb()) {
-    try {
-      const db = await getDb();
-      await db.delete(STORE_NAME, id);
-      return;
-    } catch (err) {
-      console.warn('[Persist] IndexedDB delete failed, using local fallback', err);
+export async function deleteSession(id: number): Promise<Result<void>> {
+  try {
+    if (typeof id !== 'number' || id < 1) {
+      throw new AppError({
+        code: 'VALIDATION_ERROR',
+        message: 'Session ID must be a positive number',
+        statusCode: 400,
+      });
     }
-  }
 
-  const next = readFallbackRecords().filter((record) => record.id !== id);
-  writeFallbackRecords(next);
+    if (canUseIndexedDb()) {
+      try {
+        const db = await getDb();
+        await db.delete(STORE_NAME, id);
+        logger.info('Session deleted from IndexedDB', { sessionId: id });
+        return success(undefined);
+      } catch (err) {
+        logger.warn('IndexedDB delete failed, using localStorage fallback', { sessionId: id, error: (err as any)?.message });
+      }
+    }
+
+    const next = readFallbackRecords().filter((record) => record.id !== id);
+    writeFallbackRecords(next);
+    logger.info('Session deleted from localStorage', { sessionId: id });
+    return success(undefined);
+  } catch (error) {
+    const appError = error instanceof AppError ? error : new AppError({
+      code: 'STORAGE_ERROR',
+      message: error instanceof Error ? error.message : 'Failed to delete session',
+      statusCode: 500,
+      context: { operation: 'deleteSession', sessionId: id },
+    });
+    logger.error('Failed to delete session', appError as any);
+    return failure(appError);
+  }
 }

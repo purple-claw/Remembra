@@ -9,7 +9,6 @@ import {
   FileText,
   Layers,
   Check,
-  Sparkles,
   Calendar,
   Upload,
   X,
@@ -36,6 +35,7 @@ import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { toast } from 'sonner';
 import { OPTIONAL_REVIEW_DAY_30, REVIEW_INTERVALS_147, getScheduledDateForStage, getNextRecurringDate, toIsoDate } from '@/domain/review147';
 import { storageService } from '@/services/storageService';
+import { toFriendlyErrorMessage } from '@/lib/uiError';
 
 const contentTypes: { id: ContentType; icon: React.ElementType; label: string; description: string }[] = [
   { id: 'text', icon: Type, label: 'Notes & Text', description: 'General notes and explanations' },
@@ -63,6 +63,8 @@ interface UploadedFile {
   mime_type?: string;
 }
 
+const MAX_TITLE_LENGTH = 500;
+
 export function Create() {
   const { categories, addMemoryItem, addCategory, updateCategory, deleteCategory, memoryItems, setScreen, goBack } = useStore();
 
@@ -71,7 +73,6 @@ export function Create() {
   const [content, setContent] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
-  const [isGenerating, setIsGenerating] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [isPreviewMode, setIsPreviewMode] = useState(false);
@@ -83,6 +84,7 @@ export function Create() {
   const [processingCategoryId, setProcessingCategoryId] = useState<string | null>(null);
   const [scheduleType, setScheduleType] = useState<ScheduleType>('spaced');
   const [recurringFrequency, setRecurringFrequency] = useState<RecurringFrequency>('weekly');
+  const [formError, setFormError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -91,6 +93,9 @@ export function Create() {
     () => categories.find((category) => category.id === categoryId) || null,
     [categories, categoryId],
   );
+  const selectedCategoryName = selectedCategory?.name || 'No category';
+
+  const isCreateReady = !!title.trim() && !!content.trim() && !!categoryId;
 
   useEffect(() => {
     if (!categoryId && categories.length > 0) {
@@ -127,8 +132,7 @@ export function Create() {
       toast.success('Category updated');
       cancelCategoryEdit();
     } catch (error) {
-      console.error('Category update failed:', error);
-      toast.error('Failed to update category');
+      toast.error(toFriendlyErrorMessage(error, 'Failed to update category'));
     } finally {
       setProcessingCategoryId(null);
     }
@@ -154,8 +158,7 @@ export function Create() {
       }
       toast.success('Category deleted');
     } catch (error) {
-      console.error('Category delete failed:', error);
-      toast.error('Failed to delete category');
+      toast.error(toFriendlyErrorMessage(error, 'Failed to delete category'));
     } finally {
       setProcessingCategoryId(null);
     }
@@ -186,36 +189,33 @@ export function Create() {
       setShowNewCategory(false);
       toast.success('Category created');
     } catch (error) {
-      console.error('Category creation failed:', error);
-      const maybeCode = typeof error === 'object' && error !== null && 'code' in error
-        ? String((error as { code?: unknown }).code || '')
-        : '';
-      const maybeMessage = error instanceof Error ? error.message : '';
-
-      if (maybeCode.includes('permission-denied')) {
-        toast.error('Category creation blocked by Firebase rules. Please check Firestore rules.');
-        return;
-      }
-
-      if (maybeMessage.includes('Authentication required')) {
-        toast.error('Session expired. Please sign in again.');
-        return;
-      }
-
-      toast.error('Failed to create category. Try again.');
+      toast.error(toFriendlyErrorMessage(error, 'Failed to create category. Try again.'));
     }
   };
 
   const handleCreate = async () => {
     if (isCreating) return;
 
+    setFormError(null);
+
     if (!title.trim() || !content.trim()) {
-      toast.error('Title and content are required');
+      const message = 'Title and content are required';
+      setFormError(message);
+      toast.error(message);
       return;
     }
 
     if (!categoryId) {
-      toast.error('Please select a category');
+      const message = 'Please select a category';
+      setFormError(message);
+      toast.error(message);
+      return;
+    }
+
+    if (title.trim().length > MAX_TITLE_LENGTH) {
+      const message = `Title must be ${MAX_TITLE_LENGTH} characters or fewer`;
+      setFormError(message);
+      toast.error(message);
       return;
     }
 
@@ -256,9 +256,6 @@ export function Create() {
       repetition: 0,
       lapse_count: 0,
       review_history: [],
-      ai_summary: isGenerating
-        ? '• AI summary will be generated\n• Key points extracted automatically\n• Review schedule created'
-        : undefined,
     };
 
     try {
@@ -266,19 +263,12 @@ export function Create() {
       toast.success('Item created successfully');
       setScreen('dashboard');
     } catch (error) {
-      console.error('Error creating item:', error);
-      toast.error('Failed to create item. Please try again.');
+      const message = toFriendlyErrorMessage(error, 'Failed to create item. Please try again.');
+      setFormError(message);
+      toast.error(message);
     } finally {
       setIsCreating(false);
     }
-  };
-
-  const generateAISummary = () => {
-    setIsGenerating(true);
-    setTimeout(() => {
-      setIsGenerating(false);
-      toast.success('AI summary generated');
-    }, 1500);
   };
 
   const getReviewDates = () => {
@@ -361,7 +351,11 @@ export function Create() {
         reader.readAsText(file);
       } else if (file.type.startsWith('image/')) {
         try {
-          const uploaded = await storageService.uploadImage(file);
+          const uploadedResult = await storageService.uploadImage(file);
+          if (!uploadedResult.success) {
+            throw uploadedResult.error;
+          }
+          const uploaded = uploadedResult.data;
           setUploadedFiles((previous) => [
             ...previous,
             {
@@ -405,15 +399,23 @@ export function Create() {
     setUploadedFiles((previous) => previous.filter((file) => file.id !== id));
 
     if (target?.path && target.bucket) {
-      await storageService.removeAttachments([{
-        type: 'image',
-        url: target.url || '',
-        name: target.name,
-        size: target.size,
-        path: target.path,
-        bucket: target.bucket,
-        mime_type: target.mime_type,
-      }]);
+      try {
+        const result = await storageService.removeAttachments([{
+          type: 'image',
+          url: target.url || '',
+          name: target.name,
+          size: target.size,
+          path: target.path,
+          bucket: target.bucket,
+          mime_type: target.mime_type,
+        }]);
+        if (!result.success) {
+          throw result.error;
+        }
+      } catch (error) {
+        console.warn('Attachment cleanup failed:', error);
+        toast.warning('File removed from draft, but cloud cleanup did not complete.');
+      }
     }
   };
 
@@ -473,34 +475,38 @@ export function Create() {
   ];
 
   return (
-    <div className="fixed inset-0 bg-black flex flex-col z-50">
-      <header className="flex-shrink-0 px-4 sm:px-6 safe-top pb-4 border-b border-white/10 bg-black/80 backdrop-blur-xl">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <button
-              onClick={handleBack}
-              className="w-10 h-10 rounded-xl border border-white/10 bg-remembra-bg-secondary flex items-center justify-center text-remembra-text-secondary"
-            >
-              <ArrowLeft size={18} />
-            </button>
-            <div className="min-w-0">
-              <h1 className="text-xl sm:text-2xl font-semibold text-remembra-text-primary truncate">Create Memory Item</h1>
-              <p className="text-sm text-remembra-text-muted">Capture, organize, and schedule your learning in one flow.</p>
-            </div>
-          </div>
-          <div className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl border border-white/10 bg-remembra-bg-secondary/70 text-xs text-remembra-text-muted">
-            <Sparkles size={14} className="text-remembra-accent-primary" />
-            AI Assist Ready
+    <div className="fixed inset-0 bg-black flex flex-col z-50 animate-screen-enter">
+      <header className="flex-shrink-0 px-4 sm:px-6 safe-top-compact pb-3 border-b border-white/10 bg-black/85 backdrop-blur-xl transition-smooth relative z-30 animate-slide-up">
+        <div className="flex items-start gap-3 min-w-0">
+          <button
+            onClick={handleBack}
+            className="w-9 h-9 rounded-xl border border-white/10 bg-remembra-bg-secondary flex items-center justify-center text-remembra-text-secondary shrink-0 tap-ripple press-glow"
+          >
+            <ArrowLeft size={17} />
+          </button>
+          <div className="min-w-0 flex-1">
+            <h1 className="text-lg sm:text-xl font-semibold text-remembra-text-primary truncate">Create Memory Item</h1>
+            <p className="text-xs sm:text-sm text-remembra-text-muted truncate">Start creating your Items..</p>
           </div>
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto px-4 sm:px-6 py-5 pb-[calc(env(safe-area-inset-bottom)+8rem)] custom-scrollbar">
-        <div className="grid gap-5 xl:grid-cols-[1fr,340px]">
-          <section className="space-y-5">
-            <div className="glass-card rounded-2xl p-4">
-              <p className="text-xs uppercase tracking-wider text-remembra-text-muted mb-3">Content Type</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+      <main
+        data-nav-scroll="true"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 sm:px-6 py-4 pb-[calc(env(safe-area-inset-bottom)+7rem)] custom-scrollbar safe-bottom-nav fluid-scroll-zone smooth-scroll-content relative z-0"
+        style={{
+          WebkitOverflowScrolling: 'touch',
+          overscrollBehavior: 'contain',
+        }}
+      >
+        <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr),300px]">
+          <section className="space-y-3">
+            <div className="widget-surface inertia-card smooth-surface stagger-enter glass-card rounded-2xl p-2.5 sm:p-3" style={{ animationDelay: '40ms' }}>
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <p className="text-[9px] uppercase tracking-[0.18em] text-remembra-text-muted">Content Type</p>
+                <span className="text-[9px] text-remembra-text-muted">Pick one</span>
+              </div>
+              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
                 {contentTypes.map((type) => {
                   const Icon = type.icon;
                   const active = contentType === type.id;
@@ -509,43 +515,53 @@ export function Create() {
                     <button
                       key={type.id}
                       onClick={() => setContentType(type.id)}
-                      className={`rounded-xl border p-3 text-left transition-colors ${
+                      className={`rounded-lg border px-2.5 py-2 text-left transition-all ${
                         active
                           ? 'bg-black/40 border-remembra-accent-primary/40'
                           : 'bg-remembra-bg-tertiary/65 border-white/5 hover:border-white/15'
                       }`}
                     >
-                      <div className="flex items-start justify-between gap-2 mb-2">
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${active ? 'bg-remembra-accent-primary/20 text-remembra-accent-primary' : 'bg-white/5 text-remembra-text-muted'}`}>
-                          <Icon size={15} />
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <div className={`w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 ${active ? 'bg-remembra-accent-primary/20 text-remembra-accent-primary' : 'bg-white/5 text-remembra-text-muted'}`}>
+                            <Icon size={12} />
+                          </div>
+                          <p className="text-[12px] font-medium text-remembra-text-primary truncate">{type.label}</p>
                         </div>
-                        {active && <Check size={14} className="text-remembra-accent-primary" />}
+                        {active && <Check size={12} className="text-remembra-accent-primary flex-shrink-0" />}
                       </div>
-                      <p className="text-sm font-medium text-remembra-text-primary">{type.label}</p>
-                      <p className="text-xs text-remembra-text-muted mt-1">{type.description}</p>
+                      <p className="mt-1 text-[10px] leading-snug text-remembra-text-muted sm:text-[11px]">{type.description}</p>
                     </button>
                   );
                 })}
               </div>
             </div>
 
-            <div className="glass-card rounded-2xl p-4 space-y-4">
+            <div className="widget-surface inertia-card smooth-surface stagger-enter glass-card rounded-2xl p-2.5 sm:p-3 space-y-2.5 sm:space-y-3" style={{ animationDelay: '80ms' }}>
               <div>
-                <label className="block text-sm font-medium text-remembra-text-secondary mb-2">Title</label>
+                <label className="block text-[9px] uppercase tracking-[0.18em] text-remembra-text-muted mb-1.5">Title</label>
                 <Input
                   type="text"
                   placeholder="Enter a descriptive title..."
                   value={title}
-                  onChange={(event) => setTitle(event.target.value)}
-                  className="bg-remembra-bg-tertiary border-white/10 rounded-xl text-remembra-text-primary py-6"
+                  onChange={(event) => {
+                    setTitle(event.target.value);
+                    if (formError) setFormError(null);
+                  }}
+                  className="bg-remembra-bg-tertiary border-white/10 rounded-lg text-remembra-text-primary py-3"
                 />
+                <div className="mt-1 flex items-center justify-end">
+                  <span className={`text-[10px] ${title.trim().length > MAX_TITLE_LENGTH ? 'text-red-400' : 'text-remembra-text-muted'}`}>
+                    {title.trim().length}/{MAX_TITLE_LENGTH}
+                  </span>
+                </div>
               </div>
 
               <div
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
-                className={`rounded-2xl border-2 border-dashed p-5 transition-colors ${
+                className={`rounded-xl border-2 border-dashed p-2.5 transition-colors ${
                   isDragging
                     ? 'border-remembra-accent-primary bg-remembra-accent-primary/10'
                     : 'border-white/15 bg-remembra-bg-tertiary/60 hover:border-remembra-accent-primary/40'
@@ -559,44 +575,44 @@ export function Create() {
                   onChange={handleFileSelect}
                   className="hidden"
                 />
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-remembra-accent-primary/15 flex items-center justify-center text-remembra-accent-primary flex-shrink-0">
-                    <Upload size={17} />
+                <div className="flex items-start gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-remembra-accent-primary/15 flex items-center justify-center text-remembra-accent-primary flex-shrink-0">
+                    <Upload size={14} />
                   </div>
                   <div>
-                    <p className="text-sm text-remembra-text-secondary">
+                    <p className="text-[13px] text-remembra-text-secondary leading-tight">
                       Drag files here or{' '}
                       <button onClick={() => fileInputRef.current?.click()} className="text-remembra-accent-primary font-medium hover:underline">
                         browse
                       </button>
                     </p>
-                    <p className="text-xs text-remembra-text-muted mt-1">Text, code, markdown, images, PDFs</p>
+                    <p className="text-[10px] text-remembra-text-muted mt-0.5">Text, code, markdown, images, PDFs</p>
                   </div>
                 </div>
               </div>
 
               {uploadedFiles.length > 0 && (
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   {uploadedFiles.map((file) => (
-                    <div key={file.id} className="rounded-xl border border-white/10 bg-black/25 p-3 flex items-center gap-3">
+                    <div key={file.id} className="rounded-lg border border-white/10 bg-black/25 p-2 flex items-center gap-2.5">
                       {file.type.startsWith('image/') && file.url ? (
-                        <img src={file.url} alt={file.name} className="w-10 h-10 rounded-lg object-cover" />
+                        <img src={file.url} alt={file.name} className="w-8 h-8 rounded-md object-cover" />
                       ) : (
-                        <div className="w-10 h-10 rounded-lg bg-remembra-bg-tertiary flex items-center justify-center text-remembra-text-muted">
-                          <Code size={16} />
+                        <div className="w-8 h-8 rounded-md bg-remembra-bg-tertiary flex items-center justify-center text-remembra-text-muted">
+                          <Code size={13} />
                         </div>
                       )}
 
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm text-remembra-text-primary truncate">{file.name}</p>
-                        <p className="text-xs text-remembra-text-muted">{formatBytes(file.size)}</p>
+                        <p className="text-[13px] text-remembra-text-primary truncate">{file.name}</p>
+                        <p className="text-[10px] text-remembra-text-muted">{formatBytes(file.size)}</p>
                       </div>
 
                       <button
                         onClick={() => removeFile(file.id)}
-                        className="w-8 h-8 rounded-lg border border-red-500/25 text-red-400 flex items-center justify-center"
+                        className="w-7 h-7 rounded-md border border-red-500/25 text-red-400 flex items-center justify-center tap-ripple press-glow"
                       >
-                        <X size={14} />
+                        <X size={12} />
                       </button>
                     </div>
                   ))}
@@ -604,52 +620,52 @@ export function Create() {
               )}
             </div>
 
-            <div className="glass-card rounded-2xl p-4">
-              <div className="flex items-center justify-between gap-2 mb-3">
-                <p className="text-xs uppercase tracking-wider text-remembra-text-muted">Content Editor</p>
-                <div className="flex items-center gap-1 border border-white/10 bg-remembra-bg-tertiary rounded-lg p-1">
+            <div className="widget-surface inertia-card smooth-surface stagger-enter glass-card rounded-2xl p-2.5 sm:p-3" style={{ animationDelay: '120ms' }}>
+              <div className="flex items-center justify-between gap-2 mb-1.5">
+                <p className="text-[9px] uppercase tracking-[0.18em] text-remembra-text-muted">Content Editor</p>
+                <div className="flex items-center gap-1 border border-white/10 bg-remembra-bg-tertiary rounded-md p-0.5">
                   <button
                     onClick={() => setIsPreviewMode(false)}
-                    className={`px-3 py-1.5 rounded-md text-xs flex items-center gap-1 ${
+                    className={`px-2 py-1 rounded-md text-[11px] flex items-center gap-1 ${
                       !isPreviewMode ? 'gradient-orange text-white' : 'text-remembra-text-muted'
                     }`}
                   >
-                    <Edit size={12} />
+                    <Edit size={10} />
                     Edit
                   </button>
                   <button
                     onClick={() => setIsPreviewMode(true)}
-                    className={`px-3 py-1.5 rounded-md text-xs flex items-center gap-1 ${
+                    className={`px-2 py-1 rounded-md text-[11px] flex items-center gap-1 ${
                       isPreviewMode ? 'gradient-orange text-white' : 'text-remembra-text-muted'
                     }`}
                   >
-                    <Eye size={12} />
+                    <Eye size={10} />
                     Preview
                   </button>
                 </div>
               </div>
 
               {!isPreviewMode && (
-                <div className="flex items-center gap-1 p-1.5 rounded-t-xl border border-white/10 bg-remembra-bg-tertiary overflow-x-auto scrollbar-hide">
+                <div className="flex items-center gap-1 p-0.5 rounded-t-lg border border-white/10 bg-remembra-bg-tertiary overflow-x-auto scrollbar-hide">
                   {markdownActions.map((action) => (
                     <button
                       key={action.title}
                       onClick={action.action}
-                      className="w-8 h-8 rounded-lg border border-transparent hover:border-white/10 text-remembra-text-muted hover:text-remembra-accent-primary flex items-center justify-center"
+                      className="w-7 h-7 rounded-md border border-transparent hover:border-white/10 text-remembra-text-muted hover:text-remembra-accent-primary flex items-center justify-center tap-ripple press-glow"
                       title={action.title}
                     >
-                      <action.icon size={14} />
+                      <action.icon size={12} />
                     </button>
                   ))}
                 </div>
               )}
 
               {isPreviewMode ? (
-                <div className="rounded-xl border border-white/10 bg-black/25 p-4 min-h-[260px] max-h-[500px] overflow-y-auto custom-scrollbar">
+                <div className="rounded-lg border border-white/10 bg-black/25 p-2.5 min-h-[180px] max-h-[360px] overflow-y-auto custom-scrollbar">
                   {content ? (
                     <MarkdownRenderer content={content} />
                   ) : (
-                    <p className="text-sm text-remembra-text-muted italic">Nothing to preview yet...</p>
+                    <p className="text-[13px] text-remembra-text-muted italic">Nothing to preview yet...</p>
                   )}
                 </div>
               ) : (
@@ -660,29 +676,23 @@ export function Create() {
                     : 'Write your notes...'
                   }
                   value={content}
-                  onChange={(event) => setContent(event.target.value)}
-                  className="min-h-[280px] resize-none rounded-t-none rounded-b-xl bg-black/25 border-white/10 text-remembra-text-primary text-sm"
+                  onChange={(event) => {
+                    setContent(event.target.value);
+                    if (formError) setFormError(null);
+                  }}
+                  className="min-h-[180px] resize-none rounded-t-none rounded-b-lg bg-black/25 border-white/10 text-remembra-text-primary text-sm"
                 />
               )}
-
-              <button
-                onClick={generateAISummary}
-                disabled={isGenerating || !content.trim()}
-                className="mt-3 text-sm text-remembra-accent-primary hover:text-remembra-accent-secondary disabled:opacity-50 flex items-center gap-2"
-              >
-                <Sparkles size={15} />
-                {isGenerating ? 'Generating AI summary...' : 'Generate AI summary'}
-              </button>
             </div>
           </section>
 
-          <aside className="space-y-4 xl:sticky xl:top-5 h-fit">
-            <div className="glass-card rounded-2xl p-4">
-              <p className="text-xs uppercase tracking-wider text-remembra-text-muted mb-3">Schedule Mode</p>
-              <div className="grid grid-cols-2 gap-2 mb-3">
+          <aside className="space-y-2.5 xl:sticky xl:top-5 h-fit">
+            <div className="widget-surface inertia-card smooth-surface stagger-enter glass-card rounded-2xl p-2.5 sm:p-3" style={{ animationDelay: '160ms' }}>
+              <p className="text-[9px] uppercase tracking-[0.18em] text-remembra-text-muted mb-1.5">Schedule Mode</p>
+              <div className="grid grid-cols-2 gap-1.5 mb-2">
                 <button
                   onClick={() => setScheduleType('spaced')}
-                  className={`rounded-xl border p-3 text-sm font-medium transition-colors ${
+                  className={`rounded-lg border px-2 py-2 text-[12px] font-medium transition-colors ${
                     scheduleType === 'spaced'
                       ? 'bg-remembra-accent-primary/15 border-remembra-accent-primary/35 text-remembra-accent-primary'
                       : 'bg-remembra-bg-tertiary border-white/10 text-remembra-text-muted'
@@ -692,24 +702,24 @@ export function Create() {
                 </button>
                 <button
                   onClick={() => setScheduleType('recurring')}
-                  className={`rounded-xl border p-3 text-sm font-medium transition-colors flex items-center justify-center gap-1.5 ${
+                  className={`rounded-lg border px-2 py-2 text-[12px] font-medium transition-colors flex items-center justify-center gap-1 ${
                     scheduleType === 'recurring'
                       ? 'bg-remembra-accent-primary/15 border-remembra-accent-primary/35 text-remembra-accent-primary'
                       : 'bg-remembra-bg-tertiary border-white/10 text-remembra-text-muted'
                   }`}
                 >
-                  <Repeat size={14} />
+                  <Repeat size={12} />
                   Recurring
                 </button>
               </div>
 
               {scheduleType === 'recurring' && (
-                <div className="grid grid-cols-3 gap-2 mb-3">
+                <div className="grid grid-cols-3 gap-1.5 mb-2.5">
                   {(['daily', 'weekly', 'monthly'] as const).map((frequency) => (
                     <button
                       key={frequency}
                       onClick={() => setRecurringFrequency(frequency)}
-                      className={`rounded-lg border px-2 py-2 text-xs font-medium capitalize ${
+                      className={`rounded-md border px-2 py-1.5 text-[11px] font-medium capitalize ${
                         recurringFrequency === frequency
                           ? 'border-remembra-accent-primary/40 bg-remembra-accent-primary/15 text-remembra-accent-primary'
                           : 'border-white/10 bg-remembra-bg-tertiary text-remembra-text-muted'
@@ -721,11 +731,11 @@ export function Create() {
                 </div>
               )}
 
-              <p className="text-xs uppercase tracking-wider text-remembra-text-muted mb-3">Category</p>
+              <p className="text-[9px] uppercase tracking-[0.18em] text-remembra-text-muted mb-1.5">Category</p>
 
-              <div className="space-y-2 mb-3 max-h-52 overflow-y-auto custom-scrollbar pr-1">
+              <div className="space-y-1.5 mb-2 max-h-48 overflow-y-auto custom-scrollbar pr-1">
                 {categories.map((category) => (
-                  <div key={category.id} className="flex items-center gap-2">
+                  <div key={category.id} className="flex items-center gap-1.5">
                     {editingCategoryId === category.id ? (
                       <Input
                         value={editingCategoryName}
@@ -739,13 +749,13 @@ export function Create() {
                             cancelCategoryEdit();
                           }
                         }}
-                        className="h-9 bg-remembra-bg-tertiary border-white/10 text-remembra-text-primary"
+                        className="h-8 bg-remembra-bg-tertiary border-white/10 text-remembra-text-primary"
                         autoFocus
                       />
                     ) : (
                       <button
                         onClick={() => setCategoryId(category.id)}
-                        className={`flex-1 text-left px-3 py-2 rounded-lg text-xs font-medium border ${
+                        className={`flex-1 text-left px-2.5 py-1.5 rounded-md text-[11px] font-medium border ${
                           categoryId === category.id
                             ? 'text-white border-transparent'
                             : 'text-remembra-text-muted border-white/10 bg-remembra-bg-tertiary'
@@ -764,33 +774,33 @@ export function Create() {
                         <button
                           onClick={saveCategoryEdit}
                           disabled={processingCategoryId === category.id}
-                          className="w-9 h-9 rounded-lg gradient-primary text-white flex items-center justify-center"
+                            className="w-8 h-8 rounded-md gradient-primary text-white flex items-center justify-center"
                         >
-                          <Check size={13} />
+                            <Check size={12} />
                         </button>
                         <button
                           onClick={cancelCategoryEdit}
-                          className="w-9 h-9 rounded-lg border border-white/10 bg-remembra-bg-tertiary text-remembra-text-muted flex items-center justify-center"
+                            className="w-8 h-8 rounded-md border border-white/10 bg-remembra-bg-tertiary text-remembra-text-muted flex items-center justify-center"
                         >
-                          <X size={13} />
+                            <X size={12} />
                         </button>
                       </>
                     ) : (
                       <>
                         <button
                           onClick={() => startCategoryEdit(category.id, category.name)}
-                          className="w-9 h-9 rounded-lg border border-white/10 bg-remembra-bg-tertiary text-remembra-text-muted flex items-center justify-center"
+                            className="w-8 h-8 rounded-md border border-white/10 bg-remembra-bg-tertiary text-remembra-text-muted flex items-center justify-center"
                           title="Edit category"
                         >
-                          <Pencil size={13} />
+                            <Pencil size={12} />
                         </button>
                         <button
                           onClick={() => removeCategory(category.id, category.name)}
                           disabled={categories.length <= 1 || processingCategoryId === category.id}
-                          className="w-9 h-9 rounded-lg border border-red-500/25 bg-red-500/10 text-red-400 disabled:opacity-40 flex items-center justify-center"
+                            className="w-8 h-8 rounded-md border border-red-500/25 bg-red-500/10 text-red-400 disabled:opacity-40 flex items-center justify-center"
                           title="Delete category"
                         >
-                          <Trash2 size={13} />
+                            <Trash2 size={12} />
                         </button>
                       </>
                     )}
@@ -801,9 +811,9 @@ export function Create() {
               {!showNewCategory ? (
                 <button
                   onClick={() => setShowNewCategory(true)}
-                  className="w-full rounded-xl border border-dashed border-remembra-accent-primary/40 text-remembra-accent-primary py-2 text-sm font-medium flex items-center justify-center gap-1"
+                    className="w-full rounded-lg border border-dashed border-remembra-accent-primary/40 text-remembra-accent-primary py-2 text-[12px] font-medium flex items-center justify-center gap-1"
                 >
-                  <Plus size={14} />
+                    <Plus size={12} />
                   New Category
                 </button>
               ) : (
@@ -825,25 +835,25 @@ export function Create() {
                     className="bg-remembra-bg-tertiary border-white/10 text-remembra-text-primary"
                     autoFocus
                   />
-                  <button onClick={createNewCategory} className="w-10 h-10 rounded-xl gradient-primary text-white flex items-center justify-center">
-                    <Check size={14} />
+                  <button onClick={createNewCategory} className="w-8 h-8 rounded-md gradient-primary text-white flex items-center justify-center">
+                    <Check size={12} />
                   </button>
                   <button
                     onClick={() => {
                       setShowNewCategory(false);
                       setNewCategoryName('');
                     }}
-                    className="w-10 h-10 rounded-xl border border-white/10 bg-remembra-bg-tertiary text-remembra-text-muted flex items-center justify-center"
+                    className="w-8 h-8 rounded-md border border-white/10 bg-remembra-bg-tertiary text-remembra-text-muted flex items-center justify-center"
                   >
-                    <X size={14} />
+                    <X size={12} />
                   </button>
                 </div>
               )}
             </div>
 
-            <div className="glass-card rounded-2xl p-4">
-              <p className="text-xs uppercase tracking-wider text-remembra-text-muted mb-3">Difficulty</p>
-              <div className="space-y-2">
+            <div className="widget-surface inertia-card smooth-surface stagger-enter glass-card rounded-2xl p-2.5 sm:p-3" style={{ animationDelay: '200ms' }}>
+              <p className="text-[9px] uppercase tracking-[0.18em] text-remembra-text-muted mb-1.5">Difficulty</p>
+              <div className="space-y-1.5">
                 {difficulties.map((entry) => {
                   const selected = difficulty === entry.value;
                   const colors: Record<Difficulty, string> = {
@@ -857,7 +867,7 @@ export function Create() {
                     <button
                       key={entry.value}
                       onClick={() => setDifficulty(entry.value)}
-                      className={`w-full rounded-xl border p-3 text-left ${
+                      className={`w-full rounded-lg border px-2.5 py-2 text-left ${
                         selected
                           ? 'bg-black/35 border-white/20'
                           : 'bg-remembra-bg-tertiary/65 border-white/10'
@@ -865,10 +875,10 @@ export function Create() {
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div>
-                          <p className="text-sm font-medium text-remembra-text-primary">{entry.label}</p>
-                          <p className="text-xs text-remembra-text-muted mt-0.5">{entry.description}</p>
+                          <p className="text-[12px] font-medium text-remembra-text-primary">{entry.label}</p>
+                          <p className="text-[10px] text-remembra-text-muted mt-0.5">{entry.description}</p>
                         </div>
-                        <div className="w-3 h-3 rounded-full mt-1" style={{ backgroundColor: color }} />
+                        <div className="w-2.5 h-2.5 rounded-full mt-1" style={{ backgroundColor: color }} />
                       </div>
                     </button>
                   );
@@ -876,27 +886,27 @@ export function Create() {
               </div>
             </div>
 
-            <div className="glass-card rounded-2xl p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <Calendar size={15} className="text-remembra-accent-primary" />
-                <p className="text-xs uppercase tracking-wider text-remembra-text-muted">Review Plan</p>
+            <div className="widget-surface inertia-card smooth-surface stagger-enter glass-card rounded-2xl p-2.5 sm:p-3" style={{ animationDelay: '240ms' }}>
+              <div className="flex items-center gap-2 mb-1.5">
+                <Calendar size={12} className="text-remembra-accent-primary" />
+                <p className="text-[9px] uppercase tracking-[0.18em] text-remembra-text-muted">Review Plan</p>
               </div>
 
-              <div className={`grid gap-2 ${scheduleType === 'recurring' ? 'grid-cols-1' : 'grid-cols-2'}`}>
+              <div className={`grid gap-1.5 ${scheduleType === 'recurring' ? 'grid-cols-1' : 'grid-cols-2'}`}>
                 {getReviewDates().map((entry) => (
-                  <div key={entry.day} className="rounded-lg border border-white/10 bg-black/20 p-2.5">
-                    <p className="text-xs text-remembra-text-muted">
+                  <div key={entry.day} className="rounded-md border border-white/10 bg-black/20 p-2">
+                    <p className="text-[10px] text-remembra-text-muted">
                       {scheduleType === 'recurring' ? `${recurringFrequency} cadence` : `Day ${entry.day}`}
                     </p>
-                    <p className="text-sm font-medium text-remembra-text-primary mt-0.5">{entry.label}</p>
+                    <p className="text-[12px] font-medium text-remembra-text-primary mt-0.5">{entry.label}</p>
                   </div>
                 ))}
               </div>
             </div>
 
-            <div className="glass-card rounded-2xl p-4">
-              <p className="text-xs uppercase tracking-wider text-remembra-text-muted mb-2">Ready Check</p>
-              <div className="space-y-1.5 text-xs text-remembra-text-muted">
+            <div className="widget-surface inertia-card smooth-surface stagger-enter glass-card rounded-2xl p-2.5 sm:p-3" style={{ animationDelay: '280ms' }}>
+              <p className="text-[9px] uppercase tracking-[0.18em] text-remembra-text-muted mb-1.5">Ready Check</p>
+              <div className="space-y-1 text-[11px] text-remembra-text-muted">
                 <p>{title.trim() ? '✓' : '•'} Title added</p>
                 <p>{content.trim() ? '✓' : '•'} Content added</p>
                 <p>{selectedCategory ? '✓' : '•'} Category selected</p>
@@ -907,25 +917,31 @@ export function Create() {
         </div>
       </main>
 
-      <footer className="flex-shrink-0 px-4 sm:px-6 safe-footer pt-3 pb-3 border-t border-white/10 bg-black/90 backdrop-blur-xl">
-        <div className="flex items-center justify-between gap-3 mb-3 text-xs">
-          <span className="text-remembra-text-muted">{selectedCategory ? selectedCategory.name : 'No category'} • {difficulty}</span>
-          <span className="text-remembra-text-muted">{content.length.toLocaleString()} chars</span>
+      <footer className="flex-shrink-0 px-4 sm:px-6 safe-footer pt-2 pb-2.5 border-t border-white/10 bg-black/90 backdrop-blur-xl transition-smooth relative z-20 animate-slide-up" style={{ animationDelay: '320ms' }}>
+        <div className="flex items-center justify-between gap-3 mb-1.5 text-[10px] text-remembra-text-muted">
+          <span className="truncate">{selectedCategoryName} • {difficulty}</span>
+          <span>{content.length.toLocaleString()} chars</span>
         </div>
+
+        {formError && (
+          <div className="mb-2 rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1.5 text-[12px] text-red-300">
+            {formError}
+          </div>
+        )}
 
         <Button
           onClick={handleCreate}
-          disabled={isCreating}
-          className="w-full gradient-primary py-6 rounded-2xl text-white font-semibold text-base disabled:opacity-60"
+          disabled={isCreating || !isCreateReady}
+          className="w-full gradient-primary h-11 rounded-xl text-white font-semibold text-[13px] disabled:opacity-60 tap-ripple press-glow"
         >
           {isCreating ? (
             <>
-              <span className="mr-2 inline-block w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+              <span className="mr-2 inline-block w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
               Creating...
             </>
           ) : (
             <>
-              <Check size={18} className="mr-2" />
+              <Check size={14} className="mr-2" />
               Create Item
             </>
           )}

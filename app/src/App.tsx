@@ -1,12 +1,12 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useStore } from '@/store/useStore';
 import { AuthProvider } from '@/components/AuthProvider';
+import ErrorBoundary from '@/components/ErrorBoundary';
 import { Dashboard } from '@/screens/Dashboard';
 import { Calendar } from '@/screens/Calendar';
 import { Review } from '@/screens/Review';
 import { Library } from '@/screens/Library';
 import { Create } from '@/screens/Create';
-import { AIStudio } from '@/screens/AIStudio';
 import { Stats } from '@/screens/Stats';
 import { Profile } from '@/screens/Profile';
 import { DatabaseTest } from '@/screens/DatabaseTest';
@@ -190,8 +190,6 @@ function AppContent() {
         return <Library />;
       case 'create':
         return <Create />;
-      case 'ai-tools':
-        return <AIStudio />;
       case 'stats':
         return <Stats />;
       case 'profile':
@@ -237,9 +235,11 @@ function AppContent() {
 
 function App() {
   return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
+    <ErrorBoundary name="AppRoot">
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
 

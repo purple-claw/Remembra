@@ -1,20 +1,23 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { collection, doc, getDoc, getDocs } from 'firebase/firestore';
 import { db, requireAuth } from '@/lib/firebase';
+import { ErrorCode, createAppError, failure, success, type Result } from '@/lib/errors';
+import { logger } from '@/lib/logger';
 import type { StatsData, DaySchedule } from '@/types';
 
 const userCollection = (userId: string, name: string) => collection(db, 'users', userId, name);
 
 export const statsService = {
-  async getStatsData(): Promise<StatsData> {
-    const userId = await requireAuth();
+  async getStatsData(): Promise<Result<StatsData>> {
+    try {
+      const userId = await requireAuth();
 
-    const [itemsSnap, profileSnap, categoriesSnap, streakSnap] = await Promise.all([
-      getDocs(userCollection(userId, 'memory_items')),
-      getDoc(doc(db, 'profiles', userId)),
-      getDocs(userCollection(userId, 'categories')),
-      getDocs(userCollection(userId, 'streak_entries')),
-    ]);
+      const [itemsSnap, profileSnap, categoriesSnap, streakSnap] = await Promise.all([
+        getDocs(userCollection(userId, 'memory_items')),
+        getDoc(doc(db, 'profiles', userId)),
+        getDocs(userCollection(userId, 'categories')),
+        getDocs(userCollection(userId, 'streak_entries')),
+      ]);
 
     const itemsData = itemsSnap.docs.map((itemDoc) => itemDoc.data() as any);
     const categoriesData = categoriesSnap.docs.map((categoryDoc) => ({
@@ -29,7 +32,10 @@ export const statsService = {
     const totalItems = itemsData.length;
     const masteredItems = itemsData.filter((item) => item.status === 'completed').length;
 
-    const retentionCurve = await this.calculateRetentionCurve(userId);
+      const retentionCurveResult = await this.calculateRetentionCurve(userId);
+      if (!retentionCurveResult.success) {
+        return retentionCurveResult;
+      }
 
     const categoryBreakdown = categoriesData.map((category) => {
       const categoryItems = itemsData.filter((item) => item.category_id === category.id);
@@ -45,7 +51,10 @@ export const statsService = {
       };
     });
 
-    const dailyActivity = await this.calculateDailyActivity(userId);
+      const dailyActivityResult = await this.calculateDailyActivity(userId);
+      if (!dailyActivityResult.success) {
+        return dailyActivityResult;
+      }
 
     let longestStreak = 0;
     let currentStreakCount = 0;
@@ -68,22 +77,31 @@ export const statsService = {
       ? Math.round(((easyCount + goodCount * 0.7) / totalReviews) * 100)
       : 0;
 
-    return {
-      retention_curve: retentionCurve,
-      category_breakdown: categoryBreakdown,
-      daily_activity: dailyActivity,
-      total_items: totalItems,
-      mastered_items: masteredItems,
-      current_streak: profileData?.streak_count || 0,
-      longest_streak: longestStreak,
-      average_accuracy: averageAccuracy,
-    };
+      return success({
+        retention_curve: retentionCurveResult.data,
+        category_breakdown: categoryBreakdown,
+        daily_activity: dailyActivityResult.data,
+        total_items: totalItems,
+        mastered_items: masteredItems,
+        current_streak: profileData?.streak_count || 0,
+        longest_streak: longestStreak,
+        average_accuracy: averageAccuracy,
+      });
+    } catch (error) {
+      const appError = createAppError(error, {
+        code: ErrorCode.DATABASE_ERROR,
+        message: 'Failed to load stats data',
+      });
+      logger.error('statsService.getStatsData failed', appError as Error);
+      return failure(appError);
+    }
   },
 
-  async calculateRetentionCurve(userId: string): Promise<{ date: string; retention: number }[]> {
-    const reviewsSnap = await getDocs(userCollection(userId, 'reviews'));
-    const reviewsData = reviewsSnap.docs.map((reviewDoc) => reviewDoc.data() as any);
-    const curve: { date: string; retention: number }[] = [];
+  async calculateRetentionCurve(userId: string): Promise<Result<{ date: string; retention: number }[]>> {
+    try {
+      const reviewsSnap = await getDocs(userCollection(userId, 'reviews'));
+      const reviewsData = reviewsSnap.docs.map((reviewDoc) => reviewDoc.data() as any);
+      const curve: { date: string; retention: number }[] = [];
 
     for (let week = 0; week < 8; week++) {
       const startDate = new Date();
@@ -111,15 +129,24 @@ export const statsService = {
       });
     }
 
-    return curve;
+      return success(curve);
+    } catch (error) {
+      const appError = createAppError(error, {
+        code: ErrorCode.DATABASE_ERROR,
+        message: 'Failed to calculate retention curve',
+      });
+      logger.error('statsService.calculateRetentionCurve failed', appError as Error);
+      return failure(appError);
+    }
   },
 
-  async calculateDailyActivity(userId: string): Promise<{ date: string; count: number }[]> {
-    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const reviewsSnap = await getDocs(userCollection(userId, 'reviews'));
-    const reviewsData = reviewsSnap.docs.map((reviewDoc) => reviewDoc.data() as any);
+  async calculateDailyActivity(userId: string): Promise<Result<{ date: string; count: number }[]>> {
+    try {
+      const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      const reviewsSnap = await getDocs(userCollection(userId, 'reviews'));
+      const reviewsData = reviewsSnap.docs.map((reviewDoc) => reviewDoc.data() as any);
 
-    const activity: { date: string; count: number }[] = [];
+      const activity: { date: string; count: number }[] = [];
 
     for (let i = 6; i >= 0; i--) {
       const date = new Date();
@@ -135,11 +162,20 @@ export const statsService = {
       });
     }
 
-    return activity;
+      return success(activity);
+    } catch (error) {
+      const appError = createAppError(error, {
+        code: ErrorCode.DATABASE_ERROR,
+        message: 'Failed to calculate daily activity',
+      });
+      logger.error('statsService.calculateDailyActivity failed', appError as Error);
+      return failure(appError);
+    }
   },
 
-  async getCalendarData(startDate: string, endDate: string): Promise<DaySchedule[]> {
-    const userId = await requireAuth();
+  async getCalendarData(startDate: string, endDate: string): Promise<Result<DaySchedule[]>> {
+    try {
+      const userId = await requireAuth();
 
     const [itemsSnap, reviewsSnap] = await Promise.all([
       getDocs(userCollection(userId, 'memory_items')),
@@ -185,6 +221,14 @@ export const statsService = {
       }
     });
 
-    return Object.values(calendarMap).sort((a, b) => a.date.localeCompare(b.date));
+      return success(Object.values(calendarMap).sort((a, b) => a.date.localeCompare(b.date)));
+    } catch (error) {
+      const appError = createAppError(error, {
+        code: ErrorCode.DATABASE_ERROR,
+        message: 'Failed to load calendar data',
+      });
+      logger.error('statsService.getCalendarData failed', appError as Error);
+      return failure(appError);
+    }
   },
 };

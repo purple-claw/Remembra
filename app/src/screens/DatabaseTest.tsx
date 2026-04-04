@@ -100,8 +100,8 @@ export function DatabaseTest() {
   }, []);
 
   return (
-    <div className="bg-remembra-bg-primary screen-page px-4 sm:px-6 safe-top safe-bottom-nav sm:pb-8">
-      <div className="max-w-md mx-auto">
+    <div className="bg-remembra-bg-primary screen-page px-4 sm:px-6 safe-top safe-bottom-nav sm:pb-8 animate-screen-enter">
+      <div className="max-w-md mx-auto animate-slide-up">
         <h1 className="text-2xl font-bold text-remembra-text-primary mb-2">
           Database Connection Test
         </h1>
@@ -113,7 +113,7 @@ export function DatabaseTest() {
           {tests.map((test, idx) => (
             <div
               key={idx}
-              className="flex items-start gap-3 bg-remembra-bg-secondary p-4 rounded-xl border border-white/5"
+              className="widget-surface inertia-card smooth-surface stagger-enter flex items-start gap-3 bg-remembra-bg-secondary p-4 rounded-xl border border-white/5"
             >
               {test.status === 'pending' && (
                 <Loader2 size={20} className="text-remembra-text-muted animate-spin mt-0.5" />
@@ -140,7 +140,7 @@ export function DatabaseTest() {
           <Button
             onClick={runTests}
             disabled={running}
-            className="flex-1"
+            className="flex-1 tap-ripple press-glow"
           >
             {running ? (
               <>
@@ -154,12 +154,13 @@ export function DatabaseTest() {
           <Button
             variant="outline"
             onClick={() => window.location.href = '/'}
+            className="tap-ripple press-glow"
           >
             Back to App
           </Button>
         </div>
 
-        <div className="mt-8 p-4 bg-remembra-bg-tertiary rounded-xl">
+        <div className="widget-surface inertia-card smooth-surface stagger-enter mt-8 p-4 bg-remembra-bg-tertiary rounded-xl">
           <h2 className="text-sm font-semibold text-remembra-text-primary mb-2">
             Firebase Config
           </h2>

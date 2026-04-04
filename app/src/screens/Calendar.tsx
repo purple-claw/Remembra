@@ -22,6 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import type { MemoryItem, Performance, Review } from '@/types';
 import { getItemScheduleLabel } from '@/domain/review147';
+import { toFriendlyErrorMessage } from '@/lib/uiError';
 
 interface DayData {
   date: string;
@@ -73,8 +74,11 @@ export function Calendar() {
     const { start, end } = toMonthRange(currentDate);
     setIsLoadingLogs(true);
     try {
-      const reviews = await reviewService.getReviewsInRange(start, end);
-      setReviewMapByDate(buildReviewMap(reviews));
+      const reviewsResult = await reviewService.getReviewsInRange(start, end);
+      if (!reviewsResult.success) {
+        throw reviewsResult.error;
+      }
+      setReviewMapByDate(buildReviewMap(reviewsResult.data));
     } catch (error) {
       console.warn('Failed to load calendar review logs:', error);
     } finally {
@@ -179,17 +183,16 @@ export function Calendar() {
       setReviewingItemId(null);
       await refreshReviewLogs();
     } catch (error) {
-      console.error('Quick review failed:', error);
-      toast.error('Review failed. Please try again.');
+      toast.error(toFriendlyErrorMessage(error, 'Review failed. Please try again.'));
     }
   };
 
   const calendarDays = generateCalendarDays();
 
   return (
-    <div className="fixed inset-0 bg-black flex flex-col" style={{ height: '100vh', maxHeight: '100vh' }}>
+    <div className="fixed inset-0 bg-black flex flex-col animate-screen-enter" style={{ height: '100vh', maxHeight: '100vh' }}>
       {/* Fixed Header */}
-      <header className="flex-shrink-0 px-4 sm:px-5 safe-top pb-4 bg-black border-b border-white/5">
+      <header className="flex-shrink-0 px-4 sm:px-5 safe-top pb-4 bg-black border-b border-white/5 transition-smooth relative z-30 animate-slide-up">
         <h1 className="text-2xl font-bold text-remembra-text-primary mb-1">Calendar</h1>
         <p className="text-sm text-remembra-text-muted">Dynamic schedule with due + completed review tracking</p>
       </header>
@@ -197,7 +200,7 @@ export function Calendar() {
       {/* Scrollable Content */}
       <div
         data-nav-scroll="true"
-        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 sm:px-5 py-4 custom-scrollbar safe-bottom-nav"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 sm:px-5 py-4 custom-scrollbar safe-bottom-nav fluid-scroll-zone smooth-scroll-content relative z-0"
         style={{ WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' } as React.CSSProperties}
       >
       <Tabs defaultValue="month" className="w-full">
@@ -220,7 +223,7 @@ export function Calendar() {
           <div className="flex items-center justify-between mb-5">
             <button
               onClick={() => navigateMonth('prev')}
-              className="w-10 h-10 rounded-xl bg-remembra-bg-secondary flex items-center justify-center text-remembra-text-secondary hover:text-remembra-text-primary transition-smooth"
+              className="w-10 h-10 rounded-xl bg-remembra-bg-secondary flex items-center justify-center text-remembra-text-secondary hover:text-remembra-text-primary transition-smooth tap-ripple press-glow"
             >
               <ChevronLeft size={20} />
             </button>
@@ -229,7 +232,7 @@ export function Calendar() {
             </h2>
             <button
               onClick={() => navigateMonth('next')}
-              className="w-10 h-10 rounded-xl bg-remembra-bg-secondary flex items-center justify-center text-remembra-text-secondary hover:text-remembra-text-primary transition-smooth"
+              className="w-10 h-10 rounded-xl bg-remembra-bg-secondary flex items-center justify-center text-remembra-text-secondary hover:text-remembra-text-primary transition-smooth tap-ripple press-glow"
             >
               <ChevronRight size={20} />
             </button>
@@ -261,7 +264,7 @@ export function Calendar() {
                   onClick={() => setSelectedDate(new Date(currentDate.getFullYear(), currentDate.getMonth(), day))}
                   className={`
                     aspect-square rounded-xl flex flex-col items-center justify-center relative
-                    transition-smooth
+                    transition-smooth tap-ripple press-glow
                     ${selected
                       ? 'bg-remembra-accent-primary text-white'
                       : today
@@ -301,7 +304,7 @@ export function Calendar() {
               {selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
             </h3>
 
-            <div className="glass-card rounded-2xl p-4">
+            <div className="widget-surface inertia-card smooth-surface stagger-enter glass-card rounded-2xl p-4" style={{ animationDelay: '40ms' }}>
               <div className="flex items-center justify-between mb-3">
                 <p className="text-sm font-semibold text-remembra-text-primary">Due Reviews</p>
                 <p className="text-xs text-remembra-text-muted">{selectedDueItems.length}</p>
@@ -347,7 +350,7 @@ export function Calendar() {
                             {status === 'pending' && !isReviewing && (
                               <button
                                 onClick={() => setReviewingItemId(item.id)}
-                                className="px-3 py-1.5 rounded-lg gradient-primary text-white text-xs font-medium flex items-center gap-1"
+                                className="px-3 py-1.5 rounded-lg gradient-primary text-white text-xs font-medium flex items-center gap-1 tap-ripple press-glow"
                               >
                                 <Play size={12} />
                                 Review
@@ -368,13 +371,13 @@ export function Calendar() {
                             <div className="grid grid-cols-2 gap-2">
                               <button
                                 onClick={() => handleQuickReview(item, 'again')}
-                                className="bg-red-500 text-white px-3 py-2 rounded-lg text-xs font-medium hover:opacity-90 transition-opacity"
+                                className="bg-red-500 text-white px-3 py-2 rounded-lg text-xs font-medium hover:opacity-90 transition-opacity tap-ripple press-glow"
                               >
                                 Revise Again
                               </button>
                               <button
                                 onClick={() => handleQuickReview(item, 'good')}
-                                className="bg-green-500 text-white px-3 py-2 rounded-lg text-xs font-medium hover:opacity-90 transition-opacity"
+                                className="bg-green-500 text-white px-3 py-2 rounded-lg text-xs font-medium hover:opacity-90 transition-opacity tap-ripple press-glow"
                               >
                                 Done
                               </button>
@@ -394,7 +397,7 @@ export function Calendar() {
               )}
             </div>
 
-            <div className="glass-card rounded-2xl p-4">
+            <div className="widget-surface inertia-card smooth-surface stagger-enter glass-card rounded-2xl p-4" style={{ animationDelay: '80ms' }}>
               <div className="flex items-center justify-between mb-3">
                 <p className="text-sm font-semibold text-remembra-text-primary">Completed Reviews</p>
                 <p className="text-xs text-remembra-text-muted">{selectedCompletedLogs.length}</p>

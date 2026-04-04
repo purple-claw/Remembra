@@ -8,6 +8,8 @@ import {
   setDoc,
 } from 'firebase/firestore';
 import { db, requireAuth } from '@/lib/firebase';
+import { AppError, ErrorCode, createAppError, failure, success, type Result } from '@/lib/errors';
+import { logger } from '@/lib/logger';
 import type { Review, Performance } from '@/types';
 
 const userReviewsCollection = (userId: string) => collection(db, 'users', userId, 'reviews');
@@ -29,51 +31,79 @@ const sortByScheduledThenCreated = (a: any, b: any) => {
 };
 
 export const reviewService = {
-  async getReviews(): Promise<Review[]> {
-    const userId = await requireAuth();
-    const snapshot = await getDocs(userReviewsCollection(userId));
+  async getReviews(): Promise<Result<Review[]>> {
+    try {
+      const userId = await requireAuth();
+      const snapshot = await getDocs(userReviewsCollection(userId));
+      const reviews = snapshot.docs
+        .map((reviewDoc) => ({ id: reviewDoc.id, ...reviewDoc.data() }))
+        .sort(sortByScheduledThenCreated)
+        .map((review) => transformReview(review.id, review));
 
-    return snapshot.docs
-      .map((reviewDoc) => ({ id: reviewDoc.id, ...reviewDoc.data() }))
-      .sort(sortByScheduledThenCreated)
-      .map((review) => transformReview(review.id, review));
+      return success(reviews);
+    } catch (error) {
+      const appError = createAppError(error, {
+        code: ErrorCode.DATABASE_ERROR,
+        message: 'Failed to load reviews',
+      });
+      logger.error('reviewService.getReviews failed', appError as Error);
+      return failure(appError);
+    }
   },
 
-  async getReviewsByDate(date: string): Promise<Review[]> {
-    const reviews = await this.getReviews();
-    return reviews.filter((review) => review.scheduled_date === date);
+  async getReviewsByDate(date: string): Promise<Result<Review[]>> {
+    const reviewsResult = await this.getReviews();
+    if (!reviewsResult.success) {
+      return reviewsResult;
+    }
+    return success(reviewsResult.data.filter((review) => review.scheduled_date === date));
   },
 
-  async getReviewsInRange(startDate: string, endDate: string): Promise<Review[]> {
-    const reviews = await this.getReviews();
-    return reviews.filter((review) => review.scheduled_date >= startDate && review.scheduled_date <= endDate);
+  async getReviewsInRange(startDate: string, endDate: string): Promise<Result<Review[]>> {
+    const reviewsResult = await this.getReviews();
+    if (!reviewsResult.success) {
+      return reviewsResult;
+    }
+    return success(reviewsResult.data.filter((review) => review.scheduled_date >= startDate && review.scheduled_date <= endDate));
   },
 
-  async getPendingReviews(): Promise<Review[]> {
+  async getPendingReviews(): Promise<Result<Review[]>> {
     const today = new Date().toISOString().split('T')[0];
-    const reviews = await this.getReviews();
+    const reviewsResult = await this.getReviews();
+    if (!reviewsResult.success) {
+      return reviewsResult;
+    }
 
-    return reviews.filter((review) => review.scheduled_date <= today && !review.completed_date);
+    return success(reviewsResult.data.filter((review) => review.scheduled_date <= today && !review.completed_date));
   },
 
-  async createReview(review: Omit<Review, 'id'>): Promise<Review> {
-    const userId = await requireAuth();
-    const now = new Date().toISOString();
-    const reviewRef = doc(userReviewsCollection(userId));
+  async createReview(review: Omit<Review, 'id'>): Promise<Result<Review>> {
+    try {
+      const userId = await requireAuth();
+      const now = new Date().toISOString();
+      const reviewRef = doc(userReviewsCollection(userId));
 
-    const insertData = {
-      user_id: userId,
-      memory_item_id: review.memory_item_id,
-      scheduled_date: review.scheduled_date,
-      completed_date: review.completed_date || null,
-      performance: review.performance || null,
-      time_spent_seconds: review.time_spent_seconds || null,
-      notes: review.notes || null,
-      created_at: now,
-    };
+      const insertData = {
+        user_id: userId,
+        memory_item_id: review.memory_item_id,
+        scheduled_date: review.scheduled_date,
+        completed_date: review.completed_date || null,
+        performance: review.performance || null,
+        time_spent_seconds: review.time_spent_seconds || null,
+        notes: review.notes || null,
+        created_at: now,
+      };
 
-    await setDoc(reviewRef, insertData);
-    return transformReview(reviewRef.id, insertData);
+      await setDoc(reviewRef, insertData);
+      return success(transformReview(reviewRef.id, insertData));
+    } catch (error) {
+      const appError = createAppError(error, {
+        code: ErrorCode.DATABASE_ERROR,
+        message: 'Failed to create review',
+      });
+      logger.error('reviewService.createReview failed', appError as Error);
+      return failure(appError);
+    }
   },
 
   async completeReview(
@@ -81,34 +111,56 @@ export const reviewService = {
     performance: Performance,
     timeSpentSeconds: number,
     notes?: string,
-  ): Promise<Review> {
-    const userId = await requireAuth();
-    const reviewRef = doc(db, 'users', userId, 'reviews', id);
-    const current = await getDoc(reviewRef);
+  ): Promise<Result<Review>> {
+    try {
+      const userId = await requireAuth();
+      const reviewRef = doc(db, 'users', userId, 'reviews', id);
+      const current = await getDoc(reviewRef);
 
-    if (!current.exists()) {
-      throw new Error('Review not found');
+      if (!current.exists()) {
+        return failure(new AppError({
+          code: ErrorCode.NOT_FOUND,
+          message: 'Review not found',
+          statusCode: 404,
+        }));
+      }
+
+      const updateData = {
+        completed_date: new Date().toISOString(),
+        performance,
+        time_spent_seconds: timeSpentSeconds,
+        notes: notes || null,
+      };
+
+      await setDoc(reviewRef, updateData, { merge: true });
+
+      const updated = await getDoc(reviewRef);
+      if (!updated.exists()) {
+        return failure(new AppError({
+          code: ErrorCode.NOT_FOUND,
+          message: 'Review not found after update',
+          statusCode: 404,
+        }));
+      }
+
+      return success(transformReview(updated.id, updated.data()));
+    } catch (error) {
+      const appError = createAppError(error, {
+        code: ErrorCode.DATABASE_ERROR,
+        message: 'Failed to complete review',
+        context: { id },
+      });
+      logger.error('reviewService.completeReview failed', appError as Error, { id });
+      return failure(appError);
     }
-
-    const updateData = {
-      completed_date: new Date().toISOString(),
-      performance,
-      time_spent_seconds: timeSpentSeconds,
-      notes: notes || null,
-    };
-
-    await setDoc(reviewRef, updateData, { merge: true });
-
-    const updated = await getDoc(reviewRef);
-    if (!updated.exists()) {
-      throw new Error('Review not found after update');
-    }
-
-    return transformReview(updated.id, updated.data());
   },
 
-  async getReviewStats(startDate: string, endDate: string) {
-    const reviews = await this.getReviewsInRange(startDate, endDate);
+  async getReviewStats(startDate: string, endDate: string): Promise<Result<Record<string, { scheduled: number; completed: number }>>> {
+    const reviewsResult = await this.getReviewsInRange(startDate, endDate);
+    if (!reviewsResult.success) {
+      return reviewsResult;
+    }
+    const reviews = reviewsResult.data;
     const stats: Record<string, { scheduled: number; completed: number }> = {};
 
     for (const review of reviews) {
@@ -121,12 +173,23 @@ export const reviewService = {
       }
     }
 
-    return stats;
+    return success(stats);
   },
 
-  async deleteReview(id: string): Promise<void> {
-    const userId = await requireAuth();
-    const reviewRef = doc(db, 'users', userId, 'reviews', id);
-    await deleteDoc(reviewRef);
+  async deleteReview(id: string): Promise<Result<void>> {
+    try {
+      const userId = await requireAuth();
+      const reviewRef = doc(db, 'users', userId, 'reviews', id);
+      await deleteDoc(reviewRef);
+      return success(undefined);
+    } catch (error) {
+      const appError = createAppError(error, {
+        code: ErrorCode.DATABASE_ERROR,
+        message: 'Failed to delete review',
+        context: { id },
+      });
+      logger.error('reviewService.deleteReview failed', appError as Error, { id });
+      return failure(appError);
+    }
   },
 };

@@ -13,7 +13,6 @@ import {
   Eye,
   Flame,
   SkipForward,
-  Sparkles,
   StickyNote,
   Target,
   Timer,
@@ -34,6 +33,7 @@ interface SessionStats {
 }
 
 export function Review() {
+
   const {
     reviewQueue,
     currentReviewIndex,
@@ -191,8 +191,8 @@ export function Review() {
 
   if (!currentItem) {
     return (
-      <div className="min-h-[100dvh] bg-black flex items-center justify-center px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-[calc(env(safe-area-inset-bottom)+1.25rem)]">
-        <div className="w-full max-w-md glass-card rounded-3xl p-6 text-center">
+      <div className="min-h-[100dvh] bg-black flex items-center justify-center px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-[calc(env(safe-area-inset-bottom)+1.25rem)] animate-screen-enter">
+        <div className="widget-surface inertia-card smooth-surface stagger-enter w-full max-w-md glass-card rounded-3xl p-6 text-center">
           <div className="mx-auto w-20 h-20 rounded-2xl bg-gradient-to-br from-remembra-accent-primary/30 to-remembra-success/30 flex items-center justify-center mb-5">
             <Trophy size={34} className="text-remembra-accent-primary" />
           </div>
@@ -269,12 +269,12 @@ export function Review() {
   }
 
   return (
-    <div className="h-[100dvh] min-h-[100dvh] w-full overflow-hidden bg-black flex flex-col">
-      <header className="flex-shrink-0 px-4 sm:px-6 safe-top-compact pb-4 border-b border-white/10 bg-black/80 backdrop-blur-xl">
+    <div className="h-[100dvh] min-h-[100dvh] w-full overflow-hidden bg-black flex flex-col animate-screen-enter">
+      <header className="flex-shrink-0 px-4 sm:px-6 safe-top-compact pb-4 border-b border-white/10 bg-black/80 backdrop-blur-xl transition-smooth relative z-30 animate-slide-up">
         <div className="flex items-center justify-between gap-3 mb-3">
           <button
             onClick={handleExit}
-            className="w-10 h-10 rounded-xl border border-white/10 bg-remembra-bg-secondary flex items-center justify-center text-remembra-text-secondary"
+            className="w-10 h-10 rounded-xl border border-white/10 bg-remembra-bg-secondary flex items-center justify-center text-remembra-text-secondary tap-ripple press-glow"
           >
             <ArrowLeft size={18} />
           </button>
@@ -302,12 +302,12 @@ export function Review() {
 
       <div
         ref={scrollRef}
-        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 sm:px-6 py-4 pb-6 custom-scrollbar"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 sm:px-6 py-4 pb-6 custom-scrollbar fluid-scroll-zone smooth-scroll-content relative z-0"
         style={{ WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}
       >
         <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr),320px]">
           <section className="min-w-0 space-y-4">
-            <div className="glass-card rounded-2xl p-4">
+            <div className="widget-surface inertia-card smooth-surface stagger-enter glass-card rounded-2xl p-4" style={{ animationDelay: '40ms' }}>
               <div className="flex items-center gap-2 flex-wrap mb-3">
                 {category && (
                   <div className="px-3 py-1.5 rounded-lg text-xs border border-white/10 flex items-center gap-1.5" style={{ backgroundColor: `${category.color}15` }}>
@@ -372,7 +372,7 @@ export function Review() {
             </div>
 
             {showNotes && (
-              <div className="glass-card rounded-2xl border border-remembra-accent-primary/20 p-4">
+              <div className="widget-surface inertia-card smooth-surface stagger-enter glass-card rounded-2xl border border-remembra-accent-primary/20 p-4" style={{ animationDelay: '120ms' }}>
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-sm font-semibold text-remembra-accent-primary">Notes</p>
                   <button
@@ -392,21 +392,10 @@ export function Review() {
               </div>
             )}
 
-            {phase === 'revealed' && currentItem.ai_summary && (
-              <div className="rounded-2xl border border-remembra-accent-primary/20 bg-black/30 p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <Sparkles size={16} className="text-remembra-accent-primary" />
-                  <p className="text-sm font-semibold text-remembra-accent-primary">AI Summary</p>
-                </div>
-                <div className="prose prose-invert prose-sm max-w-none prose-p:text-remembra-text-secondary">
-                  <MarkdownRenderer content={currentItem.ai_summary} />
-                </div>
-              </div>
-            )}
           </section>
 
           <aside className="min-w-0 space-y-4 xl:sticky xl:top-4 h-fit">
-            <div className="glass-card rounded-2xl p-4">
+            <div className="widget-surface inertia-card smooth-surface stagger-enter glass-card rounded-2xl p-4" style={{ animationDelay: '80ms' }}>
               <p className="text-xs uppercase tracking-wider text-remembra-text-muted mb-3">Live Metrics</p>
               <div className="space-y-2">
                 <div className="flex items-center justify-between rounded-lg bg-black/25 border border-white/10 p-2.5">
@@ -441,7 +430,7 @@ export function Review() {
             </div>
 
             {phase === 'revealed' && currentItem.review_history.length > 0 && (
-              <div className="glass-card rounded-2xl p-4">
+              <div className="widget-surface inertia-card smooth-surface stagger-enter glass-card rounded-2xl p-4" style={{ animationDelay: '160ms' }}>
                 <div className="flex items-center justify-between mb-3">
                   <p className="text-xs uppercase tracking-wider text-remembra-text-muted">Recent Reviews</p>
                   <p className="text-xs text-remembra-text-muted">EF {currentItem.easiness_factor.toFixed(2)}</p>
@@ -465,11 +454,11 @@ export function Review() {
         </div>
       </div>
 
-      <div className="flex-shrink-0 px-4 sm:px-6 safe-footer pt-4 pb-3 border-t border-white/10 bg-black/90 backdrop-blur-xl">
+      <div className="flex-shrink-0 px-4 sm:px-6 safe-footer pt-4 pb-3 border-t border-white/10 bg-black/90 backdrop-blur-xl transition-smooth relative z-20 animate-slide-up">
         {phase === 'thinking' ? (
           <Button
             onClick={handleReveal}
-            className="w-full py-6 rounded-2xl text-white font-semibold text-base bg-gradient-to-r from-green-500 to-lime-500"
+            className="w-full py-6 rounded-2xl text-white font-semibold text-base bg-gradient-to-r from-green-500 to-lime-500 tap-ripple press-glow"
           >
             <Eye size={20} className="mr-2" />
             Complete Review
@@ -480,14 +469,14 @@ export function Review() {
             <div className="grid grid-cols-2 gap-3">
               <button
                 onClick={() => handleRate('again')}
-                className="rounded-2xl border-2 border-red-500/30 bg-red-500/10 py-4 text-center"
+                className="rounded-2xl border-2 border-red-500/30 bg-red-500/10 py-4 text-center tap-ripple press-glow"
               >
                 <p className="text-sm font-semibold text-red-400">Revise Again</p>
                 <p className="text-xs text-red-300/70 mt-1">Reset to Day 1</p>
               </button>
               <button
                 onClick={() => handleRate('good')}
-                className="rounded-2xl border-2 border-green-500/30 bg-green-500/10 py-4 text-center"
+                className="rounded-2xl border-2 border-green-500/30 bg-green-500/10 py-4 text-center tap-ripple press-glow"
               >
                 <p className="text-sm font-semibold text-green-400">Got It</p>
                 <p className="text-xs text-green-300/70 mt-1">Next Stage</p>

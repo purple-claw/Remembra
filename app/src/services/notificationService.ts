@@ -1,61 +1,81 @@
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import type { MemoryItem } from '@/types';
-import { aiService } from '@/services/aiService';
 import { auth, db } from '@/lib/firebase';
 import { doc, setDoc } from 'firebase/firestore';
+import { ErrorCode, createAppError, failure, success, type Result } from '@/lib/errors';
+import { logger } from '@/lib/logger';
 
 const REVIEW_CHANNEL_ID = 'review-reminders';
 const DAILY_CHANNEL_ID = 'daily-review-summary';
 const DAILY_SUMMARY_NOTIFICATION_ID = 147000;
 const ENABLE_PUSH_REGISTRATION = import.meta.env.VITE_ENABLE_PUSH_REGISTRATION === 'true';
 
+const buildReviewReminderMessage = (title: string) =>
+  `Time to review: ${title}. Active recall strengthens memory.`;
+
+const buildDailySummaryMessage = (dueCount: number) =>
+  `${dueCount} review${dueCount === 1 ? '' : 's'} due today. Small wins build momentum.`;
+
 class NotificationService {
   private isNative = Capacitor.isNativePlatform();
   private initialized = false;
 
-  async initialize(): Promise<boolean> {
-    if (!this.isNative) return false;
-    if (this.initialized) return true;
+  async initialize(): Promise<Result<boolean>> {
+    if (!this.isNative) return success(false);
+    if (this.initialized) return success(true);
 
     try {
       const localPermResult = await LocalNotifications.requestPermissions();
       if (localPermResult.display !== 'granted') {
-        console.warn('Local notification permissions not granted');
-        return false;
+        logger.warn('Local notification permissions not granted');
+        return success(false);
       }
 
-      await this.createChannel();
+      const channelResult = await this.createChannel();
+      if (!channelResult.success) {
+        return failure(channelResult.error);
+      }
 
       await LocalNotifications.addListener('localNotificationActionPerformed', (notification) => {
-        console.log('Local notification action:', notification);
+        logger.info('Local notification action performed', { notification });
       });
 
-      await this.setupPushRegistration();
+      const pushResult = await this.setupPushRegistration();
+      if (!pushResult.success) {
+        logger.warn('Push registration setup failed', { error: pushResult.error.message });
+      }
 
       this.initialized = true;
-      return true;
+      return success(true);
     } catch (error) {
-      console.error('Failed to initialize notifications:', error);
-      return false;
+      const appError = createAppError(error, {
+        code: ErrorCode.SERVICE_UNAVAILABLE,
+        message: 'Failed to initialize notifications',
+      });
+      logger.error('notificationService.initialize failed', appError as Error);
+      return failure(appError);
     }
   }
 
-  async scheduleReviewNotifications(item: MemoryItem): Promise<void> {
-    await this.scheduleNextReview(item);
+  async scheduleReviewNotifications(item: MemoryItem): Promise<Result<void>> {
+    return this.scheduleNextReview(item);
   }
 
-  async scheduleNextReview(item: MemoryItem): Promise<void> {
-    if (!this.isNative || item.status !== 'active' || !item.next_review_date) return;
+  async scheduleNextReview(item: MemoryItem): Promise<Result<void>> {
+    if (!this.isNative || item.status !== 'active' || !item.next_review_date) return success(undefined);
 
     try {
-      await this.cancelItemNotifications(item.id);
+      const cancelResult = await this.cancelItemNotifications(item.id);
+      if (!cancelResult.success) {
+        return cancelResult;
+      }
 
       const reviewDate = new Date(`${item.next_review_date}T09:00:00`);
-      if (reviewDate <= new Date()) return;
+      if (reviewDate <= new Date()) return success(undefined);
 
       const notifId = this.generateNotificationId(item.id, item.review_stage);
-      const body = await aiService.generateReviewReminderMessage(item.title, item.review_stage);
+      const body = buildReviewReminderMessage(item.title);
 
       await LocalNotifications.schedule({
         notifications: [{
@@ -67,13 +87,19 @@ class NotificationService {
           channelId: REVIEW_CHANNEL_ID,
         }],
       });
+      return success(undefined);
     } catch (error) {
-      console.error('Failed to schedule next review notification:', error);
+      const appError = createAppError(error, {
+        code: ErrorCode.SERVICE_UNAVAILABLE,
+        message: 'Failed to schedule next review notification',
+      });
+      logger.error('notificationService.scheduleNextReview failed', appError as Error);
+      return failure(appError);
     }
   }
 
-  async scheduleDailySummary(items: MemoryItem[], reminderTime: string = '09:00'): Promise<void> {
-    if (!this.isNative) return;
+  async scheduleDailySummary(items: MemoryItem[], reminderTime: string = '09:00'): Promise<Result<void>> {
+    if (!this.isNative) return success(undefined);
 
     try {
       const [hourStr, minuteStr] = reminderTime.split(':');
@@ -96,10 +122,7 @@ class NotificationService {
         )
         .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
-      const body = await aiService.generateDailyReminderSummary(
-        dueForReminderDay.map(i => i.title),
-        dueForReminderDay.length,
-      );
+      const body = buildDailySummaryMessage(dueForReminderDay.length);
 
       await LocalNotifications.cancel({ notifications: [{ id: DAILY_SUMMARY_NOTIFICATION_ID }] });
 
@@ -114,13 +137,19 @@ class NotificationService {
           channelId: DAILY_CHANNEL_ID,
         }],
       });
+      return success(undefined);
     } catch (error) {
-      console.error('Failed to schedule daily summary notification:', error);
+      const appError = createAppError(error, {
+        code: ErrorCode.SERVICE_UNAVAILABLE,
+        message: 'Failed to schedule daily summary notification',
+      });
+      logger.error('notificationService.scheduleDailySummary failed', appError as Error);
+      return failure(appError);
     }
   }
 
-  async cancelItemNotifications(itemId: string): Promise<void> {
-    if (!this.isNative) return;
+  async cancelItemNotifications(itemId: string): Promise<Result<void>> {
+    if (!this.isNative) return success(undefined);
 
     try {
       const pending = await LocalNotifications.getPending();
@@ -131,26 +160,38 @@ class NotificationService {
       if (itemNotifIds.length > 0) {
         await LocalNotifications.cancel({ notifications: itemNotifIds });
       }
+      return success(undefined);
     } catch (error) {
-      console.error('Failed to cancel notifications:', error);
+      const appError = createAppError(error, {
+        code: ErrorCode.SERVICE_UNAVAILABLE,
+        message: 'Failed to cancel item notifications',
+      });
+      logger.error('notificationService.cancelItemNotifications failed', appError as Error, { itemId });
+      return failure(appError);
     }
   }
 
-  async cancelAll(): Promise<void> {
-    if (!this.isNative) return;
+  async cancelAll(): Promise<Result<void>> {
+    if (!this.isNative) return success(undefined);
 
     try {
       const pending = await LocalNotifications.getPending();
       if (pending.notifications.length > 0) {
         await LocalNotifications.cancel({ notifications: pending.notifications.map(n => ({ id: n.id })) });
       }
+      return success(undefined);
     } catch (error) {
-      console.error('Failed to cancel all notifications:', error);
+      const appError = createAppError(error, {
+        code: ErrorCode.SERVICE_UNAVAILABLE,
+        message: 'Failed to cancel all notifications',
+      });
+      logger.error('notificationService.cancelAll failed', appError as Error);
+      return failure(appError);
     }
   }
 
-  async createChannel(): Promise<void> {
-    if (!this.isNative) return;
+  async createChannel(): Promise<Result<void>> {
+    if (!this.isNative) return success(undefined);
 
     try {
       await LocalNotifications.createChannel({
@@ -167,22 +208,28 @@ class NotificationService {
       await LocalNotifications.createChannel({
         id: DAILY_CHANNEL_ID,
         name: 'Daily Study Plan',
-        description: 'AI-powered daily summary reminders',
+        description: 'Daily summary reminders',
         importance: 3,
         visibility: 1,
         vibration: true,
         lights: true,
         lightColor: '#FF4500',
       });
+      return success(undefined);
     } catch (error) {
-      console.error('Failed to create notification channels:', error);
+      const appError = createAppError(error, {
+        code: ErrorCode.SERVICE_UNAVAILABLE,
+        message: 'Failed to create notification channels',
+      });
+      logger.error('notificationService.createChannel failed', appError as Error);
+      return failure(appError);
     }
   }
 
-  private async setupPushRegistration(): Promise<void> {
+  private async setupPushRegistration(): Promise<Result<void>> {
     if (!ENABLE_PUSH_REGISTRATION) {
-      console.info('Push registration skipped: set VITE_ENABLE_PUSH_REGISTRATION=true after Firebase setup');
-      return;
+      logger.info('Push registration skipped: set VITE_ENABLE_PUSH_REGISTRATION=true after Firebase setup');
+      return success(undefined);
     }
 
     try {
@@ -190,36 +237,45 @@ class NotificationService {
 
       const permStatus = await PushNotifications.requestPermissions();
       if (permStatus.receive !== 'granted') {
-        console.warn('Push permission not granted');
-        return;
+        logger.warn('Push permission not granted');
+        return success(undefined);
       }
 
       await PushNotifications.addListener('registration', async (token) => {
-        await this.persistPushToken(token.value);
+        const persistResult = await this.persistPushToken(token.value);
+        if (!persistResult.success) {
+          logger.warn('Failed to persist push token', { error: persistResult.error.message });
+        }
       });
 
       await PushNotifications.addListener('registrationError', (error) => {
-        console.warn('Push registration error:', error);
+        logger.warn('Push registration error', { error });
       });
 
       await PushNotifications.addListener('pushNotificationReceived', (notification) => {
-        console.log('Push notification received:', notification);
+        logger.info('Push notification received', { notification });
       });
 
       await PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
-        console.log('Push notification action performed:', notification);
+        logger.info('Push notification action performed', { notification });
       });
 
       await PushNotifications.register();
+      return success(undefined);
     } catch (error) {
-      console.warn('Push setup skipped (likely missing FCM config):', error);
+      const appError = createAppError(error, {
+        code: ErrorCode.SERVICE_UNAVAILABLE,
+        message: 'Push setup skipped (likely missing FCM config)',
+      });
+      logger.warn('notificationService.setupPushRegistration failed', { error: appError.message });
+      return failure(appError);
     }
   }
 
-  private async persistPushToken(token: string): Promise<void> {
+  private async persistPushToken(token: string): Promise<Result<void>> {
     try {
       const user = auth.currentUser;
-      if (!user) return;
+      if (!user) return success(undefined);
 
       const tokenDoc = doc(db, 'device_push_tokens', token);
       await setDoc(tokenDoc, {
@@ -234,8 +290,14 @@ class NotificationService {
         updated_at: new Date().toISOString(),
         last_seen_at: new Date().toISOString(),
       }, { merge: true });
+      return success(undefined);
     } catch (error) {
-      console.warn('Unable to persist push token:', error);
+      const appError = createAppError(error, {
+        code: ErrorCode.DATABASE_ERROR,
+        message: 'Unable to persist push token',
+      });
+      logger.warn('notificationService.persistPushToken failed', { error: appError.message });
+      return failure(appError);
     }
   }
 

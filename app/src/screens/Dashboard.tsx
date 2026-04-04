@@ -60,9 +60,9 @@ export function Dashboard() {
   };
 
   return (
-    <div className="h-[100dvh] min-h-[100dvh] w-full overflow-hidden bg-black flex flex-col">
+    <div className="h-[100dvh] min-h-[100dvh] w-full overflow-hidden bg-black flex flex-col animate-screen-enter">
       {/* Fixed Header */}
-      <header className="flex-shrink-0 border-b border-white/[0.06] bg-black/80 px-4 sm:px-5 safe-top pb-4 backdrop-blur-xl">
+      <header className="flex-shrink-0 border-b border-white/[0.06] bg-black/80 px-4 sm:px-5 safe-top pb-4 backdrop-blur-xl transition-smooth relative z-30 animate-slide-up">
         <div className="flex items-center justify-between gap-3">
           <button
             onClick={() => setScreen('profile')}
@@ -108,7 +108,7 @@ export function Dashboard() {
       {/* Scrollable Content */}
       <div
         data-nav-scroll="true"
-        className="min-h-0 flex-1 overflow-y-auto overscroll-contain custom-scrollbar"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain custom-scrollbar fluid-scroll-zone smooth-scroll-content relative z-0"
         style={{ WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}
       >
         {/* Ambient page glow blobs — make glassmorphism visible against dark bg */}
@@ -122,7 +122,7 @@ export function Dashboard() {
 
           {/* Hero Focus Card — liquid glass with ambient glow visible through it */}
           <section className="animate-slide-up">
-            <div className="liquid-glass relative overflow-hidden rounded-3xl p-5 sm:p-6">
+            <div className="widget-surface inertia-card smooth-surface stagger-enter liquid-glass relative overflow-hidden rounded-3xl p-5 sm:p-6" style={{ animationDelay: '40ms' }}>
 
               <div className="relative z-10 grid gap-5 lg:grid-cols-[minmax(0,1.5fr),minmax(0,1fr)]">
                 <div className="min-w-0">
@@ -167,21 +167,21 @@ export function Dashboard() {
 
                 {/* Mini stat chips — glass on glass layering */}
                 <div className="grid grid-cols-3 gap-2 lg:grid-cols-1">
-                  <div className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur-sm p-3.5">
+                  <div className="widget-surface inertia-card smooth-surface stagger-enter rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur-sm p-3.5" style={{ animationDelay: '80ms' }}>
                     <div className="mb-1.5 flex items-center gap-1.5 text-white/50">
                       <CalendarClock size={12} />
                       <span className="text-[10px] uppercase tracking-wide">Due</span>
                     </div>
                     <p className="text-xl font-bold text-white">{itemsDueToday.length}</p>
                   </div>
-                  <div className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur-sm p-3.5">
+                  <div className="widget-surface inertia-card smooth-surface stagger-enter rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur-sm p-3.5" style={{ animationDelay: '120ms' }}>
                     <div className="mb-1.5 flex items-center gap-1.5 text-white/50">
                       <CheckCircle2 size={12} />
                       <span className="text-[10px] uppercase tracking-wide">Done</span>
                     </div>
                     <p className="text-xl font-bold text-white">{completedToday}</p>
                   </div>
-                  <div className="rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur-sm p-3.5">
+                  <div className="widget-surface inertia-card smooth-surface stagger-enter rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur-sm p-3.5" style={{ animationDelay: '160ms' }}>
                     <div className="mb-1.5 flex items-center gap-1.5 text-white/50">
                       <Target size={12} />
                       <span className="text-[10px] uppercase tracking-wide">Goal</span>
@@ -277,7 +277,7 @@ export function Dashboard() {
                 ) : (
                   <div
                     onClick={() => setScreen('create')}
-                    className="glass-card flex-shrink-0 w-40 h-24 rounded-2xl p-4 flex flex-col items-center justify-center gap-2 cursor-pointer hover-lift"
+                    className="widget-surface inertia-card smooth-surface stagger-enter glass-card flex-shrink-0 w-40 h-24 rounded-2xl p-4 flex flex-col items-center justify-center gap-2 cursor-pointer hover-lift"
                   >
                     <Plus size={22} className="text-remembra-accent-primary" />
                     <span className="text-xs text-remembra-text-muted">Add Category</span>
@@ -314,7 +314,7 @@ export function Dashboard() {
                     <div
                       key={item.id}
                       onClick={() => setScreen('library')}
-                      className="liquid-glass-soft liquid-glass-interactive flex items-center gap-3.5 rounded-2xl p-3.5 cursor-pointer"
+                      className="widget-surface inertia-card smooth-surface stagger-enter liquid-glass-soft liquid-glass-interactive flex items-center gap-3.5 rounded-2xl p-3.5 cursor-pointer"
                       style={{ animationDelay: `${index * 40}ms`, WebkitTapHighlightColor: 'transparent' }}
                     >
                       <div className="w-9 h-9 flex-shrink-0 rounded-xl bg-remembra-accent-primary/10 flex items-center justify-center">

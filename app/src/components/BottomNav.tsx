@@ -1,6 +1,6 @@
 import { useStore } from '@/store/useStore';
 import type { Screen } from '@/store/useStore';
-import { Archive, BookOpen, Calendar, ChartLine, Home, PlusCircle, Sparkles, User } from 'lucide-react';
+import { Archive, BookOpen, Calendar, ChartLine, Home, PlusCircle, User } from 'lucide-react';
 
 interface NavItem {
   id: Screen;
@@ -13,7 +13,6 @@ const navItems: NavItem[] = [
   { id: 'calendar', icon: Calendar, label: 'Cal' },
   { id: 'library', icon: BookOpen, label: 'Library' },
   { id: 'create', icon: PlusCircle, label: 'Create' },
-  { id: 'ai-tools', icon: Sparkles, label: 'AI' },
   { id: 'persist', icon: Archive, label: 'Archive' },
   { id: 'stats', icon: ChartLine, label: 'Stats' },
   { id: 'profile', icon: User, label: 'Profile' },

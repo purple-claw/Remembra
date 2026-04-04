@@ -22,6 +22,8 @@ import {
   getNextRecurringDate,
   toIsoDate,
 } from '@/domain/review147';
+import { AppError, ErrorCode, type Result, createAppError, failure, success } from '@/lib/errors';
+import { logger } from '@/lib/logger';
 import { storageService } from './storageService';
 
 const userMemoryItemsCollection = (userId: string) => collection(db, 'users', userId, 'memory_items');
@@ -33,8 +35,6 @@ const nullableFields = new Set([
   'archive_at',
   'delete_at',
   'last_reviewed_at',
-  'ai_summary',
-  'ai_flowchart',
   'notes',
 ]);
 
@@ -116,9 +116,6 @@ const transformItem = (id: string, item: any): MemoryItem => {
     mastered_at: item.mastered_at || item.completed_at || undefined,
     archive_at: item.archive_at || undefined,
     delete_at: item.delete_at || undefined,
-    ai_summary: item.ai_summary || undefined,
-    ai_flowchart: item.ai_flowchart || undefined,
-    ai_bullet_points: Array.isArray(item.ai_bullet_points) ? item.ai_bullet_points : [],
     notes: item.notes || undefined,
     is_bookmarked: item.is_bookmarked ?? false,
     created_at: createdAt,
@@ -152,140 +149,198 @@ const sortByDueThenCreated = (a: MemoryItem, b: MemoryItem) => {
   return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
 };
 
+const toMemoryError = (
+  error: unknown,
+  message: string,
+  code: ErrorCode = ErrorCode.DATABASE_ERROR,
+  context?: Record<string, unknown>,
+) => createAppError(error, { code, message, context });
+
 export const memoryItemService = {
-  async getMemoryItems(): Promise<MemoryItem[]> {
-    const userId = await requireAuth();
-    const snapshot = await getDocs(userMemoryItemsCollection(userId));
+  async getMemoryItems(): Promise<Result<MemoryItem[]>> {
+    try {
+      const userId = await requireAuth();
+      const snapshot = await getDocs(userMemoryItemsCollection(userId));
+      const items = snapshot.docs
+        .map((itemDoc) => transformItem(itemDoc.id, itemDoc.data()))
+        .sort(sortByCreatedAtDesc);
 
-    return snapshot.docs
-      .map((itemDoc) => transformItem(itemDoc.id, itemDoc.data()))
-      .sort(sortByCreatedAtDesc);
-  },
-
-  async getMemoryItemById(id: string): Promise<MemoryItem | null> {
-    const userId = await requireAuth();
-    const itemRef = doc(db, 'users', userId, 'memory_items', id);
-    const itemSnap = await getDoc(itemRef);
-
-    if (!itemSnap.exists()) {
-      return null;
+      return success(items);
+    } catch (error) {
+      const appError = toMemoryError(error, 'Failed to load memory items');
+      logger.error('memoryItemService.getMemoryItems failed', appError as Error);
+      return failure(appError);
     }
-
-    return transformItem(itemSnap.id, itemSnap.data());
   },
 
-  async getItemsDueToday(): Promise<MemoryItem[]> {
+  async getMemoryItemById(id: string): Promise<Result<MemoryItem | null>> {
+    try {
+      if (!id?.trim()) {
+        throw new AppError({ code: ErrorCode.VALIDATION_ERROR, message: 'Memory item id is required', statusCode: 400 });
+      }
+
+      const userId = await requireAuth();
+      const itemRef = doc(db, 'users', userId, 'memory_items', id);
+      const itemSnap = await getDoc(itemRef);
+
+      if (!itemSnap.exists()) {
+        return success(null);
+      }
+
+      return success(transformItem(itemSnap.id, itemSnap.data()));
+    } catch (error) {
+      const appError = toMemoryError(error, 'Failed to load memory item', ErrorCode.DATABASE_ERROR, { id });
+      logger.error('memoryItemService.getMemoryItemById failed', appError as Error, { id });
+      return failure(appError);
+    }
+  },
+
+  async getItemsDueToday(): Promise<Result<MemoryItem[]>> {
     const today = new Date().toISOString().split('T')[0];
-    const items = await this.getMemoryItems();
-    return items
-      .filter((item) => item.status === 'active' && !!item.next_review_date && item.next_review_date <= today)
-      .sort(sortByDueThenCreated);
-  },
-
-  async getItemsByCategory(categoryId: string): Promise<MemoryItem[]> {
-    const items = await this.getMemoryItems();
-    return items
-      .filter((item) => item.category_id === categoryId)
-      .sort(sortByCreatedAtDesc);
-  },
-
-  async getItemsByStatus(status: ReviewStatus): Promise<MemoryItem[]> {
-    const items = await this.getMemoryItems();
-    return items
-      .filter((item) => item.status === status)
-      .sort(sortByCreatedAtDesc);
-  },
-
-  async createMemoryItem(item: Omit<MemoryItem, 'id' | 'user_id' | 'created_at' | 'updated_at'>): Promise<MemoryItem> {
-    const userId = await requireAuth();
-
-    const title = (item.title || '').trim();
-    const content = (item.content || '').trim();
-    if (!title) throw new Error('Title is required');
-    if (!content) throw new Error('Content is required');
-    if (title.length > 500) throw new Error('Title must be under 500 characters');
-
-    const now = new Date().toISOString();
-    const cycleStartedAt = toIsoDate(item.cycle_started_at || now);
-    const scheduleType: ScheduleType = item.schedule_type || 'spaced';
-    const recurringFrequency: RecurringFrequency = item.recurring_frequency || 'weekly';
-    const reviewStage = 0;
-    const nextReviewDate = scheduleType === 'recurring'
-      ? getNextRecurringDate(cycleStartedAt, recurringFrequency)
-      : getScheduledDateForStage(cycleStartedAt, reviewStage);
-
-    const collectionRef = userMemoryItemsCollection(userId);
-    const itemRef = doc(collectionRef);
-
-    const insertData = {
-      user_id: userId,
-      category_id: item.category_id,
-      title,
-      content,
-      content_type: item.content_type,
-      attachments: item.attachments || [],
-      difficulty: item.difficulty,
-      status: 'active',
-      schedule_type: scheduleType,
-      recurring_frequency: recurringFrequency,
-      next_review_date: nextReviewDate,
-      cycle_started_at: cycleStartedAt,
-      review_stage: reviewStage,
-      review_history: item.review_history || [],
-      ai_summary: item.ai_summary || null,
-      ai_flowchart: item.ai_flowchart || null,
-      ai_bullet_points: item.ai_bullet_points || [],
-      easiness_factor: item.easiness_factor ?? 2.5,
-      interval: 1,
-      repetition: 0,
-      lapse_count: item.lapse_count ?? 0,
-      review_template: '1-4-7',
-      current_stage_index: 0,
-      is_bookmarked: item.is_bookmarked ?? false,
-      notes: item.notes || null,
-      completed_at: null,
-      mastered_at: null,
-      archive_at: null,
-      delete_at: null,
-      last_reviewed_at: null,
-      created_at: now,
-      updated_at: now,
-    };
-
-    await setDoc(itemRef, insertData);
-    return transformItem(itemRef.id, insertData);
-  },
-
-  async updateMemoryItem(id: string, updates: Partial<MemoryItem>): Promise<MemoryItem> {
-    const userId = await requireAuth();
-    const itemRef = doc(db, 'users', userId, 'memory_items', id);
-    const itemSnap = await getDoc(itemRef);
-
-    if (!itemSnap.exists()) {
-      throw new Error('Memory item not found');
+    const itemsResult = await this.getMemoryItems();
+    if (!itemsResult.success) {
+      return itemsResult;
     }
 
-    const updateData = stripUndefinedForUpdate({
-      ...updates,
-      updated_at: new Date().toISOString(),
-    });
+    return success(
+      itemsResult.data
+        .filter((item) => item.status === 'active' && !!item.next_review_date && item.next_review_date <= today)
+        .sort(sortByDueThenCreated),
+    );
+  },
 
-    delete updateData.id;
-    delete updateData.user_id;
-    delete updateData.created_at;
-
-    if (updateData.next_review_date === '') {
-      updateData.next_review_date = '';
+  async getItemsByCategory(categoryId: string): Promise<Result<MemoryItem[]>> {
+    const itemsResult = await this.getMemoryItems();
+    if (!itemsResult.success) {
+      return itemsResult;
     }
 
-    await setDoc(itemRef, updateData, { merge: true });
-    const updatedSnap = await getDoc(itemRef);
+    return success(
+      itemsResult.data
+        .filter((item) => item.category_id === categoryId)
+        .sort(sortByCreatedAtDesc),
+    );
+  },
 
-    if (!updatedSnap.exists()) {
-      throw new Error('Memory item not found after update');
+  async getItemsByStatus(status: ReviewStatus): Promise<Result<MemoryItem[]>> {
+    const itemsResult = await this.getMemoryItems();
+    if (!itemsResult.success) {
+      return itemsResult;
     }
 
-    return transformItem(updatedSnap.id, updatedSnap.data());
+    return success(
+      itemsResult.data
+        .filter((item) => item.status === status)
+        .sort(sortByCreatedAtDesc),
+    );
+  },
+
+  async createMemoryItem(item: Omit<MemoryItem, 'id' | 'user_id' | 'created_at' | 'updated_at'>): Promise<Result<MemoryItem>> {
+    try {
+      const userId = await requireAuth();
+
+      const title = (item.title || '').trim();
+      const content = (item.content || '').trim();
+      if (!title) throw new AppError({ code: ErrorCode.VALIDATION_ERROR, message: 'Title is required', statusCode: 400 });
+      if (!content) throw new AppError({ code: ErrorCode.VALIDATION_ERROR, message: 'Content is required', statusCode: 400 });
+      if (title.length > 500) throw new AppError({ code: ErrorCode.VALIDATION_ERROR, message: 'Title must be under 500 characters', statusCode: 400 });
+
+      const now = new Date().toISOString();
+      const cycleStartedAt = toIsoDate(item.cycle_started_at || now);
+      const scheduleType: ScheduleType = item.schedule_type || 'spaced';
+      const recurringFrequency: RecurringFrequency = item.recurring_frequency || 'weekly';
+      const reviewStage = 0;
+      const nextReviewDate = scheduleType === 'recurring'
+        ? getNextRecurringDate(cycleStartedAt, recurringFrequency)
+        : getScheduledDateForStage(cycleStartedAt, reviewStage);
+
+      const collectionRef = userMemoryItemsCollection(userId);
+      const itemRef = doc(collectionRef);
+
+      const insertData = {
+        user_id: userId,
+        category_id: item.category_id,
+        title,
+        content,
+        content_type: item.content_type,
+        attachments: item.attachments || [],
+        difficulty: item.difficulty,
+        status: 'active',
+        schedule_type: scheduleType,
+        recurring_frequency: recurringFrequency,
+        next_review_date: nextReviewDate,
+        cycle_started_at: cycleStartedAt,
+        review_stage: reviewStage,
+        review_history: item.review_history || [],
+        easiness_factor: item.easiness_factor ?? 2.5,
+        interval: 1,
+        repetition: 0,
+        lapse_count: item.lapse_count ?? 0,
+        review_template: '1-4-7',
+        current_stage_index: 0,
+        is_bookmarked: item.is_bookmarked ?? false,
+        notes: item.notes || null,
+        completed_at: null,
+        mastered_at: null,
+        archive_at: null,
+        delete_at: null,
+        last_reviewed_at: null,
+        created_at: now,
+        updated_at: now,
+      };
+
+      await setDoc(itemRef, insertData);
+      const newItem = transformItem(itemRef.id, insertData);
+      logger.info('memoryItemService.createMemoryItem succeeded', { userId, id: itemRef.id });
+      return success(newItem);
+    } catch (error) {
+      const appError = toMemoryError(error, 'Failed to create memory item');
+      logger.error('memoryItemService.createMemoryItem failed', appError as Error);
+      return failure(appError);
+    }
+  },
+
+  async updateMemoryItem(id: string, updates: Partial<MemoryItem>): Promise<Result<MemoryItem>> {
+    try {
+      if (!id?.trim()) {
+        throw new AppError({ code: ErrorCode.VALIDATION_ERROR, message: 'Memory item id is required', statusCode: 400 });
+      }
+
+      const userId = await requireAuth();
+      const itemRef = doc(db, 'users', userId, 'memory_items', id);
+      const itemSnap = await getDoc(itemRef);
+
+      if (!itemSnap.exists()) {
+        throw new AppError({ code: ErrorCode.NOT_FOUND, message: 'Memory item not found', statusCode: 404 });
+      }
+
+      const updateData = stripUndefinedForUpdate({
+        ...updates,
+        updated_at: new Date().toISOString(),
+      });
+
+      delete updateData.id;
+      delete updateData.user_id;
+      delete updateData.created_at;
+
+      if (updateData.next_review_date === '') {
+        updateData.next_review_date = '';
+      }
+
+      await setDoc(itemRef, updateData, { merge: true });
+      const updatedSnap = await getDoc(itemRef);
+
+      if (!updatedSnap.exists()) {
+        throw new AppError({ code: ErrorCode.NOT_FOUND, message: 'Memory item not found after update', statusCode: 404 });
+      }
+
+      const updatedItem = transformItem(updatedSnap.id, updatedSnap.data());
+      return success(updatedItem);
+    } catch (error) {
+      const appError = toMemoryError(error, 'Failed to update memory item', ErrorCode.DATABASE_ERROR, { id });
+      logger.error('memoryItemService.updateMemoryItem failed', appError as Error, { id });
+      return failure(appError);
+    }
   },
 
   async completeReview(
@@ -293,48 +348,116 @@ export const memoryItemService = {
     performance: Performance,
     timeSpentSeconds?: number,
     scheduledDateOverride?: string,
-  ): Promise<MemoryItem | null> {
-    const userId = await requireAuth();
-    const item = await this.getMemoryItemById(id);
-    if (!item) throw new Error('Memory item not found');
+  ): Promise<Result<MemoryItem | null>> {
+    try {
+      const userId = await requireAuth();
+      const itemResult = await this.getMemoryItemById(id);
+      if (!itemResult.success) {
+        return itemResult;
+      }
+      const item = itemResult.data;
+      if (!item) {
+        return failure(new AppError({ code: ErrorCode.NOT_FOUND, message: 'Memory item not found', statusCode: 404 }));
+      }
 
-    const result = processReviewCompletion(item, performance);
-    const now = new Date().toISOString();
-    const eventDate = new Date().toISOString().split('T')[0];
+      const result = processReviewCompletion(item, performance);
+      const now = new Date().toISOString();
+      const eventDate = new Date().toISOString().split('T')[0];
 
-    if (item.schedule_type === 'recurring') {
-      const recurringFrequency: RecurringFrequency = item.recurring_frequency || 'weekly';
-      const nextReviewDate = getNextRecurringDate(eventDate, recurringFrequency);
+      if (item.schedule_type === 'recurring') {
+        const recurringFrequency: RecurringFrequency = item.recurring_frequency || 'weekly';
+        const nextReviewDate = getNextRecurringDate(eventDate, recurringFrequency);
 
-      const recurringHistory: ReviewHistory[] = [
+        const recurringHistory: ReviewHistory[] = [
+          ...item.review_history,
+          {
+            date: eventDate,
+            performance,
+            time_spent_seconds: timeSpentSeconds ?? 0,
+            stage_index: item.review_stage,
+            interval: recurringFrequency === 'daily' ? 1 : recurringFrequency === 'weekly' ? 7 : 30,
+            easiness_factor: item.easiness_factor,
+          },
+        ];
+
+        const recurringItemResult = await this.updateMemoryItem(id, {
+          status: 'active',
+          schedule_type: 'recurring',
+          recurring_frequency: recurringFrequency,
+          next_review_date: nextReviewDate,
+          last_reviewed_at: now,
+          review_history: recurringHistory,
+          review_template: `recurring-${recurringFrequency}`,
+        });
+
+        if (!recurringItemResult.success) {
+          return recurringItemResult;
+        }
+
+        const recurringReviewRef = doc(userReviewsCollection(userId));
+        const recurringScheduledDate = scheduledDateOverride || item.next_review_date || eventDate;
+
+        await setDoc(recurringReviewRef, {
+          user_id: userId,
+          memory_item_id: id,
+          scheduled_date: recurringScheduledDate,
+          completed_date: now,
+          performance,
+          time_spent_seconds: timeSpentSeconds ?? 0,
+          notes: null,
+          created_at: now,
+        });
+
+        return success(recurringItemResult.data);
+      }
+
+      const newReviewHistory: ReviewHistory[] = [
         ...item.review_history,
         {
           date: eventDate,
           performance,
           time_spent_seconds: timeSpentSeconds ?? 0,
-          stage_index: item.review_stage,
-          interval: recurringFrequency === 'daily' ? 1 : recurringFrequency === 'weekly' ? 7 : 30,
-          easiness_factor: item.easiness_factor,
+          stage_index: result.repetition,
+          interval: result.interval,
+          easiness_factor: result.easinessFactor,
         },
       ];
 
-      const recurringItem = await this.updateMemoryItem(id, {
-        status: 'active',
-        schedule_type: 'recurring',
-        recurring_frequency: recurringFrequency,
-        next_review_date: nextReviewDate,
+      const updates: Partial<MemoryItem> = {
+        easiness_factor: result.easinessFactor,
+        interval: result.interval,
+        repetition: result.repetition,
+        lapse_count: result.newLapseCount,
+        current_stage_index: result.repetition,
+        review_stage: result.repetition,
+        cycle_started_at: result.cycleStartedAt,
+        next_review_date: result.nextReviewDate,
+        status: result.nextStatus,
         last_reviewed_at: now,
-        review_history: recurringHistory,
-        review_template: `recurring-${recurringFrequency}`,
-      });
+        review_history: newReviewHistory,
+        review_template: '1-4-7',
+        completed_at: result.completedAt,
+        mastered_at: result.completedAt,
+        archive_at: undefined,
+        delete_at: result.deleteAt,
+      };
 
-      const recurringReviewRef = doc(userReviewsCollection(userId));
-      const recurringScheduledDate = scheduledDateOverride || item.next_review_date || eventDate;
+      if (result.isGraduated) {
+        updates.next_review_date = '';
+      }
 
-      await setDoc(recurringReviewRef, {
+      const updatedItemResult = await this.updateMemoryItem(id, updates);
+      if (!updatedItemResult.success) {
+        return updatedItemResult;
+      }
+
+      const reviewRef = doc(userReviewsCollection(userId));
+      const scheduledDate = scheduledDateOverride || item.next_review_date || eventDate;
+
+      await setDoc(reviewRef, {
         user_id: userId,
         memory_item_id: id,
-        scheduled_date: recurringScheduledDate,
+        scheduled_date: scheduledDate,
         completed_date: now,
         performance,
         time_spent_seconds: timeSpentSeconds ?? 0,
@@ -342,71 +465,31 @@ export const memoryItemService = {
         created_at: now,
       });
 
-      return recurringItem;
-    }
-
-    const newReviewHistory: ReviewHistory[] = [
-      ...item.review_history,
-      {
-        date: eventDate,
+      return success(updatedItemResult.data);
+    } catch (error) {
+      const appError = toMemoryError(error, 'Failed to complete review', ErrorCode.DATABASE_ERROR, {
+        id,
         performance,
-        time_spent_seconds: timeSpentSeconds ?? 0,
-        stage_index: result.repetition,
-        interval: result.interval,
-        easiness_factor: result.easinessFactor,
-      },
-    ];
-
-    const updates: Partial<MemoryItem> = {
-      easiness_factor: result.easinessFactor,
-      interval: result.interval,
-      repetition: result.repetition,
-      lapse_count: result.newLapseCount,
-      current_stage_index: result.repetition,
-      review_stage: result.repetition,
-      cycle_started_at: result.cycleStartedAt,
-      next_review_date: result.nextReviewDate,
-      status: result.nextStatus,
-      last_reviewed_at: now,
-      review_history: newReviewHistory,
-      review_template: '1-4-7',
-      completed_at: result.completedAt,
-      mastered_at: result.completedAt,
-      archive_at: undefined,
-      delete_at: result.deleteAt,
-    };
-
-    if (result.isGraduated) {
-      updates.next_review_date = '';
+      });
+      logger.error('memoryItemService.completeReview failed', appError as Error, { id, performance });
+      return failure(appError);
     }
-
-    const updatedItem = await this.updateMemoryItem(id, updates);
-
-    const reviewRef = doc(userReviewsCollection(userId));
-    const scheduledDate = scheduledDateOverride || item.next_review_date || eventDate;
-
-    await setDoc(reviewRef, {
-      user_id: userId,
-      memory_item_id: id,
-      scheduled_date: scheduledDate,
-      completed_date: now,
-      performance,
-      time_spent_seconds: timeSpentSeconds ?? 0,
-      notes: null,
-      created_at: now,
-    });
-
-    return updatedItem;
   },
 
-  async processLifecycle(): Promise<{ archived: number; deleted: number }> {
+  async processLifecycle(): Promise<Result<{ archived: number; deleted: number }>> {
     // Intentionally no-op: keep user items indefinitely unless manually deleted.
-    return { archived: 0, deleted: 0 };
+    return success({ archived: 0, deleted: 0 });
   },
 
-  async scheduleThirtyDayReview(id: string): Promise<MemoryItem> {
-    const item = await this.getMemoryItemById(id);
-    if (!item) throw new Error('Memory item not found');
+  async scheduleThirtyDayReview(id: string): Promise<Result<MemoryItem>> {
+    const itemResult = await this.getMemoryItemById(id);
+    if (!itemResult.success) {
+      return itemResult;
+    }
+    const item = itemResult.data;
+    if (!item) {
+      return failure(new AppError({ code: ErrorCode.NOT_FOUND, message: 'Memory item not found', statusCode: 404 }));
+    }
 
     const cycleStartedAt = toIsoDate(item.cycle_started_at || item.created_at || new Date());
     const nextReviewDate = getScheduledDateForStage(cycleStartedAt, THIRTY_DAY_STAGE);
@@ -426,7 +509,7 @@ export const memoryItemService = {
     });
   },
 
-  async completeTopic(id: string): Promise<MemoryItem> {
+  async completeTopic(id: string): Promise<Result<MemoryItem>> {
     const completedAt = new Date().toISOString();
 
     return this.updateMemoryItem(id, {
@@ -443,35 +526,58 @@ export const memoryItemService = {
     });
   },
 
-  async deleteMemoryItem(id: string): Promise<void> {
-    const userId = await requireAuth();
-    const item = await this.getMemoryItemById(id);
+  async deleteMemoryItem(id: string): Promise<Result<void>> {
+    try {
+      const userId = await requireAuth();
+      const itemResult = await this.getMemoryItemById(id);
+      if (!itemResult.success) {
+        return itemResult;
+      }
 
-    await deleteDoc(doc(db, 'users', userId, 'memory_items', id));
+      await deleteDoc(doc(db, 'users', userId, 'memory_items', id));
 
-    if (item?.attachments?.length) {
-      await storageService.removeAttachments(item.attachments);
+      if (itemResult.data?.attachments?.length) {
+        const removeResult = await storageService.removeAttachments(itemResult.data.attachments);
+        if (!removeResult.success) {
+          logger.warn('memoryItemService.deleteMemoryItem attachment cleanup failed', {
+            id,
+            error: removeResult.error.message,
+          });
+        }
+      }
+
+      return success(undefined);
+    } catch (error) {
+      const appError = toMemoryError(error, 'Failed to delete memory item', ErrorCode.DATABASE_ERROR, { id });
+      logger.error('memoryItemService.deleteMemoryItem failed', appError as Error, { id });
+      return failure(appError);
     }
   },
 
-  async archiveMemoryItem(id: string): Promise<MemoryItem> {
+  async archiveMemoryItem(id: string): Promise<Result<MemoryItem>> {
     return this.updateMemoryItem(id, { status: 'archived' });
   },
 
-  async restoreMemoryItem(id: string): Promise<MemoryItem> {
+  async restoreMemoryItem(id: string): Promise<Result<MemoryItem>> {
     return this.updateMemoryItem(id, { status: 'active' });
   },
 
-  async searchMemoryItems(queryText: string): Promise<MemoryItem[]> {
+  async searchMemoryItems(queryText: string): Promise<Result<MemoryItem[]>> {
     const normalized = queryText.trim().toLowerCase();
-    if (!normalized) return [];
+    if (!normalized) return success([]);
 
-    const items = await this.getMemoryItems();
-    return items
-      .filter((item) => {
-        const searchable = `${item.title}\n${item.content}`.toLowerCase();
-        return searchable.includes(normalized);
-      })
-      .slice(0, 100);
+    const itemsResult = await this.getMemoryItems();
+    if (!itemsResult.success) {
+      return itemsResult;
+    }
+
+    return success(
+      itemsResult.data
+        .filter((item) => {
+          const searchable = `${item.title}\n${item.content}`.toLowerCase();
+          return searchable.includes(normalized);
+        })
+        .slice(0, 100),
+    );
   },
 };

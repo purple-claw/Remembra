@@ -60,7 +60,6 @@ export interface NotificationPreferences {
   reminder_time: string;
   streak_reminder: boolean;
   achievement_notifications: boolean;
-  ai_insights: boolean;
 }
 
 export interface Category {
@@ -124,10 +123,7 @@ export interface MemoryItem {
   mastered_at?: string;
   archive_at?: string;
   delete_at?: string;
-  // ─── AI & Notes ───
-  ai_summary?: string;
-  ai_flowchart?: string;
-  ai_bullet_points?: string[];
+  // ─── Notes ───
   notes?: string;
   is_bookmarked?: boolean;
   created_at: string;
@@ -176,14 +172,6 @@ export interface Achievement {
   unlocked_at?: string;
   progress: number;
   max_progress: number;
-}
-
-export interface AITool {
-  id: string;
-  name: string;
-  description: string;
-  icon: string;
-  color: string;
 }
 
 export interface QuizQuestion {

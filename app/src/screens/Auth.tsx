@@ -143,9 +143,9 @@ export function Auth() {
   const handleGoogleSignIn = async () => {
     setIsLoading(true);
     try {
-      const { error } = await authService.signInWithProvider('google');
-      if (error) {
-        toast.error('Google sign in failed: ' + error.message);
+      const result = await authService.signInWithProvider('google');
+      if (!result.success) {
+        toast.error('Google sign in failed: ' + result.error.message);
       }
     } catch {
       toast.error('Failed to start Google sign in');
@@ -162,9 +162,9 @@ export function Auth() {
     }
     setIsLoading(true);
     try {
-      const { error } = await authService.resetPassword(resetEmail);
-      if (error) {
-        toast.error(error.message);
+      const result = await authService.resetPassword(resetEmail);
+      if (!result.success) {
+        toast.error(result.error.message);
       } else {
         setResetSent(true);
         toast.success('Password reset email sent!');
@@ -188,9 +188,9 @@ export function Auth() {
     }
     setIsLoading(true);
     try {
-      const { error } = await authService.updatePassword(newPassword);
-      if (error) {
-        toast.error(error.message);
+      const result = await authService.updatePassword(newPassword);
+      if (!result.success) {
+        toast.error(result.error.message);
       } else {
         toast.success('Password updated successfully!');
         setScreen('dashboard');
@@ -214,7 +214,7 @@ export function Auth() {
   // Forgot Password View
   if (view === 'forgot-password') {
     return (
-      <div className="min-h-[100dvh] bg-remembra-bg-primary flex flex-col">
+      <div className="min-h-[100dvh] bg-remembra-bg-primary flex flex-col animate-screen-enter">
         <div className="flex-1 flex items-center justify-center px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-[calc(env(safe-area-inset-bottom)+1.25rem)]">
           <Card className="w-full max-w-md bg-remembra-bg-secondary border-white/5">
             <CardContent className="pt-8 pb-8 px-6">
