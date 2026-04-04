@@ -265,6 +265,7 @@ export function Dashboard() {
                       key={category.id}
                       category={category}
                       style={{ animationDelay: `${index * 50}ms` }}
+                      onClick={() => setScreen('library')}
                     />
                   ))
                 ) : (

@@ -37,16 +37,21 @@ export function Library() {
   const [viewMode, setViewMode] = useState<'grid' | 'list' | 'masonry'>('grid');
   const [statusFilter, setStatusFilter] = useState<ReviewStatus | 'all'>('all');
   const [selectedCategory, setSelectedCategory] = useState<string | 'all'>('all');
-  const [selectedItem, setSelectedItem] = useState<MemoryItem | null>(null);
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(INITIAL_RENDER_COUNT);
   const [persistingItemId, setPersistingItemId] = useState<string | null>(null);
+
+  const selectedItem = useMemo(
+    () => (selectedItemId ? memoryItems.find((memoryItem) => memoryItem.id === selectedItemId) ?? null : null),
+    [memoryItems, selectedItemId],
+  );
 
   const handlePersistItem = async (e: React.MouseEvent, item: MemoryItem) => {
     e.stopPropagation();
     if (persistingItemId) return;
     setPersistingItemId(item.id);
     try {
-      await saveSession([item], categories, item.title);
+      await saveSession([item], categories, item.title || undefined);
       toast.success('Saved to Persist');
     } catch {
       toast.error('Failed to save to Persist');
@@ -145,7 +150,7 @@ export function Library() {
     <div className="h-[100dvh] min-h-[100dvh] w-full overflow-hidden bg-black flex flex-col">
       {/* Item Detail Modal */}
       {selectedItem && (
-        <ItemDetail item={selectedItem} onClose={() => setSelectedItem(null)} />
+        <ItemDetail item={selectedItem} onClose={() => setSelectedItemId(null)} />
       )}
       
       {/* Fixed Header */}
@@ -270,7 +275,7 @@ export function Library() {
               return (
                 <div 
                   key={item.id}
-                  onClick={() => setSelectedItem(item)}
+                  onClick={() => setSelectedItemId(item.id)}
                   className="glass-card rounded-2xl p-4 flex items-center gap-4 active:scale-[0.98] transition-transform cursor-pointer"
                   style={{ animationDelay: `${index * 18}ms`, WebkitTapHighlightColor: 'transparent' }}
                 >
@@ -317,7 +322,7 @@ export function Library() {
             return (
               <div 
                 key={item.id}
-                onClick={() => setSelectedItem(item)}
+                onClick={() => setSelectedItemId(item.id)}
                 className="glass-card rounded-2xl p-4 active:scale-[0.95] transition-transform cursor-pointer"
                 style={{ animationDelay: `${index * 18}ms`, WebkitTapHighlightColor: 'transparent' }}
               >

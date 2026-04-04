@@ -53,8 +53,38 @@ export interface PersistRecordFull extends Omit<PersistRecord, 'compressedData'>
 const DB_NAME = 'remembra-persist';
 const DB_VERSION = 1;
 const STORE_NAME = 'sessions';
+const FALLBACK_STORAGE_KEY = 'remembra-persist-fallback-sessions';
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
+
+function canUseIndexedDb(): boolean {
+  return typeof window !== 'undefined' && typeof window.indexedDB !== 'undefined';
+}
+
+type PersistStoredRecord = PersistRecord & { id: number };
+
+function readFallbackRecords(): PersistStoredRecord[] {
+  if (typeof window === 'undefined') return [];
+
+  try {
+    const raw = window.localStorage.getItem(FALLBACK_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((record): record is PersistStoredRecord => typeof record?.id === 'number');
+  } catch {
+    return [];
+  }
+}
+
+function writeFallbackRecords(records: PersistStoredRecord[]): void {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(FALLBACK_STORAGE_KEY, JSON.stringify(records));
+}
+
+function sortNewestFirst(records: PersistRecord[]): PersistRecord[] {
+  return records.sort((a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime());
+}
 
 function getDb(): Promise<IDBPDatabase> {
   if (!dbPromise) {
@@ -135,7 +165,6 @@ export async function saveSession(
   categories: Category[],
   customLabel?: string,
 ): Promise<number> {
-  const db = await getDb();
   const buckets = buildBuckets(reviewedItems, categories);
   const compressedData = compress(buckets);
 
@@ -146,13 +175,27 @@ export async function saveSession(
     compressedData,
   };
 
-  // `add` returns the auto-incremented key
-  const id = await db.add(STORE_NAME, record);
+  if (canUseIndexedDb()) {
+    try {
+      const db = await getDb();
+      // `add` returns the auto-incremented key
+      const id = await db.add(STORE_NAME, record);
 
-  // Prune old sessions in the background (fire-and-forget)
-  pruneOldSessions(50).catch((err) => console.warn('[Persist] prune failed', err));
+      // Prune old sessions in the background (fire-and-forget)
+      pruneOldSessions(50).catch((err) => console.warn('[Persist] prune failed', err));
 
-  return id as number;
+      return id as number;
+    } catch (err) {
+      console.warn('[Persist] IndexedDB save failed, using local fallback', err);
+    }
+  }
+
+  const existing = readFallbackRecords();
+  const nextId = existing.reduce((max, current) => Math.max(max, current.id), 0) + 1;
+  existing.push({ ...record, id: nextId });
+  writeFallbackRecords(existing);
+  await pruneOldSessions(50);
+  return nextId;
 }
 
 // ─── Auto-prune ──────────────────────────────────────────────────────────────
@@ -162,35 +205,66 @@ export async function saveSession(
  * Called automatically inside saveSession.
  */
 export async function pruneOldSessions(maxToKeep = 50): Promise<void> {
-  const db = await getDb();
-  const all = (await db.getAll(STORE_NAME)) as PersistRecord[];
-  if (all.length <= maxToKeep) return;
+  if (canUseIndexedDb()) {
+    try {
+      const db = await getDb();
+      const all = (await db.getAll(STORE_NAME)) as PersistRecord[];
+      if (all.length <= maxToKeep) return;
 
-  // Sort oldest-first, then delete the tail beyond the limit
+      // Sort oldest-first, then delete the tail beyond the limit
+      all.sort((a, b) => new Date(a.savedAt).getTime() - new Date(b.savedAt).getTime());
+      const toDelete = all.slice(0, all.length - maxToKeep);
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      await Promise.all(toDelete.map((r) => tx.store.delete(r.id!)));
+      await tx.done;
+      return;
+    } catch (err) {
+      console.warn('[Persist] IndexedDB prune failed, using local fallback', err);
+    }
+  }
+
+  const all = readFallbackRecords();
+  if (all.length <= maxToKeep) return;
   all.sort((a, b) => new Date(a.savedAt).getTime() - new Date(b.savedAt).getTime());
-  const toDelete = all.slice(0, all.length - maxToKeep);
-  const tx = db.transaction(STORE_NAME, 'readwrite');
-  await Promise.all(toDelete.map((r) => tx.store.delete(r.id!)));
-  await tx.done;
+  writeFallbackRecords(all.slice(all.length - maxToKeep));
 }
 
 /**
  * Return all persisted sessions, most recent first (metadata only, not decompressed).
  */
 export async function listSessions(): Promise<PersistRecord[]> {
-  const db = await getDb();
-  const all = (await db.getAll(STORE_NAME)) as PersistRecord[];
-  return all.sort((a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime());
+  if (canUseIndexedDb()) {
+    try {
+      const db = await getDb();
+      const all = (await db.getAll(STORE_NAME)) as PersistRecord[];
+      return sortNewestFirst(all);
+    } catch (err) {
+      console.warn('[Persist] IndexedDB list failed, using local fallback', err);
+    }
+  }
+
+  return sortNewestFirst(readFallbackRecords());
 }
 
 /**
  * Return one session, fully decompressed.
  */
 export async function getSession(id: number): Promise<PersistRecordFull | null> {
-  const db = await getDb();
-  const record = (await db.get(STORE_NAME, id)) as PersistRecord | undefined;
-  if (!record) return null;
-  const { compressedData, ...meta } = record;
+  if (canUseIndexedDb()) {
+    try {
+      const db = await getDb();
+      const record = (await db.get(STORE_NAME, id)) as PersistRecord | undefined;
+      if (!record) return null;
+      const { compressedData, ...meta } = record;
+      return { ...meta, buckets: decompress(compressedData) };
+    } catch (err) {
+      console.warn('[Persist] IndexedDB get failed, using local fallback', err);
+    }
+  }
+
+  const fallback = readFallbackRecords().find((record) => record.id === id);
+  if (!fallback) return null;
+  const { compressedData, ...meta } = fallback;
   return { ...meta, buckets: decompress(compressedData) };
 }
 
@@ -198,6 +272,16 @@ export async function getSession(id: number): Promise<PersistRecordFull | null> 
  * Delete a persisted session.
  */
 export async function deleteSession(id: number): Promise<void> {
-  const db = await getDb();
-  await db.delete(STORE_NAME, id);
+  if (canUseIndexedDb()) {
+    try {
+      const db = await getDb();
+      await db.delete(STORE_NAME, id);
+      return;
+    } catch (err) {
+      console.warn('[Persist] IndexedDB delete failed, using local fallback', err);
+    }
+  }
+
+  const next = readFallbackRecords().filter((record) => record.id !== id);
+  writeFallbackRecords(next);
 }

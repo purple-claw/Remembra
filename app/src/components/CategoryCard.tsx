@@ -5,6 +5,7 @@ import { useStore } from '@/store/useStore';
 interface CategoryCardProps {
   category: Category;
   style?: React.CSSProperties;
+  onClick?: () => void;
 }
 
 const iconMap: Record<string, React.ElementType> = {
@@ -15,7 +16,7 @@ const iconMap: Record<string, React.ElementType> = {
   calculator: Calculator,
 };
 
-export function CategoryCard({ category, style }: CategoryCardProps) {
+export function CategoryCard({ category, style, onClick }: CategoryCardProps) {
   const { getItemsByCategory } = useStore();
   const items = getItemsByCategory(category.id);
   const activeItems = items.filter(item => item.status !== 'archived').length;
@@ -28,6 +29,7 @@ export function CategoryCard({ category, style }: CategoryCardProps) {
     <div 
       className="flex-shrink-0 w-36 bg-remembra-bg-secondary rounded-2xl p-4 border border-white/5 card-press cursor-pointer hover:border-white/10 transition-colors"
       style={style}
+      onClick={onClick}
     >
       <div 
         className="w-10 h-10 rounded-xl flex items-center justify-center mb-3"

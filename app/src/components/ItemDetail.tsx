@@ -19,6 +19,7 @@ import {
   Copy,
   Check,
   Play,
+  Plus,
   Loader2,
   StickyNote,
   Trash2,
@@ -52,6 +53,9 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
   const [activeTab, setActiveTab] = useState<'content' | 'summary' | 'flowchart' | 'notes'>('content');
   const [notes, setNotes] = useState(item.notes || '');
   const [isEditingNotes, setIsEditingNotes] = useState(false);
+  const [contentDraft, setContentDraft] = useState(item.content);
+  const [newContentDraft, setNewContentDraft] = useState('');
+  const [isEditingContent, setIsEditingContent] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
@@ -78,6 +82,29 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
       setIsEditingNotes(false);
     } catch (error) {
       toast.error('Failed to save notes');
+    }
+    setIsSaving(false);
+  };
+
+  const handleSaveContent = async (mode: 'replace' | 'append') => {
+    const nextContent = mode === 'append'
+      ? [item.content.trimEnd(), newContentDraft.trim()].filter(Boolean).join('\n\n')
+      : contentDraft.trim();
+
+    if (!nextContent) {
+      toast.error('Content cannot be empty');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await updateMemoryItem(item.id, { content: nextContent });
+      setContentDraft(nextContent);
+      setNewContentDraft('');
+      setIsEditingContent(false);
+      toast.success(mode === 'append' ? 'Content appended' : 'Content updated');
+    } catch {
+      toast.error('Failed to save content');
     }
     setIsSaving(false);
   };
@@ -336,14 +363,86 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
                   <h3 className="text-sm font-semibold uppercase tracking-wide text-remembra-text-secondary">
                     {item.content_type === 'code' ? 'Code Snippet' : 'Content'}
                   </h3>
-                  <button
-                    onClick={handleCopyContent}
-                    className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-remembra-text-secondary flex items-center gap-1.5"
-                  >
-                    {copied ? <Check size={12} /> : <Copy size={12} />}
-                    {copied ? 'Copied' : 'Copy'}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {!isEditingContent && (
+                      <button
+                        onClick={() => {
+                          setContentDraft(item.content);
+                          setNewContentDraft('');
+                          setIsEditingContent(true);
+                        }}
+                        className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-remembra-text-secondary flex items-center gap-1.5"
+                      >
+                        <Edit3 size={12} />
+                        Edit Content
+                      </button>
+                    )}
+                    <button
+                      onClick={handleCopyContent}
+                      className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-remembra-text-secondary flex items-center gap-1.5"
+                    >
+                      {copied ? <Check size={12} /> : <Copy size={12} />}
+                      {copied ? 'Copied' : 'Copy'}
+                    </button>
+                  </div>
                 </div>
+
+                {isEditingContent && (
+                  <div className="mb-4 space-y-3 rounded-xl border border-white/10 bg-black/30 p-3">
+                    <div>
+                      <p className="mb-2 text-xs font-medium uppercase tracking-wide text-remembra-text-muted">Replace full content</p>
+                      <Textarea
+                        value={contentDraft}
+                        onChange={(e) => setContentDraft(e.target.value)}
+                        className="min-h-[200px] bg-black/30 border-white/10 text-white placeholder:text-remembra-text-muted resize-y"
+                        placeholder="Update your full content"
+                      />
+                    </div>
+
+                    <div>
+                      <p className="mb-2 text-xs font-medium uppercase tracking-wide text-remembra-text-muted">Add new content</p>
+                      <Textarea
+                        value={newContentDraft}
+                        onChange={(e) => setNewContentDraft(e.target.value)}
+                        className="min-h-[120px] bg-black/30 border-white/10 text-white placeholder:text-remembra-text-muted resize-y"
+                        placeholder="Add new notes or details to append"
+                      />
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        size="sm"
+                        onClick={() => handleSaveContent('replace')}
+                        disabled={isSaving}
+                        className="gradient-primary text-white"
+                      >
+                        {isSaving ? <Loader2 size={14} className="mr-1.5 animate-spin" /> : <Save size={14} className="mr-1.5" />}
+                        Save Replace
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => handleSaveContent('append')}
+                        disabled={isSaving || !newContentDraft.trim()}
+                      >
+                        {isSaving ? <Loader2 size={14} className="mr-1.5 animate-spin" /> : <Plus size={14} className="mr-1.5" />}
+                        Save Append
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          setIsEditingContent(false);
+                          setContentDraft(item.content);
+                          setNewContentDraft('');
+                        }}
+                        disabled={isSaving}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                )}
                 
                 {item.content_type === 'code' ? (
                   <div className="bg-black/50 rounded-xl overflow-x-auto border border-white/5">

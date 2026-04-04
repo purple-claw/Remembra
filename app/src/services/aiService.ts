@@ -237,4 +237,35 @@ Keep answers concise (2-3 sentences unless they ask else-wise).`, {
       temperature: 0.6,
     });
   },
+
+  async generateReviewReminderMessage(title: string, stage: number): Promise<string> {
+    const systemPrompt = 'Write one short review reminder (max 18 words) for a learning app. Mention momentum and active recall.';
+    const prompt = `Item: "${title}"\nReview stage: ${stage}\n\nWrite one motivating reminder sentence.`;
+    try {
+      const response = await callAI(prompt, systemPrompt, {
+        maxTokens: 60,
+        temperature: 0.5,
+      });
+      return response.trim().slice(0, 180);
+    } catch {
+      // Fallback for notifications - must not fail
+      return `Time to review: ${title}. Active recall strengthens memory.`;
+    }
+  },
+
+  async generateDailyReminderSummary(itemTitles: string[], dueCount: number): Promise<string> {
+    const systemPrompt = 'Write one motivating daily reminder (max 22 words) for a study queue. Be practical and energetic.';
+    const joined = itemTitles.slice(0, 5).join(', ') || 'your studies';
+    const prompt = `Due today: ${dueCount}\nItems: ${joined}\n\nWrite one motivating sentence to start their study session.`;
+    try {
+      const response = await callAI(prompt, systemPrompt, {
+        maxTokens: 80,
+        temperature: 0.55,
+      });
+      return response.trim().slice(0, 200);
+    } catch {
+      // Fallback for notifications - must not fail
+      return `${dueCount} review${dueCount === 1 ? '' : 's'} due today. Small wins build momentum—let's go!`;
+    }
+  },
 };
