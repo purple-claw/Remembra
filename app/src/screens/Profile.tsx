@@ -431,7 +431,7 @@ export function Profile() {
                 <ShieldCheck size={16} className="text-remembra-success mt-0.5" />
                 <div>
                   <p className="text-sm text-remembra-text-primary">Security</p>
-                  <p className="text-xs text-remembra-text-muted">Firebase-authenticated account</p>
+                  <p className="text-xs text-remembra-text-muted">Verified account</p>
                 </div>
               </div>
               <div className="rounded-xl border border-white/10 bg-black/25 p-3 flex items-start gap-2">
@@ -474,7 +474,7 @@ export function Profile() {
           <section className="liquid-glass-soft rounded-2xl border border-remembra-danger/35 bg-remembra-danger/10 p-5">
             <h3 className="text-base font-semibold text-remembra-danger mb-2">Danger Zone</h3>
             <p className="text-sm text-remembra-text-secondary mb-4">
-              Signing out will clear this device session. Your Firebase data stays safe.
+              Signing out will clear this device session.
             </p>
             <Button
               onClick={() => setShowLogoutDialog(true)}
@@ -486,7 +486,7 @@ export function Profile() {
             </Button>
           </section>
 
-          <p className="text-center text-xs text-remembra-text-muted pb-6">Remembra v1.0.0</p>
+          <p className="text-center text-xs text-remembra-text-muted pb-6">Remembra v6.0 - Made with ❤️ by PurpleClaw</p>
         </div>
       </div>
 
@@ -498,7 +498,7 @@ export function Profile() {
             </div>
             <AlertDialogTitle className="text-center text-remembra-text-primary">Sign Out?</AlertDialogTitle>
             <AlertDialogDescription className="text-center text-remembra-text-muted">
-              You can sign in again anytime. Your learning data remains in Firebase.
+              You can sign in again anytime. Your learning data remains safe.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="flex-col sm:flex-row gap-2">

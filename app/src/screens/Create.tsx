@@ -247,7 +247,7 @@ export function Create() {
       next_review_date: initialNextReviewDate,
       cycle_started_at: cycleStartedAt,
       review_stage: 0,
-      review_template: scheduleType === 'recurring' ? `recurring-${recurringFrequency}` : '1-4-7',
+      review_template: scheduleType === 'recurring' ? `recurring-${recurringFrequency}` : '',
       current_stage_index: 0,
       easiness_factor: 2.5,
       interval: scheduleType === 'recurring'
@@ -688,7 +688,7 @@ export function Create() {
                       : 'bg-remembra-bg-tertiary border-white/10 text-remembra-text-muted'
                   }`}
                 >
-                  1-4-7 Review
+                   Review
                 </button>
                 <button
                   onClick={() => setScheduleType('recurring')}
