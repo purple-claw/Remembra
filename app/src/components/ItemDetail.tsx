@@ -36,6 +36,7 @@ import { Badge } from '@/components/ui/badge';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { toast } from 'sonner';
 import { getItemScheduleLabel } from '@/domain/review147';
+import { ensureCodeFence, parseCodeContent } from '@/lib/codeContent';
 
 interface ItemDetailProps {
   item: MemoryItem;
@@ -130,6 +131,14 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
   const updatedLabel = item.updated_at
     ? new Date(item.updated_at).toLocaleDateString()
     : 'Unknown';
+
+  const codeParts = item.content_type === 'code' ? parseCodeContent(item.content) : null;
+  const codeQuestion = (codeParts?.question || '').trim();
+  const codeAnswer = (codeParts?.answer || '').trim();
+  const codeAnswerMarkdown = codeAnswer
+    ? ensureCodeFence(codeAnswer, codeParts?.language)
+    : ensureCodeFence(item.content);
+  const showStructuredCode = item.content_type === 'code' && (codeQuestion || codeAnswer);
 
   const contentTypeIconMap = {
     text: FileText,
@@ -403,9 +412,28 @@ export function ItemDetail({ item, onClose }: ItemDetailProps) {
                 )}
                 
                 {item.content_type === 'code' ? (
-                  <div className="bg-black/50 rounded-xl overflow-x-auto border border-white/5">
-                    <MarkdownRenderer content={`\`\`\`\n${item.content}\n\`\`\``} />
-                  </div>
+                  showStructuredCode ? (
+                    <div className="space-y-3">
+                      {codeQuestion && (
+                        <div className="rounded-xl border border-white/10 bg-black/35 p-4">
+                          <p className="text-[10px] uppercase tracking-wide text-remembra-text-muted mb-2">Question</p>
+                          <MarkdownRenderer content={codeQuestion} />
+                        </div>
+                      )}
+                      {codeAnswer && (
+                        <div className="rounded-xl border border-white/10 bg-black/35 p-4">
+                          <p className="text-[10px] uppercase tracking-wide text-remembra-text-muted mb-2">Answer</p>
+                          <div className="bg-black/50 rounded-xl overflow-x-auto border border-white/5">
+                            <MarkdownRenderer content={codeAnswerMarkdown} />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="bg-black/50 rounded-xl overflow-x-auto border border-white/5">
+                      <MarkdownRenderer content={codeAnswerMarkdown} />
+                    </div>
+                  )
                 ) : (
                   <div className="prose prose-invert prose-sm max-w-none prose-headings:text-white prose-headings:font-bold prose-p:text-remembra-text-secondary prose-p:leading-relaxed prose-a:text-remembra-accent-primary prose-strong:text-white prose-code:text-remembra-accent-secondary prose-code:bg-black/50 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded">
                     <MarkdownRenderer content={item.content} />

@@ -23,6 +23,7 @@ import { Button } from '@/components/ui/button';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { toast } from 'sonner';
 import { getItemScheduleLabel } from '@/domain/review147';
+import { ensureCodeFence, parseCodeContent } from '@/lib/codeContent';
 
 interface SessionStats {
   startedAt: number;
@@ -78,6 +79,19 @@ export function Review() {
     () => (currentItem ? estimateRetention(currentItem) : 100),
     [currentItem],
   );
+
+  const codeParts = useMemo(() => {
+    if (!currentItem || currentItem.content_type !== 'code') return null;
+    return parseCodeContent(currentItem.content);
+  }, [currentItem]);
+
+  const codeQuestion = (codeParts?.question || '').trim();
+  const codeAnswer = (codeParts?.answer || '').trim();
+  const codeAnswerMarkdown = codeAnswer
+    ? ensureCodeFence(codeAnswer, codeParts?.language)
+    : '';
+  const showCodeSplit = !!codeQuestion && !!codeAnswer;
+  const showQuestionOnly = !!codeQuestion && !codeAnswer;
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -324,7 +338,34 @@ export function Review() {
 
               <div className="min-w-0 rounded-xl border border-white/10 bg-black/30 p-3 sm:p-4">
                 <div className="min-w-0 max-w-full">
-                  <MarkdownRenderer content={currentItem.content} />
+                  {currentItem.content_type === 'code' ? (
+                    showCodeSplit ? (
+                      <div className="space-y-3">
+                        <div className="rounded-lg border border-white/10 bg-black/35 p-3">
+                          <p className="text-[10px] uppercase tracking-wide text-remembra-text-muted mb-2">Question</p>
+                          <MarkdownRenderer content={codeQuestion} />
+                        </div>
+                        {phase === 'revealed' ? (
+                          <div className="rounded-lg border border-white/10 bg-black/35 p-3">
+                            <p className="text-[10px] uppercase tracking-wide text-remembra-text-muted mb-2">Answer</p>
+                            <MarkdownRenderer content={codeAnswerMarkdown} />
+                          </div>
+                        ) : (
+                          <div className="rounded-lg border border-white/10 bg-black/20 p-3 text-xs text-remembra-text-muted">
+                            Answer hidden. Tap "Complete Review" to reveal.
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      showQuestionOnly ? (
+                        <MarkdownRenderer content={codeQuestion} />
+                      ) : (
+                        <MarkdownRenderer content={ensureCodeFence(currentItem.content)} />
+                      )
+                    )
+                  ) : (
+                    <MarkdownRenderer content={currentItem.content} />
+                  )}
                 </div>
               </div>
             </div>

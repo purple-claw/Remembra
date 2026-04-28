@@ -36,6 +36,7 @@ import { toast } from 'sonner';
 import { OPTIONAL_REVIEW_DAY_30, REVIEW_INTERVALS_147, getScheduledDateForStage, getNextRecurringDate, toIsoDate } from '@/domain/review147';
 import { storageService } from '@/services/storageService';
 import { toFriendlyErrorMessage } from '@/lib/uiError';
+import { buildCodeContent, ensureCodeFence } from '@/lib/codeContent';
 
 const contentTypes: { id: ContentType; icon: React.ElementType; label: string; description: string }[] = [
   { id: 'text', icon: Type, label: 'Notes & Text', description: 'General notes and explanations' },
@@ -71,6 +72,10 @@ export function Create() {
   const [contentType, setContentType] = useState<ContentType>('text');
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
+  const [codeQuestion, setCodeQuestion] = useState('');
+  const [codeAnswer, setCodeAnswer] = useState('');
+  const [codeLanguage, setCodeLanguage] = useState('text');
+  const [codeStep, setCodeStep] = useState<'question' | 'answer'>('question');
   const [categoryId, setCategoryId] = useState('');
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
   const [isCreating, setIsCreating] = useState(false);
@@ -88,20 +93,36 @@ export function Create() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const questionTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   const selectedCategory = useMemo(
     () => categories.find((category) => category.id === categoryId) || null,
     [categories, categoryId],
   );
   const selectedCategoryName = selectedCategory?.name || 'No category';
-
-  const isCreateReady = !!title.trim() && !!content.trim() && !!categoryId;
+  const isCodeType = contentType === 'code';
+  const hasCodeQuestion = !!codeQuestion.trim();
+  const hasCodeAnswer = !!codeAnswer.trim();
+  const contentCharCount = isCodeType
+    ? codeQuestion.length + codeAnswer.length
+    : content.length;
+  const isCreateReady = !!title.trim() && !!categoryId && (isCodeType ? hasCodeAnswer : !!content.trim());
 
   useEffect(() => {
     if (!categoryId && categories.length > 0) {
       setCategoryId(categories[0].id);
     }
   }, [categories, categoryId]);
+
+  useEffect(() => {
+    if (contentType !== 'code') return;
+
+    setCodeStep('question');
+
+    if (!codeQuestion.trim() && !codeAnswer.trim() && content.trim()) {
+      setCodeAnswer(content);
+    }
+  }, [contentType]);
 
   const handleBack = () => {
     goBack('dashboard');
@@ -198,8 +219,14 @@ export function Create() {
 
     setFormError(null);
 
-    if (!title.trim() || !content.trim()) {
-      const message = 'Title and content are required';
+    const trimmedTitle = title.trim();
+    const trimmedContent = content.trim();
+    const trimmedAnswer = codeAnswer.trim();
+
+    if (!trimmedTitle || (isCodeType ? !trimmedAnswer : !trimmedContent)) {
+      const message = isCodeType
+        ? 'Title and code answer are required'
+        : 'Title and content are required';
       setFormError(message);
       toast.error(message);
       return;
@@ -212,7 +239,7 @@ export function Create() {
       return;
     }
 
-    if (title.trim().length > MAX_TITLE_LENGTH) {
+    if (trimmedTitle.length > MAX_TITLE_LENGTH) {
       const message = `Title must be ${MAX_TITLE_LENGTH} characters or fewer`;
       setFormError(message);
       toast.error(message);
@@ -226,10 +253,14 @@ export function Create() {
       ? getNextRecurringDate(cycleStartedAt, recurringFrequency)
       : getScheduledDateForStage(cycleStartedAt, 0);
 
+    const finalContent = isCodeType
+      ? buildCodeContent(codeQuestion, codeAnswer, codeLanguage)
+      : content;
+
     const newItem = {
       category_id: categoryId,
-      title: title.trim(),
-      content,
+      title: trimmedTitle,
+      content: finalContent,
       content_type: contentType,
       attachments: uploadedFiles.map((file) => ({
         name: file.name,
@@ -324,22 +355,25 @@ export function Create() {
           };
           const language = languageMap[ext] || 'text';
 
-          if (!content.trim()) {
-            if (language !== 'markdown' && language !== 'text') {
-              setContent(`\`\`\`${language}\n${fileContent}\n\`\`\``);
-              setContentType('code');
-            } else {
-              setContent(fileContent);
+          const isCodeFile = language !== 'markdown' && language !== 'text';
+
+          if (isCodeFile) {
+            setContentType('code');
+            setCodeLanguage((previous) => (previous && previous !== 'text' ? previous : language));
+            setCodeAnswer((previous) => (previous ? `${previous}\n\n${fileContent}` : fileContent));
+
+            if (!title) {
+              setTitle(file.name.replace(/\.[^/.]+$/, ''));
             }
+          } else if (contentType === 'code') {
+            setCodeQuestion((previous) => (previous ? `${previous}\n\n${fileContent}` : fileContent));
+          } else if (!content.trim()) {
+            setContent(fileContent);
             if (!title) {
               setTitle(file.name.replace(/\.[^/.]+$/, ''));
             }
           } else {
-            setContent((previous) => (
-              language !== 'markdown' && language !== 'text'
-                ? `${previous}\n\n\`\`\`${language}\n${fileContent}\n\`\`\``
-                : `${previous}\n\n${fileContent}`
-            ));
+            setContent((previous) => `${previous}\n\n${fileContent}`);
           }
 
           setUploadedFiles((previous) => [
@@ -392,7 +426,7 @@ export function Create() {
         toast.info(`File "${file.name}" attached`);
       }
     }
-  }, [content, title]);
+  }, [content, title, contentType]);
 
   const removeFile = async (id: string) => {
     const target = uploadedFiles.find((file) => file.id === id);
@@ -435,16 +469,33 @@ export function Create() {
     handleFiles(Array.from(event.dataTransfer.files));
   };
 
+  const getActiveEditor = () => {
+    if (contentType === 'code') {
+      return {
+        value: codeQuestion,
+        setValue: setCodeQuestion,
+        ref: questionTextareaRef,
+      };
+    }
+
+    return {
+      value: content,
+      setValue: setContent,
+      ref: textareaRef,
+    };
+  };
+
   const insertMarkdown = (before: string, after: string = '') => {
-    const textarea = textareaRef.current;
+    const { value, setValue, ref } = getActiveEditor();
+    const textarea = ref.current;
     if (!textarea) return;
 
     const start = textarea.selectionStart;
     const end = textarea.selectionEnd;
-    const selected = content.substring(start, end);
-    const next = content.substring(0, start) + before + selected + after + content.substring(end);
+    const selected = value.substring(start, end);
+    const next = value.substring(0, start) + before + selected + after + value.substring(end);
 
-    setContent(next);
+    setValue(next);
 
     setTimeout(() => {
       textarea.focus();
@@ -645,7 +696,63 @@ export function Create() {
                 </div>
               </div>
 
-              {!isPreviewMode && (
+              {isCodeType && (
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <div className="flex items-center gap-1 rounded-lg border border-white/10 bg-remembra-bg-tertiary p-1">
+                    <button
+                      onClick={() => setCodeStep('question')}
+                      className={`px-2.5 py-1 rounded-md text-[11px] ${
+                        codeStep === 'question'
+                          ? 'gradient-orange text-white'
+                          : 'text-remembra-text-muted'
+                      }`}
+                    >
+                      Question
+                    </button>
+                    <button
+                      onClick={() => setCodeStep('answer')}
+                      className={`px-2.5 py-1 rounded-md text-[11px] ${
+                        codeStep === 'answer'
+                          ? 'gradient-orange text-white'
+                          : 'text-remembra-text-muted'
+                      }`}
+                    >
+                      Answer
+                    </button>
+                  </div>
+
+                  {codeStep === 'answer' && (
+                    <div className="relative">
+                      <select
+                        value={codeLanguage}
+                        onChange={(event) => setCodeLanguage(event.target.value)}
+                        className="rounded-lg border border-white/10 bg-remembra-bg-tertiary px-2.5 py-1.5 text-[11px] text-remembra-text-primary"
+                      >
+                        <option value="text">Plain text</option>
+                        <option value="javascript">JavaScript</option>
+                        <option value="typescript">TypeScript</option>
+                        <option value="python">Python</option>
+                        <option value="java">Java</option>
+                        <option value="c">C</option>
+                        <option value="cpp">C++</option>
+                        <option value="csharp">C#</option>
+                        <option value="go">Go</option>
+                        <option value="rust">Rust</option>
+                        <option value="php">PHP</option>
+                        <option value="ruby">Ruby</option>
+                        <option value="kotlin">Kotlin</option>
+                        <option value="swift">Swift</option>
+                        <option value="sql">SQL</option>
+                        <option value="html">HTML</option>
+                        <option value="css">CSS</option>
+                        <option value="bash">Bash</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {!isPreviewMode && (!isCodeType || codeStep === 'question') && (
                 <div className="flex items-center gap-1 p-0.5 rounded-t-lg border border-white/10 bg-remembra-bg-tertiary overflow-x-auto scrollbar-hide">
                   {markdownActions.map((action) => (
                     <button
@@ -662,26 +769,84 @@ export function Create() {
 
               {isPreviewMode ? (
                 <div className="rounded-lg border border-white/10 bg-black/25 p-2.5 min-h-[180px] max-h-[360px] overflow-y-auto custom-scrollbar">
-                  {content ? (
+                  {isCodeType ? (
+                    codeStep === 'question' ? (
+                      codeQuestion ? (
+                        <MarkdownRenderer content={codeQuestion} />
+                      ) : (
+                        <p className="text-[13px] text-remembra-text-muted italic">Add your question prompt to preview it.</p>
+                      )
+                    ) : codeAnswer ? (
+                      <MarkdownRenderer content={ensureCodeFence(codeAnswer, codeLanguage)} />
+                    ) : (
+                      <p className="text-[13px] text-remembra-text-muted italic">Add your solution code to preview it.</p>
+                    )
+                  ) : content ? (
                     <MarkdownRenderer content={content} />
                   ) : (
                     <p className="text-[13px] text-remembra-text-muted italic">Nothing to preview yet...</p>
                   )}
                 </div>
               ) : (
-                <Textarea
-                  ref={textareaRef}
-                  placeholder={contentType === 'code'
-                    ? 'Paste your code here...'
-                    : 'Write your notes...'
-                  }
-                  value={content}
-                  onChange={(event) => {
-                    setContent(event.target.value);
-                    if (formError) setFormError(null);
-                  }}
-                  className="min-h-[180px] resize-none rounded-t-none rounded-b-lg bg-black/25 border-white/10 text-remembra-text-primary text-sm"
-                />
+                isCodeType ? (
+                  codeStep === 'question' ? (
+                    <Textarea
+                      ref={questionTextareaRef}
+                      placeholder="Write the problem statement or prompt (optional)..."
+                      value={codeQuestion}
+                      onChange={(event) => {
+                        setCodeQuestion(event.target.value);
+                        if (formError) setFormError(null);
+                      }}
+                      className="min-h-[180px] resize-none rounded-t-none rounded-b-lg bg-black/25 border-white/10 text-remembra-text-primary text-sm"
+                    />
+                  ) : (
+                    <Textarea
+                      placeholder="Paste your solution code here..."
+                      value={codeAnswer}
+                      onChange={(event) => {
+                        setCodeAnswer(event.target.value);
+                        if (formError) setFormError(null);
+                      }}
+                      spellCheck={false}
+                      className="min-h-[220px] resize-none rounded-lg bg-black/25 border-white/10 text-remembra-text-primary text-sm font-mono"
+                    />
+                  )
+                ) : (
+                  <Textarea
+                    ref={textareaRef}
+                    placeholder="Write your notes..."
+                    value={content}
+                    onChange={(event) => {
+                      setContent(event.target.value);
+                      if (formError) setFormError(null);
+                    }}
+                    className="min-h-[180px] resize-none rounded-t-none rounded-b-lg bg-black/25 border-white/10 text-remembra-text-primary text-sm"
+                  />
+                )
+              )}
+
+              {isCodeType && (
+                <div className="mt-2 flex items-center justify-between">
+                  {codeStep === 'answer' ? (
+                    <button
+                      onClick={() => setCodeStep('question')}
+                      className="rounded-lg border border-white/10 bg-remembra-bg-tertiary px-3 py-1.5 text-[11px] text-remembra-text-secondary"
+                    >
+                      Back to Question
+                    </button>
+                  ) : (
+                    <span />
+                  )}
+                  {codeStep === 'question' && (
+                    <button
+                      onClick={() => setCodeStep('answer')}
+                      className="rounded-lg border border-white/10 bg-remembra-bg-tertiary px-3 py-1.5 text-[11px] text-remembra-text-secondary"
+                    >
+                      Next: Answer
+                    </button>
+                  )}
+                </div>
               )}
             </div>
           </section>
@@ -908,7 +1073,14 @@ export function Create() {
               <p className="text-[9px] uppercase tracking-[0.18em] text-remembra-text-muted mb-1.5">Ready Check</p>
               <div className="space-y-1 text-[11px] text-remembra-text-muted">
                 <p>{title.trim() ? '✓' : '•'} Title added</p>
-                <p>{content.trim() ? '✓' : '•'} Content added</p>
+                {isCodeType ? (
+                  <>
+                    <p>{hasCodeQuestion ? '✓' : '•'} Question added (optional)</p>
+                    <p>{hasCodeAnswer ? '✓' : '•'} Answer code added</p>
+                  </>
+                ) : (
+                  <p>{content.trim() ? '✓' : '•'} Content added</p>
+                )}
                 <p>{selectedCategory ? '✓' : '•'} Category selected</p>
                 <p>{uploadedFiles.length > 0 ? `✓ ${uploadedFiles.length} attachment(s)` : '• Optional attachments'}</p>
               </div>
@@ -920,7 +1092,7 @@ export function Create() {
       <footer className="flex-shrink-0 px-4 sm:px-6 safe-footer pt-2 pb-2.5 border-t border-white/10 bg-black/90 backdrop-blur-xl transition-smooth relative z-20 animate-slide-up" style={{ animationDelay: '320ms' }}>
         <div className="flex items-center justify-between gap-3 mb-1.5 text-[10px] text-remembra-text-muted">
           <span className="truncate">{selectedCategoryName} • {difficulty}</span>
-          <span>{content.length.toLocaleString()} chars</span>
+          <span>{contentCharCount.toLocaleString()} chars</span>
         </div>
 
         {formError && (
