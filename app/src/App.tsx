@@ -16,6 +16,16 @@ import { BottomNav } from '@/components/BottomNav';
 import { Toaster } from '@/components/ui/sonner';
 import { toast } from 'sonner';
 import { Capacitor } from '@capacitor/core';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 function AppContent() {
   const currentScreen = useStore(state => state.currentScreen);
@@ -23,6 +33,8 @@ function AppContent() {
   const canGoBack = useStore(state => state.canGoBack);
   const isAuthenticated = useStore(state => state.isAuthenticated);
   const [navVisible, setNavVisible] = useState(true);
+  const pendingDecisionItem = useStore(state => state.pendingDecisionItem);
+  const resolveDay7Decision = useStore(state => state.resolveDay7Decision);
   const mainRef = useRef<HTMLElement | null>(null);
   const lastScrollY = useRef(0);
   const activeScrollElementRef = useRef<HTMLElement | null>(null);
@@ -229,6 +241,31 @@ function AppContent() {
           },
         }}
       />
+
+      <AlertDialog open={!!pendingDecisionItem} onOpenChange={() => {}}>
+        <AlertDialogContent className="liquid-glass w-[min(92vw,30rem)] border-white/10">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-remembra-text-primary">Day 7 complete</AlertDialogTitle>
+            <AlertDialogDescription className="text-remembra-text-muted">
+              {pendingDecisionItem?.title ? `"${pendingDecisionItem.title}" finished Day 7. Choose next step.` : 'This topic finished Day 7. Choose next step.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col sm:flex-row gap-2">
+            <AlertDialogCancel
+              onClick={() => resolveDay7Decision('complete')}
+              className="bg-remembra-bg-tertiary border-white/10 text-remembra-text-primary hover:bg-white/10"
+            >
+              Complete Topic
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => resolveDay7Decision('schedule')}
+              className="bg-remembra-accent-primary hover:bg-remembra-accent-secondary text-white"
+            >
+              Add Day 30 Review
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

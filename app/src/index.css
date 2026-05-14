@@ -530,6 +530,29 @@
     scroll-behavior: smooth;
   }
 
+  @supports (content-visibility: auto) {
+    .inertia-card {
+      content-visibility: auto;
+      contain-intrinsic-size: 200px 160px;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .liquid-glass,
+    .liquid-glass-soft,
+    .widget-surface {
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+      box-shadow: none;
+    }
+
+    .stagger-enter {
+      animation: none;
+      opacity: 1;
+      transform: none;
+    }
+  }
+
   [data-nav-scroll='true'] {
     scroll-behavior: smooth;
     scrollbar-gutter: stable both-edges;

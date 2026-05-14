@@ -47,10 +47,14 @@ const defaultCategories = [
 ];
 
 const defaultAchievements = [
-  { name: 'First Steps', description: 'Complete your first review', icon: 'trophy', progress: 0, max_progress: 1 },
-  { name: 'Week Warrior', description: 'Maintain a 7-day streak', icon: 'flame', progress: 0, max_progress: 7 },
-  { name: 'Knowledge Builder', description: 'Create 10 memory items', icon: 'brain', progress: 0, max_progress: 10 },
-  { name: 'Master Scholar', description: 'Master 5 items', icon: 'star', progress: 0, max_progress: 5 },
+  { name: '7 Day Streak', description: 'Review items for 7 consecutive days', icon: 'flame', progress: 0, max_progress: 7 },
+  { name: '30 Day Streak', description: 'Review items for 30 consecutive days', icon: 'crown', progress: 0, max_progress: 30 },
+  { name: '100 Reviews', description: 'Complete 100 review sessions', icon: 'target', progress: 0, max_progress: 100 },
+  { name: 'Code Master', description: 'Master 5 programming topics', icon: 'code-2', progress: 0, max_progress: 5 },
+  { name: 'Speed Reader', description: 'Complete a review in under 30 seconds', icon: 'zap', progress: 0, max_progress: 1 },
+  { name: 'AI Explorer', description: 'Use AI features 10 times', icon: 'sparkles', progress: 0, max_progress: 10 },
+  { name: 'Polyglot', description: 'Learn items in 3 different languages', icon: 'globe', progress: 0, max_progress: 3 },
+  { name: 'Perfectionist', description: 'Get "Easy" rating 50 times in a row', icon: 'award', progress: 0, max_progress: 50 },
 ];
 
 const toAppUser = (user: FirebaseUser): AppUser => {

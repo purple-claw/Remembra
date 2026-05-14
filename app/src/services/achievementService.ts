@@ -163,6 +163,44 @@ export const achievementService = {
     }
   },
 
+  async ensureDefaultAchievements(existing: Achievement[] = []): Promise<Result<Achievement[]>> {
+    try {
+      const userId = await requireAuth();
+      const existingNames = new Set(existing.map((achievement) => achievement.name));
+      const missing = DEFAULT_ACHIEVEMENTS.filter((achievement) => !existingNames.has(achievement.name));
+
+      if (missing.length === 0) {
+        return success(existing);
+      }
+
+      const now = new Date().toISOString();
+      const collectionRef = userAchievementsCollection(userId);
+
+      await Promise.all(missing.map(async (achievement) => {
+        const achievementRef = doc(collectionRef);
+        const payload = {
+          user_id: userId,
+          ...achievement,
+          unlocked_at: null,
+          progress: 0,
+          created_at: now,
+        };
+        await setDoc(achievementRef, payload);
+      }));
+
+      const refreshed = await this.getAchievements();
+      if (!refreshed.success) return refreshed;
+      return success(refreshed.data);
+    } catch (error) {
+      const appError = createAppError(error, {
+        code: ErrorCode.DATABASE_ERROR,
+        message: 'Failed to ensure default achievements',
+      });
+      logger.error('achievementService.ensureDefaultAchievements failed', appError as Error);
+      return failure(appError);
+    }
+  },
+
   async checkStreakAchievements(streakCount: number): Promise<Result<void>> {
     try {
       const achievementsResult = await this.getAchievements();

@@ -33,6 +33,16 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { toast } from 'sonner';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { OPTIONAL_REVIEW_DAY_30, REVIEW_INTERVALS_147, getScheduledDateForStage, getNextRecurringDate, toIsoDate } from '@/domain/review147';
 import { storageService } from '@/services/storageService';
 import { toFriendlyErrorMessage } from '@/lib/uiError';
@@ -87,6 +97,7 @@ export function Create() {
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [editingCategoryName, setEditingCategoryName] = useState('');
   const [processingCategoryId, setProcessingCategoryId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [scheduleType, setScheduleType] = useState<ScheduleType>('spaced');
   const [recurringFrequency, setRecurringFrequency] = useState<RecurringFrequency>('weekly');
   const [formError, setFormError] = useState<string | null>(null);
@@ -164,15 +175,17 @@ export function Create() {
       toast.error('At least one category is required');
       return;
     }
+    setDeleteTarget({ id, name });
+  };
 
-    const confirmed = window.confirm(`Delete category "${name}"? Items in this category will be moved to another category.`);
-    if (!confirmed) return;
+  const confirmRemoveCategory = async () => {
+    if (!deleteTarget) return;
 
-    setProcessingCategoryId(id);
+    setProcessingCategoryId(deleteTarget.id);
     try {
-      await deleteCategory(id);
-      if (categoryId === id) {
-        const fallback = categories.find((category) => category.id !== id);
+      await deleteCategory(deleteTarget.id);
+      if (categoryId === deleteTarget.id) {
+        const fallback = categories.find((category) => category.id !== deleteTarget.id);
         if (fallback) {
           setCategoryId(fallback.id);
         }
@@ -182,6 +195,7 @@ export function Create() {
       toast.error(toFriendlyErrorMessage(error, 'Failed to delete category'));
     } finally {
       setProcessingCategoryId(null);
+      setDeleteTarget(null);
     }
   };
 
@@ -1119,6 +1133,29 @@ export function Create() {
           )}
         </Button>
       </footer>
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent className="liquid-glass w-[min(92vw,28rem)] border-white/10">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-remembra-text-primary">Delete category?</AlertDialogTitle>
+            <AlertDialogDescription className="text-remembra-text-muted">
+              {deleteTarget?.name ? `"${deleteTarget.name}" will be removed and its items moved to another category.` : 'This category will be removed and its items moved.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col sm:flex-row gap-2">
+            <AlertDialogCancel className="bg-remembra-bg-tertiary border-white/10 text-remembra-text-primary hover:bg-white/10">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmRemoveCategory}
+              disabled={!!processingCategoryId}
+              className="bg-remembra-danger hover:bg-remembra-danger/90 text-white"
+            >
+              {processingCategoryId ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

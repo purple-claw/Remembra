@@ -79,6 +79,7 @@ interface AppState extends AuthState {
   achievements: Achievement[];
   calendarData: DaySchedule[];
   dailyReviews: DailyReview[];
+  pendingDecisionItem: { id: string; title: string } | null;
   
   // Review Session
   currentReviewIndex: number;
@@ -115,6 +116,7 @@ interface AppState extends AuthState {
   // Profile Actions
   updateProfile: (updates: Partial<Profile>) => Promise<void>;
   updateNotificationPreferences: (prefs: NotificationPreferences) => Promise<void>;
+  resolveDay7Decision: (decision: 'schedule' | 'complete') => Promise<void>;
   
   // Helpers
   getItemsDueToday: () => MemoryItem[];
@@ -206,6 +208,7 @@ export const useStore = create<AppState>()(persist((set, get) => ({
   achievements: [],
   calendarData: [],
   dailyReviews: [],
+  pendingDecisionItem: null,
   
   // Review State
   currentReviewIndex: 0,
@@ -421,10 +424,19 @@ export const useStore = create<AppState>()(persist((set, get) => ({
         results[2].status === 'fulfilled' && results[2].value.success
           ? results[2].value.data
           : [];
-      const achievements =
+      let achievements =
         results[3].status === 'fulfilled' && results[3].value.success
           ? results[3].value.data
           : [];
+
+      if (user) {
+        const ensureAchievements = await achievementService.ensureDefaultAchievements(achievements);
+        if (ensureAchievements.success) {
+          achievements = ensureAchievements.data;
+        } else {
+          console.warn('Failed to ensure default achievements:', ensureAchievements.error?.message);
+        }
+      }
       
       // Log any failures
       results.forEach((r, i) => {
@@ -558,26 +570,9 @@ export const useStore = create<AppState>()(persist((set, get) => ({
         }));
       }
 
-      // After finishing Day 7, user chooses Day 30 reinforcement or completion.
-      if (updatedItem && isAwaitingSevenDayDecision(updatedItem)) {
-        const schedule30 = window.confirm(
-          `"${updatedItem.title}" completed Day 7.\n\nOK = Add Day 30 review\nCancel = Complete topic`,
-        );
-
-        const decisionResult = schedule30
-          ? await memoryItemService.scheduleThirtyDayReview(updatedItem.id)
-          : await memoryItemService.completeTopic(updatedItem.id);
-        if (!decisionResult.success) {
-          throw decisionResult.error;
-        }
-        updatedItem = decisionResult.data;
-
-        const resolvedItem = updatedItem;
-        set(state => ({
-          memoryItems: state.memoryItems.map(item =>
-            item.id === resolvedItem.id ? resolvedItem : item
-          ),
-        }));
+      const awaitingDecision = !!updatedItem && isAwaitingSevenDayDecision(updatedItem);
+      if (awaitingDecision && updatedItem) {
+        set({ pendingDecisionItem: { id: updatedItem.id, title: updatedItem.title } });
       }
       
       // Record streak and update profile
@@ -593,7 +588,18 @@ export const useStore = create<AppState>()(persist((set, get) => ({
         
         const updatedProfileResult = await profileService.getProfile();
         if (updatedProfileResult.success && updatedProfileResult.data) {
-          set({ profile: updatedProfileResult.data });
+          const nextProfile = updatedProfileResult.data;
+          set({ profile: nextProfile });
+          try {
+            await achievementService.checkStreakAchievements(nextProfile.streak_count || 0);
+            await achievementService.checkReviewAchievements(nextProfile.total_reviews || 0);
+            const achievementsResult = await achievementService.getAchievements();
+            if (achievementsResult.success) {
+              set({ achievements: achievementsResult.data });
+            }
+          } catch (achievementError) {
+            console.warn('Failed to sync achievements after review:', achievementError);
+          }
         }
       } catch (e) {
         console.warn('Failed to update streak/profile:', e);
@@ -610,10 +616,12 @@ export const useStore = create<AppState>()(persist((set, get) => ({
       }
       
       // Keep notifications in sync with current item state
-      if (updatedItem?.status === 'active') {
-        runNotification(notificationService.scheduleNextReview(updatedItem), 'scheduleNextReview');
-      } else if (updatedItem) {
-        runNotification(notificationService.cancelItemNotifications(updatedItem.id), 'cancelItemNotifications');
+      if (!awaitingDecision) {
+        if (updatedItem?.status === 'active') {
+          runNotification(notificationService.scheduleNextReview(updatedItem), 'scheduleNextReview');
+        } else if (updatedItem) {
+          runNotification(notificationService.cancelItemNotifications(updatedItem.id), 'cancelItemNotifications');
+        }
       }
 
       const reminderTime = get().profile?.notification_preferences?.reminder_time || '09:00';
@@ -738,6 +746,45 @@ export const useStore = create<AppState>()(persist((set, get) => ({
     set({ profile: result.data });
     runNotification(notificationService.scheduleDailySummary(get().memoryItems, prefs.reminder_time), 'scheduleDailySummary');
   },
+
+  resolveDay7Decision: async (decision) => {
+    const pending = get().pendingDecisionItem;
+    if (!pending) return;
+
+    try {
+      const decisionResult = decision === 'schedule'
+        ? await memoryItemService.scheduleThirtyDayReview(pending.id)
+        : await memoryItemService.completeTopic(pending.id);
+
+      if (!decisionResult.success) {
+        throw decisionResult.error;
+      }
+
+      const resolvedItem = decisionResult.data;
+      if (resolvedItem) {
+        set(state => ({
+          memoryItems: state.memoryItems.map(item =>
+            item.id === resolvedItem.id ? resolvedItem : item
+          ),
+          pendingDecisionItem: null,
+        }));
+
+        if (resolvedItem.status === 'completed') {
+          runNotification(notificationService.cancelItemNotifications(resolvedItem.id), 'cancelItemNotifications');
+        } else {
+          runNotification(notificationService.scheduleNextReview(resolvedItem), 'scheduleNextReview');
+        }
+      } else {
+        set({ pendingDecisionItem: null });
+      }
+
+      const reminderTime = get().profile?.notification_preferences?.reminder_time || '09:00';
+      runNotification(notificationService.scheduleDailySummary(get().memoryItems, reminderTime), 'scheduleDailySummary');
+    } catch (error) {
+      console.error('Failed to resolve Day 7 decision:', error);
+      set({ pendingDecisionItem: null });
+    }
+  },
   
   // Helper functions
   getItemsDueToday: () => {
@@ -792,40 +839,37 @@ export const useStore = create<AppState>()(persist((set, get) => ({
         }
         const updatedProfileResult = await profileService.getProfile();
         if (updatedProfileResult.success && updatedProfileResult.data) {
-          set({ profile: updatedProfileResult.data });
+          const nextProfile = updatedProfileResult.data;
+          set({ profile: nextProfile });
+          try {
+            await achievementService.checkStreakAchievements(nextProfile.streak_count || 0);
+            await achievementService.checkReviewAchievements(nextProfile.total_reviews || 0);
+            const achievementsResult = await achievementService.getAchievements();
+            if (achievementsResult.success) {
+              set({ achievements: achievementsResult.data });
+            }
+          } catch (achievementError) {
+            console.warn('Failed to sync achievements after calendar review:', achievementError);
+          }
         }
       } catch (e) {
         console.warn('Failed to update streak/profile from calendar review:', e);
       }
 
-      if (isAwaitingSevenDayDecision(updatedItem)) {
-        const schedule30 = window.confirm(
-          `"${updatedItem.title}" completed Day 7.\n\nOK = Add Day 30 review\nCancel = Complete topic`,
-        );
-
-        const decisionResult = schedule30
-          ? await memoryItemService.scheduleThirtyDayReview(updatedItem.id)
-          : await memoryItemService.completeTopic(updatedItem.id);
-        if (!decisionResult.success) {
-          throw decisionResult.error;
-        }
-        updatedItem = decisionResult.data;
-
-        const resolvedItem = updatedItem;
-        set(state => ({
-          memoryItems: state.memoryItems.map(item =>
-            item.id === resolvedItem.id ? resolvedItem : item
-          ),
-        }));
+      const awaitingDecision = !!updatedItem && isAwaitingSevenDayDecision(updatedItem);
+      if (awaitingDecision && updatedItem) {
+        set({ pendingDecisionItem: { id: updatedItem.id, title: updatedItem.title } });
       }
 
-      if (updatedItem.status === 'completed') {
-        const cancelResult = await notificationService.cancelItemNotifications(updatedItem.id);
-        if (!cancelResult.success) {
-          console.warn('Failed to cancel item notifications:', cancelResult.error?.message);
+      if (!awaitingDecision) {
+        if (updatedItem.status === 'completed') {
+          const cancelResult = await notificationService.cancelItemNotifications(updatedItem.id);
+          if (!cancelResult.success) {
+            console.warn('Failed to cancel item notifications:', cancelResult.error?.message);
+          }
+        } else {
+          runNotification(notificationService.scheduleNextReview(updatedItem), 'scheduleNextReview');
         }
-      } else {
-        runNotification(notificationService.scheduleNextReview(updatedItem), 'scheduleNextReview');
       }
 
       const reminderTime = get().profile?.notification_preferences?.reminder_time || '09:00';

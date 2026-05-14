@@ -233,7 +233,7 @@ export function Profile() {
           <Button
             onClick={handleSave}
             disabled={!isDirty || isSaving}
-            className="ml-auto shrink-0 gradient-primary text-white"
+            className="w-full sm:w-auto sm:ml-auto shrink-0 gradient-primary text-white"
           >
             <Save size={16} className="mr-2" />
             {isSaving ? 'Saving' : 'Save'}
@@ -248,7 +248,7 @@ export function Profile() {
       >
         <div className="max-w-4xl mx-auto space-y-5">
           <section className="widget-surface inertia-card smooth-surface stagger-enter liquid-glass relative overflow-hidden rounded-3xl p-5" style={{ animationDelay: '40ms' }}>
-            <div className="relative flex items-center gap-4">
+            <div className="relative flex flex-col sm:flex-row sm:items-center gap-4">
               <div className="w-16 h-16 rounded-2xl bg-black/60 border border-white/15 overflow-hidden flex items-center justify-center shrink-0">
                 {avatarUrl && !avatarLoadFailed ? (
                   <img
@@ -279,7 +279,7 @@ export function Profile() {
                 variant="outline"
                 onClick={() => generateAvatar(true)}
                 disabled={isGeneratingAvatar}
-                className="bg-remembra-bg-tertiary border-white/10"
+                className="w-full sm:w-auto bg-remembra-bg-tertiary border-white/10"
               >
                 <RefreshCw size={14} className={`mr-2 ${isGeneratingAvatar ? 'animate-spin' : ''}`} />
                 Avatar

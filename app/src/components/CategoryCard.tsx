@@ -2,6 +2,17 @@ import type { Category } from '@/types';
 import { Code, Languages, FlaskConical, BookOpen, Calculator, Edit3, Trash2 } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import { useState } from 'react';
+import { toast } from 'sonner';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 interface CategoryCardProps {
   category: Category;
@@ -28,15 +39,32 @@ export function CategoryCard({ category, style, onClick }: CategoryCardProps) {
   const { updateCategory, deleteCategory } = useStore();
   const [isEditing, setIsEditing] = useState(false);
   const [name, setName] = useState(category.name);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    if (isDeleting) return;
+    setIsDeleting(true);
+    try {
+      await deleteCategory(category.id);
+      toast.success('Category deleted');
+      setDeleteOpen(false);
+    } catch (err) {
+      console.error('Delete category failed', err);
+      toast.error('Failed to delete category');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   return (
     <div 
-      className="relative flex-shrink-0 w-36 bg-remembra-bg-secondary rounded-2xl p-4 border border-white/5 card-press cursor-pointer hover:border-white/10 transition-colors"
+      className="group relative flex-shrink-0 w-36 bg-remembra-bg-secondary rounded-2xl p-4 border border-white/5 card-press cursor-pointer hover:border-white/10 transition-colors"
       style={style}
       onClick={onClick}
     >
       {/* Edit / Delete controls */}
-      <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 hover:opacity-100 transition-opacity">
+      <div className="absolute top-2 right-2 flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
         <button
           onClick={(e) => { e.stopPropagation(); setIsEditing(true); setName(category.name); }}
           className="p-1 rounded bg-white/5 hover:bg-white/8"
@@ -47,15 +75,11 @@ export function CategoryCard({ category, style, onClick }: CategoryCardProps) {
         <button
           onClick={async (e) => {
             e.stopPropagation();
-            if (category.is_default) return alert('Default category cannot be deleted.');
-            const ok = window.confirm(`Delete category "${category.name}"? This will move items to another category.`);
-            if (!ok) return;
-            try {
-              await deleteCategory(category.id);
-            } catch (err) {
-              console.error('Delete category failed', err);
-              alert('Failed to delete category');
+            if (category.is_default) {
+              toast.info('Default category cannot be deleted');
+              return;
             }
+            setDeleteOpen(true);
           }}
           className="p-1 rounded bg-white/5 hover:bg-white/8"
           aria-label="Delete category"
@@ -83,11 +107,16 @@ export function CategoryCard({ category, style, onClick }: CategoryCardProps) {
                 if (e.key === 'Enter') {
                   e.preventDefault();
                   try {
-                    await updateCategory(category.id, { name: name.trim() });
+                    const nextName = name.trim();
+                    if (!nextName) {
+                      toast.error('Category name is required');
+                      return;
+                    }
+                    await updateCategory(category.id, { name: nextName });
                     setIsEditing(false);
                   } catch (err) {
                     console.error('Failed to update category', err);
-                    alert('Failed to update category');
+                    toast.error('Failed to update category');
                   }
               } else if (e.key === 'Escape') {
                 setIsEditing(false);
@@ -96,10 +125,16 @@ export function CategoryCard({ category, style, onClick }: CategoryCardProps) {
             }}
             onBlur={async () => {
                 try {
-                  await updateCategory(category.id, { name: name.trim() });
+                  const nextName = name.trim();
+                  if (!nextName) {
+                    toast.error('Category name is required');
+                    setName(category.name);
+                    return;
+                  }
+                  await updateCategory(category.id, { name: nextName });
                 } catch (err) {
                   console.error('Failed to update category', err);
-                  alert('Failed to update category');
+                  toast.error('Failed to update category');
                   setName(category.name);
                 } finally {
                   setIsEditing(false);
@@ -128,6 +163,29 @@ export function CategoryCard({ category, style, onClick }: CategoryCardProps) {
           {progressPercentage}%
         </span>
       </div>
+
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent className="liquid-glass w-[min(92vw,26rem)] border-white/10">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-remembra-text-primary">Delete category?</AlertDialogTitle>
+            <AlertDialogDescription className="text-remembra-text-muted">
+              Items in "{category.name}" will be moved to another category.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col sm:flex-row gap-2">
+            <AlertDialogCancel className="bg-remembra-bg-tertiary border-white/10 text-remembra-text-primary hover:bg-white/10">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={isDeleting}
+              className="bg-remembra-danger hover:bg-remembra-danger/90 text-white"
+            >
+              {isDeleting ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

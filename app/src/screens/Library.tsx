@@ -25,7 +25,6 @@ import { ItemDetail } from '@/components/ItemDetail';
 import { saveSession } from '@/services/persistService';
 import { toast } from 'sonner';
 import { toFriendlyErrorMessage } from '@/lib/uiError';
-import { parseCodeContent } from '@/lib/codeContent';
 
 const INITIAL_RENDER_COUNT = 36;
 const RENDER_INCREMENT = 24;
@@ -194,15 +193,6 @@ export function Library() {
     }
   };
 
-  const getExcerpt = (content: string, contentType?: MemoryItem['content_type']) => {
-    const source = contentType === 'code'
-      ? (parseCodeContent(content)?.question || content)
-      : content;
-    const plain = source.replace(/[#>*`\-\n\r\t]/g, ' ').replace(/\s+/g, ' ').trim();
-    if (!plain) return 'No preview available.';
-    return plain.length > 120 ? `${plain.slice(0, 120)}...` : plain;
-  };
-
   return (
     <div className="h-[100dvh] min-h-[100dvh] w-full overflow-hidden bg-black flex flex-col animate-screen-enter">
       {selectedItem && <ItemDetail item={selectedItem} onClose={() => setSelectedItemId(null)} />}
@@ -260,8 +250,8 @@ export function Library() {
       </header>
 
       <div className="flex-shrink-0 px-4 sm:px-5 py-3 bg-black border-b border-white/5 transition-smooth animate-slide-up relative z-20" style={{ animationDelay: '70ms' }}>
-        <div className="flex items-center justify-between gap-3 mb-3">
-          <div className="flex gap-2 overflow-x-auto scrollbar-hide flex-1 -mx-1 px-1">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-3">
+          <div className="flex w-full flex-wrap gap-2 flex-1 -mx-1 px-1 sm:flex-nowrap sm:overflow-x-auto scrollbar-hide">
             <button
               onClick={() => {
                 setSelectedCategory('all');
@@ -303,7 +293,7 @@ export function Library() {
             ))}
           </div>
 
-          <div className="flex bg-remembra-bg-secondary rounded-lg p-1 border border-white/5 shrink-0">
+          <div className="flex bg-remembra-bg-secondary rounded-lg p-1 border border-white/5 shrink-0 self-end sm:self-auto">
             <button
               onClick={() => setViewMode('grid')}
               className={`p-2 rounded tap-ripple transition-smooth ${viewMode === 'grid' ? 'bg-remembra-bg-tertiary text-remembra-text-primary' : 'text-remembra-text-muted'}`}
@@ -397,7 +387,6 @@ export function Library() {
                     <h3 className="text-sm font-semibold text-remembra-text-primary truncate mb-1">
                       {item.title}
                     </h3>
-                    <p className="text-xs text-remembra-text-muted line-clamp-1 mb-2">{getExcerpt(item.content, item.content_type)}</p>
                     <div className="flex items-center gap-2 flex-wrap">
                       <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium border ${getStatusColor(item.status)}`}>
                         <StatusIcon size={10} />
@@ -451,8 +440,6 @@ export function Library() {
                 </div>
 
                 <h3 className="text-sm font-semibold text-remembra-text-primary mb-2 line-clamp-2 leading-tight">{item.title}</h3>
-
-                <p className="text-xs text-remembra-text-muted line-clamp-2 mb-3 leading-relaxed">{getExcerpt(item.content, item.content_type)}</p>
 
                 <div className="flex items-center justify-between text-[10px] gap-2">
                   <span className="text-remembra-text-muted font-medium truncate">{getItemScheduleLabel(item)}</span>
