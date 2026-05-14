@@ -1,4 +1,5 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import 'katex/dist/katex.min.css';
 
 @tailwind base;
 @tailwind components;
@@ -384,6 +385,40 @@
 
   .markdown-content > * {
     min-width: 0;
+  }
+
+  /* === KATEX MATH RENDERING === */
+  .math-inline {
+    display: inline;
+    margin: 0;
+    padding: 0;
+  }
+
+  .markdown-content .katex {
+    color: #B8B8B8;
+    font-size: 1em;
+  }
+
+  .markdown-content .katex-display {
+    margin: 0;
+  }
+
+  /* Display math wrapper: minimal spacing, no highlight */
+  .math-display-wrapper {
+    display: flex;
+    justify-content: center;
+    margin: 0.2rem 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-gutter: stable;
+  }
+
+  .math-display-wrapper .katex {
+    color: #FFFFFF;
+    font-size: 1.05em;
   }
 
   /* Accent line separators */

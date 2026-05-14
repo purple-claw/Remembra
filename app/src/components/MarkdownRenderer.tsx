@@ -17,6 +17,8 @@
 
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import katex from 'katex';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { MermaidDiagram } from './MermaidDiagram';
@@ -40,6 +42,56 @@ interface MarkdownRendererProps {
 const PROGRESSIVE_THRESHOLD = 60_000;  // split into chunks for content > 60 KB
 const LARGE_CODE_LINES = 400;          // collapse code blocks with more lines
 const CODE_PREVIEW_LINES = 50;         // lines shown when collapsed
+
+const MATH_LANGUAGES = new Set(['math', 'latex', 'tex', 'katex']);
+
+const normalizeMathSource = (source: string) => {
+  const trimmed = source.trim();
+  if (trimmed.startsWith('$$') && trimmed.endsWith('$$')) {
+    return trimmed.slice(2, -2).trim();
+  }
+  if (trimmed.startsWith('$') && trimmed.endsWith('$')) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+};
+
+const renderKatexHtml = (value: string, displayMode: boolean) => {
+  try {
+    return katex.renderToString(value, {
+      displayMode,
+      throwOnError: false,
+      strict: 'ignore',
+    });
+  } catch {
+    return '';
+  }
+};
+
+const MathInline = memo(function MathInline({ value }: { value: string }) {
+  const html = renderKatexHtml(value, false);
+  if (!html) {
+    return <span className="math-inline text-remembra-text-secondary">{value}</span>;
+  }
+  return <span className="math-inline" dangerouslySetInnerHTML={{ __html: html }} />;
+});
+
+const MathBlock = memo(function MathBlock({ value }: { value: string }) {
+  const html = renderKatexHtml(value, true);
+
+  if (!html) {
+    return (
+      <pre className="my-2 whitespace-pre-wrap text-sm text-remembra-text-secondary">{value}</pre>
+    );
+  }
+
+  return (
+    <div
+      className="math-display-wrapper"
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
+});
 
 // ─── VS Code-like theme (stable object ref — created once at module level) ────
 const vscodeTheme: Record<string, React.CSSProperties> = {
@@ -206,6 +258,7 @@ const CodeBlock = memo(function CodeBlock({
 }) {
   const [copied, setCopied] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const normalizedLanguage = language?.toLowerCase() ?? '';
 
   const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(value).catch(() => {});
@@ -215,6 +268,10 @@ const CodeBlock = memo(function CodeBlock({
 
   if (language === 'mermaid') {
     return <LazyMermaid chart={value} />;
+  }
+
+  if (MATH_LANGUAGES.has(normalizedLanguage)) {
+    return <MathBlock value={normalizeMathSource(value)} />;
   }
 
   const displayLanguage = languageLabels[language?.toLowerCase()] ?? language?.toUpperCase() ?? 'TEXT';
@@ -298,10 +355,15 @@ const MD_COMPONENTS = {
   code({ className, children, ...props }: Record<string, unknown>) {
     const match = /language-(\w+)/.exec((className as string) || '');
     const language = match ? match[1] : '';
-    const value = String(children).replace(/\n$/, '');
+    const value = Array.isArray(children)
+      ? children.map((child) => (typeof child === 'string' ? child : '')).join('')
+      : typeof children === 'string'
+        ? children
+        : String(children ?? '');
+    const safeValue = value.replace(/\n$/, '');
     const isBlock = !!language || value.includes('\n');
 
-    if (isBlock) return <CodeBlock language={language} value={value} />;
+    if (isBlock) return <CodeBlock language={language} value={safeValue} />;
 
     return (
       <code
@@ -387,9 +449,15 @@ const MD_COMPONENTS = {
   em: ({ children }: { children?: React.ReactNode }) => (
     <em className="italic text-remembra-text-primary">{children}</em>
   ),
+  inlineMath: ({ value }: { value?: string }) => (
+    value ? <MathInline value={value} /> : null
+  ),
+  math: ({ value }: { value?: string }) => (
+    value ? <MathBlock value={value} /> : null
+  ),
 };
 
-const REMARK_PLUGINS = [remarkGfm];
+const REMARK_PLUGINS = [remarkGfm, remarkMath];
 
 // ─── Split large content at heading / paragraph boundaries ────────────────────
 function splitContent(text: string, maxChunkSize: number): string[] {
@@ -418,7 +486,10 @@ function splitContent(text: string, maxChunkSize: number): string[] {
 const MarkdownChunk = memo(
   function MarkdownChunk({ content }: { content: string }) {
     return (
-      <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MD_COMPONENTS as never}>
+      <ReactMarkdown
+        remarkPlugins={REMARK_PLUGINS}
+        components={MD_COMPONENTS as never}
+      >
         {content}
       </ReactMarkdown>
     );
