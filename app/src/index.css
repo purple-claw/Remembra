@@ -387,11 +387,18 @@
     min-width: 0;
   }
 
+  /* Ensure markdown blocks are left-aligned so inline math flows inline
+     with the surrounding sentence instead of being centered by global rules. */
+  .markdown-content {
+    text-align: left;
+  }
+
   /* === KATEX MATH RENDERING === */
   .math-inline {
     display: inline;
-    margin: 0;
+    margin: 0 0.12em;
     padding: 0;
+    vertical-align: baseline;
   }
 
   .markdown-content .katex {
@@ -414,6 +421,13 @@
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     scrollbar-gutter: stable;
+  }
+
+  /* If a math-display-wrapper contains a very short expression, reduce
+     the visual weight so it doesn't overwhelm the paragraph. */
+  .math-display-wrapper.katex-short {
+    justify-content: flex-start;
+    margin: 0.08rem 0;
   }
 
   .math-display-wrapper .katex {

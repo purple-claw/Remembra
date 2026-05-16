@@ -46,26 +46,122 @@ const CODE_PREVIEW_LINES = 50;         // lines shown when collapsed
 const MATH_LANGUAGES = new Set(['math', 'latex', 'tex', 'katex']);
 
 const normalizeMathSource = (source: string) => {
-  const trimmed = source.trim();
-  if (trimmed.startsWith('$$') && trimmed.endsWith('$$')) {
-    return trimmed.slice(2, -2).trim();
-  }
-  if (trimmed.startsWith('$') && trimmed.endsWith('$')) {
-    return trimmed.slice(1, -1).trim();
-  }
-  return trimmed;
+  let s = source.trim();
+
+  // Common delimiters: $$...$$, $...$, \(...\), \[...\]
+  if (s.startsWith('$$') && s.endsWith('$$')) return s.slice(2, -2).trim();
+  if (s.startsWith('$') && s.endsWith('$')) return s.slice(1, -1).trim();
+  if (s.startsWith('\\(') && s.endsWith('\\)')) return s.slice(2, -2).trim();
+  if (s.startsWith('\\[') && s.endsWith('\\]')) return s.slice(2, -2).trim();
+
+  // Fallback: strip a single pair of parentheses if present (guarded)
+  return s;
 };
+
+const preprocessMathDelimiters = (content: string) => {
+  const fenceRegex = /^\s*(```|~~~)/;
+  const inlineCodeRegex = /(`+)([^`]*?)\1/g;
+
+  const convertSegment = (segment: string) => {
+    const stash: string[] = [];
+    const protectedSegment = segment.replace(inlineCodeRegex, (match) => {
+      const key = `__INLINE_CODE_${stash.length}__`;
+      stash.push(match);
+      return key;
+    });
+
+    let replaced = protectedSegment
+      .replace(/\\\[((?:.|\n)*?)\\\]/g, (_, inner) => `$$${inner}$$`)
+      .replace(/\\\(((?:.|\n)*?)\\\)/g, (_, inner) => `$${inner}$`);
+
+    stash.forEach((value, idx) => {
+      replaced = replaced.replace(`__INLINE_CODE_${idx}__`, value);
+    });
+
+    return replaced;
+  };
+
+  const lines = content.split('\n');
+  let inFence = false;
+  let buffer = '';
+  let output = '';
+
+  const flushBuffer = () => {
+    if (!buffer) return;
+    output += convertSegment(buffer);
+    buffer = '';
+  };
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    const isFence = fenceRegex.test(line);
+
+    if (isFence) {
+      flushBuffer();
+      inFence = !inFence;
+      output += line;
+    } else if (inFence) {
+      output += line;
+    } else {
+      buffer += line;
+    }
+
+    if (i < lines.length - 1) {
+      if (inFence) {
+        output += '\n';
+      } else {
+        buffer += '\n';
+      }
+    }
+  }
+
+  flushBuffer();
+  return output;
+};
+
 
 const renderKatexHtml = (value: string, displayMode: boolean) => {
   try {
-    return katex.renderToString(value, {
-      displayMode,
-      throwOnError: false,
-      strict: 'ignore',
-    });
+    // First try with strict error reporting so we can capture and log
+    // problematic expressions during debugging. If that throws, fall
+    // back to a non-throwing render so the UI stays intact.
+    try {
+      return katex.renderToString(value, { displayMode, throwOnError: true, strict: 'ignore' });
+    } catch (err) {
+      // Log the value and the error to aid debugging of failing formulas.
+      // Keep logs concise to avoid leaking large user content.
+      const snippet = String(value).slice(0, 240).replace(/\n/g, ' ');
+      // eslint-disable-next-line no-console
+      console.warn('[KaTeX] render error for:', snippet, err && (err as Error).message);
+      return katex.renderToString(value, { displayMode, throwOnError: false, strict: 'ignore' });
+    }
   } catch {
     return '';
   }
+};
+
+// Heuristic to decide whether a math block should be rendered as a
+// centered display equation (important/complex) or kept inline so it
+// flows with the surrounding sentence (variables/constants).
+const prefersDisplayMath = (src: string) => {
+  const s = src.trim();
+  if (!s) return false;
+
+  // Definitely display if it's multi-line, uses alignment environments,
+  // or explicit display commands.
+  if (s.includes('\n') || /\\begin\{/.test(s) || s.includes('&') || s.includes('\\displaystyle')) return true;
+
+  // Complex operators or large constructs that usually deserve centering.
+  if (/\\(int|sum|prod|lim|frac|partial|nabla|derivative|displaystyle)/.test(s)) return true;
+
+  // Detect derivative-like patterns (\frac{d}{dt}, d/dt, \partial)
+  if (/\\frac\s*\{\s*d|d\/d|\\partial/.test(s)) return true;
+
+  // Very long expressions are probably important enough to center.
+  if (s.length > 120) return true;
+
+  // Otherwise prefer inline rendering so variables/constants follow sentence flow.
+  return false;
 };
 
 const MathInline = memo(function MathInline({ value }: { value: string }) {
@@ -77,7 +173,10 @@ const MathInline = memo(function MathInline({ value }: { value: string }) {
 });
 
 const MathBlock = memo(function MathBlock({ value }: { value: string }) {
-  const html = renderKatexHtml(value, true);
+  // Decide whether this math block should be shown as a centered
+  // display equation or as an inline fragment that flows with text.
+  const useDisplay = prefersDisplayMath(value);
+  const html = renderKatexHtml(value, useDisplay);
 
   if (!html) {
     return (
@@ -85,12 +184,19 @@ const MathBlock = memo(function MathBlock({ value }: { value: string }) {
     );
   }
 
-  return (
-    <div
-      className="math-display-wrapper"
-      dangerouslySetInnerHTML={{ __html: html }}
-    />
-  );
+  if (useDisplay) {
+    const shortDisplay = value.replace(/\s+/g, '').length < 60;
+    const cls = `math-display-wrapper${shortDisplay ? ' katex-short' : ''}`;
+    return (
+      <div
+        className={cls}
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+    );
+  }
+
+  // Render small/simple math inline so it doesn't force a centered line.
+  return <span className="math-inline" dangerouslySetInnerHTML={{ __html: html }} />;
 });
 
 // ─── VS Code-like theme (stable object ref — created once at module level) ────
@@ -485,12 +591,13 @@ function splitContent(text: string, maxChunkSize: number): string[] {
 // ─── Single memoized chunk ────────────────────────────────────────────────────
 const MarkdownChunk = memo(
   function MarkdownChunk({ content }: { content: string }) {
+    const preprocessed = preprocessMathDelimiters(content);
     return (
       <ReactMarkdown
         remarkPlugins={REMARK_PLUGINS}
         components={MD_COMPONENTS as never}
       >
-        {content}
+        {preprocessed}
       </ReactMarkdown>
     );
   },
