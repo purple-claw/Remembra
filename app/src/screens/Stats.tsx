@@ -460,8 +460,10 @@ export function Stats() {
                           ))}
                         </Pie>
                         <Tooltip
-                          contentStyle={{ backgroundColor: '#0e0e14', border: '1px solid #2b2b35', borderRadius: '12px', fontSize: '12px' }}
+                          contentStyle={{ backgroundColor: '#0e0e14', border: '1px solid #2b2b35', borderRadius: '12px', fontSize: '12px', color: '#FAFAFA' }}
+                          itemStyle={{ color: '#FAFAFA' }}
                           formatter={(value: number, _name: string, props: any) => [value, props.payload.name]}
+                          labelStyle={{ color: '#FAFAFA' }}
                         />
                       </PieChart>
                     </ResponsiveContainer>
